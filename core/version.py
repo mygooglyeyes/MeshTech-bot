@@ -27,9 +27,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 _REF_PREFIX = "ref: "
 _SHORT_LEN = 7
 
-# Human-friendly release number.  Bump this on each tagged release; the
-# exact source of any running build is still pinned by the commit stamp.
-__version__ = "0.0.004"
+# Human-friendly release number.  Project convention: bump this on EVERY
+# commit, so the number doubles as a commit counter (each commit is a
+# release candidate, and the dashboard chip + startup log make it obvious
+# which build a box is running).  The exact source of any running build is
+# still pinned by the commit stamp.
+__version__ = "0.0.005"
 
 
 def _short(sha: str) -> str:
