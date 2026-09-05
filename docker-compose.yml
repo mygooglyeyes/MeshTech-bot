@@ -4,9 +4,12 @@
 #   cp config.example.yaml config.yaml      # then edit config.yaml
 #   mkdir -p data && sudo chown 1001:1001 data
 #
-# Run:
-#   docker compose up -d --build
+# Run (GIT_SHA bakes the current commit into the dashboard header):
+#   GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build
 #   docker compose logs -f
+#
+# Without GIT_SHA the build stamp reads "unknown" - harmless, but the
+# dashboard can't tell you which commit the container runs.
 #
 # network_mode: host is used because the bot must reach your openHop
 # Repeater on your LAN and it is simplest to let the container share the
@@ -15,7 +18,10 @@
 # publish ports instead.
 services:
   meshtech-bot:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     image: meshtech-bot:latest
     container_name: meshtech-bot
     restart: unless-stopped

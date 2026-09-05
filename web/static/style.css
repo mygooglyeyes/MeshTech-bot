@@ -65,6 +65,14 @@ main {
 .chip.ok { border-color: var(--ok); color: var(--ok); }
 .chip.bad { border-color: var(--bad); color: var(--bad); }
 
+/* Header chips are monospace (IBM Plex Mono), so `ch` = one character.
+   Give the live counters a stable minimum width so digit changes (e.g.
+   uptime 59s -> 1h 5m, node counts growing) do not resize the chip and
+   jiggle the rest of the header row every refresh. */
+#chip-uptime { min-width: 12ch; text-align: center; }
+#chip-nodes  { min-width: 13ch; }
+#chip-msgs   { min-width: 12ch; }
+
 .channellist { display: flex; flex-wrap: wrap; gap: 8px; }
 .channel {
   background: var(--panel2);

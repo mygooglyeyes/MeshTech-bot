@@ -19,6 +19,19 @@ from core.config import ConfigError, Settings, load
 log = logging.getLogger("meshtech-bot")
 
 
+def _build_label(version: Dict) -> str:
+    """"v0.0.1 (main@abc1234)" - version first, commit in parens when known."""
+    vn = version.get("version")
+    commit = version.get("commit") or ""
+    branch = version.get("branch") or ""
+    sha = (branch + "@" + commit) if (branch and commit) else commit
+    if vn and sha:
+        return f"v{vn} ({sha})"
+    if vn:
+        return f"v{vn}"
+    return sha or "unknown"
+
+
 def _setup_logging(settings: Settings) -> None:
     level = getattr(logging, settings.logging.level, logging.INFO)
     kwargs = {
@@ -35,7 +48,9 @@ def _setup_logging(settings: Settings) -> None:
 
 
 def _check(settings: Settings) -> int:
-    print(f"config.yaml OK: {settings.config_path}")
+    from core.version import version_stamp
+    stamp = _build_label(version_stamp())
+    print(f"config.yaml OK: {settings.config_path}  (build: {stamp})")
     for warning in settings.warnings:
         print(f"  warning: {warning}")
     conn = settings.connection
@@ -123,9 +138,11 @@ async def _run(settings: Settings) -> None:
         except (NotImplementedError, AttributeError):
             pass  # e.g. Windows: KeyboardInterrupt path below handles Ctrl-C
 
+    from core.version import version_stamp
+    stamp = _build_label(version_stamp())
     conn = settings.connection
-    log.info("MeshTech-Bot starting: %s:%s, %d channel(s)",
-             conn.host, conn.port, len(settings.channels))
+    log.info("MeshTech-Bot %s starting: %s:%s, %d channel(s)",
+             stamp, conn.host, conn.port, len(settings.channels))
     if settings.web.enabled:
         log.info("Dashboard: http://%s:%d", settings.web.host, settings.web.port)
 

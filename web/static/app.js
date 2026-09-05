@@ -191,6 +191,18 @@ async function refreshStatus() {
                                             : "not connected";
   chip.className = "chip " + (conn && conn.connected ? "ok" : "bad");
   $("chip-uptime").textContent = "up " + fmtUptime(st.uptime_seconds);
+  // Build stamp: release version + the git commit it runs (v0.0.1).
+  // Hover shows the full detail (version, branch, commit, source).
+  const v = st.version || {};
+  const vChip = $("chip-version");
+  const vText = v.version ? "v" + v.version : "";
+  const cText = v.commit ? (v.branch ? v.branch + "@" + v.commit : v.commit) : "";
+  vChip.textContent = vText || cText || "version: -";
+  vChip.title = vText || cText
+    ? (vText ? "version " + vText + "\n" : "") +
+      (cText ? "commit " + cText + "\n" : "") +
+      "source: " + (v.source || "?")
+    : "no build stamp available - run from a git clone or set MESHTECH_COMMIT";
   $("chip-nodes").textContent = "nodes: " + (st.db ? st.db.nodes : "-");
   $("chip-msgs").textContent = "msgs: " + (st.db && st.db.messages ? st.db.messages : "-");
 

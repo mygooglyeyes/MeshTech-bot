@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional
 from .config import Settings, load as load_config, sanitized_snapshot
 from .feed import FeedHub
 from .store import Store
+from .version import version_stamp
 
 log = logging.getLogger("meshtech-bot.service")
 
@@ -114,6 +115,7 @@ class BotService:
             }
         return {
             "bot_name": "meshtech-bot",
+            "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),
             "config_file": self.settings.config_path,
             "connection": conn,
