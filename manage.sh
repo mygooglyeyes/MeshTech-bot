@@ -154,22 +154,46 @@ do_configure() {
 }
 
 # --- 2) update ----------------------------------------------------------------
+# Preferred flow: pull in the invoking user's home clone (~/meshtech-bot)
+# and apply the new code to the runtime with deploy.sh - the runtime never
+# needs a .git and its config/data/venv are never touched by git.
+# Fallback: if the runtime IS a git checkout (older direct installs), pull
+# in place exactly as before.
 do_update() {
-  if ! git -C "$INSTALL_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    warn "No bot installation found to update (looked at $DIR and /opt/meshtech-bot)."
+  local runtime="${INSTALL_ROOT}"
+  local deploy="$runtime/deploy.sh"
+  local clone="${HOME:-/root}/meshtech-bot"
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    local uh; uh="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    [[ -n "$uh" ]] && clone="$uh/meshtech-bot"
+  fi
+  if [[ -f "$deploy" && -d "$clone/.git" ]]; then
+    log "Updating via your clone at $clone (git stays yours; the runtime"
+    log "  gets a code refresh - config, data and .venv are untouched)."
+    if "$deploy" --clone "$clone" --runtime "$runtime" --user "$SERVICE_USER" \
+        --service "$SERVICE"; then
+      log "Update complete: now running v$(version_line)."
+    else
+      warn "deploy.sh failed - nothing was changed. Check the messages above."
+    fi
+    return 0
+  fi
+  if ! git -C "$runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    warn "No update path found: neither deploy.sh + ~/meshtech-bot clone, nor a"
+    warn "  git checkout at $runtime."
     return 1
   fi
-  log "Fetching the latest code..."
-  if ! git -C "$INSTALL_ROOT" pull --ff-only; then
+  log "Updating the git checkout at $runtime in place ..."
+  if ! git -C "$runtime" pull --ff-only; then
     warn "git pull failed (local changes? offline?) - nothing was updated."
     return 1
   fi
   log "Refreshing Python dependencies..."
-  "$PY" -m pip install -q -r "$INSTALL_ROOT/requirements.txt" || warn "pip install had warnings (continuing)"
+  "$PY" -m pip install -q -r "$runtime/requirements.txt" || warn "pip install had warnings (continuing)"
   log "Validating the new version..."
   # Validate the INSTALLATION's config explicitly: bot.py would otherwise
   # read './config.yaml' from wherever this panel happens to run.
-  "$PY" "$INSTALL_ROOT/bot.py" --check --config "$INSTALL_ROOT/config.yaml" \
+  "$PY" "$runtime/bot.py" --check --config "$runtime/config.yaml" \
     || { warn "validation failed - check the output above"; return 1; }
   log "Restarting the service..."
   if systemctl restart "$SERVICE.service"; then

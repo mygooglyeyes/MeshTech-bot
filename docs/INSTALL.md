@@ -20,23 +20,31 @@ when the machine boots — you won't need to run it by hand.
 
 ## 2. Download the code
 
+The bot uses two locations, each with one job:
+
+| Location | Job |
+|---|---|
+| `~/meshtech-bot` | **Your clone** — all git activity happens here, as you |
+| `/opt/meshtech-bot` | **The runtime** — locked down; holds your `config.yaml` and `data/` |
+
 ```bash
 sudo apt update
 sudo apt install -y git python3 python3-venv   # python3-venv not needed for Docker
 
-sudo git clone https://github.com/mygooglyeyes/MeshTech-bot.git /opt/meshtech-bot
-cd /opt/meshtech-bot
+git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot
+cd ~/meshtech-bot
 ```
 
 Notes:
 
-- `sudo` is needed because `/opt` belongs to the system. It also means git
-  runs as root, which is why the guide uses HTTPS, not SSH.
+- The clone goes in your **home folder** — no `sudo` for git, ever. Updates
+  are pulled here and applied to `/opt` with `./deploy.sh` (see "Updating
+  the bot" below).
 - If the repo is private, git will ask for your GitHub **username** and a
   **personal access token** (not your GitHub password). Make a token at
   GitHub → Settings → Developer settings → Personal access tokens.
-- Your `config.yaml` and `data/` are never touched by updates — they stay
-  on the machine.
+- Your `config.yaml` and `data/` live only in `/opt` and are never touched
+  by updates.
 
 Now choose an install option:
 
@@ -213,18 +221,25 @@ moment between tests.
 
 ## Updating the bot
 
+From your home clone:
+
 ```bash
-cd /opt/meshtech-bot
-sudo git pull
-sudo ./install.sh        # safe to rerun — your config and data are kept
+cd ~/meshtech-bot
+./deploy.sh
 ```
+
+That pulls the latest code as you, then applies it to `/opt` (it will ask
+for your sudo password once): code refreshed, dependencies checked, config
+validated, service restarted. Your `config.yaml`, `data/` and `.venv` are
+never touched. `sudo ./manage.sh` → option 2 does the same thing.
 
 To confirm the update landed, compare the version in the dashboard
 header (or the startup log) with the newest number in
 [`core/version.py`](../core/version.py) on GitHub — every commit bumps
 it by one, like a counter.
 
-With Docker, the update is `sudo git pull` and then `docker compose up -d --build`.
+With Docker, the update is `cd ~/meshtech-bot && git pull` and then
+`docker compose up -d --build`.
 
 ---
 
@@ -277,7 +292,7 @@ unprivileged user that can only write inside its `data/` folder.
 | Logs show `Connection refused`, keeps retrying | The companion port isn't open. Check openHop has a companion with `tcp_port`, and that you restarted it. |
 | A second bot can't connect | One client per companion. Stop the old bot first. |
 | `Permission denied` when entering the install folder | The folder belongs to the `meshtech` account. Browse access: `sudo usermod -aG meshtech $USER`, then log out and back in. Writes (like updates) still need `sudo`. |
-| `dubious ownership` on `git pull` | `sudo git config --global --add safe.directory /opt/meshtech-bot` |
+| `dubious ownership` on `git pull` | Happens only on old direct installs where git ran as root in `/opt`. The home-clone layout avoids it entirely. Fix: `sudo git config --global --add safe.directory /opt/meshtech-bot` |
 | Dashboard loads but says `not connected` | The repeater link is down — see the first row. |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
 | Want the dashboard from another device | Set `web.host: "0.0.0.0"`, set a strong password, and ideally use a reverse proxy (HTTPS). |
@@ -295,4 +310,5 @@ unprivileged user that can only write inside its `data/` folder.
 | `data/.dashboard_password` | Your dashboard password (first line of the file) |
 | `set-password.sh` | Set or change the dashboard password |
 | `manage.sh` | The control panel: configure, update, uninstall, restart, logs |
+| `deploy.sh` | Apply an update from your home clone to the runtime |
 | `scripts/configure_bot.py` | The interactive config editor (menu option 1) |

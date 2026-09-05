@@ -11,10 +11,16 @@
 #    4. registers a systemd service that starts the bot at every boot
 #       and restarts it if it crashes
 #
-#  Usage (run from the cloned folder):
-#      sudo ./install.sh                       # venv install (recommended)
+#  Two-location layout (recommended):
+#    ~/meshtech-bot      YOUR clone - git happens here, as you
+#    /opt/meshtech-bot   the runtime - where the service actually runs
+#  Updates go:  ./deploy.sh   (from your home clone; applies code to /opt
+#  without touching config.yaml, data/ or .venv)
+#
+#  Usage:
+#      sudo ./install.sh                       # runtime at /opt/meshtech-bot
+#      sudo ./install.sh --dir /srv/bot        # custom runtime location
 #      sudo ./install.sh --no-venv             # use system python3 + pip
-#      sudo ./install.sh --dir /opt/meshtech-bot --user meshtech
 #      sudo ./install.sh --uninstall           # stop service, remove user & unit
 #
 #  You only need to run it once. Re-running it is safe (idempotent) and is
@@ -23,7 +29,9 @@
 set -euo pipefail
 
 # --- defaults -----------------------------------------------------------------
-INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_RUNTIME=/opt/meshtech-bot
+INSTALL_DIR="$DEFAULT_RUNTIME"
 SERVICE_USER="meshtech"
 SERVICE_GROUP="meshtech"
 USE_VENV=1
@@ -68,18 +76,30 @@ if [[ "$DO_UNINSTALL" -eq 1 ]]; then
 fi
 
 # --- install location ----------------------------------------------------------------
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The runtime is ALWAYS a clean copy at /opt/meshtech-bot (or --dir), never
+# the git checkout itself - updates are applied with deploy.sh, which keeps
+# your config, data and venv while replacing the code.
 if [[ "$SRC_DIR" != "$INSTALL_DIR" ]]; then
-  if [[ ! -d "$INSTALL_DIR" ]]; then
-    log "Copying project into $INSTALL_DIR ..."
+  if [[ ! -f "$INSTALL_DIR/bot.py" ]]; then
+    log "Installing the runtime into $INSTALL_DIR ..."
     mkdir -p "$INSTALL_DIR"
-    # copy everything except git metadata and local config/runtime data
+    # copy everything except git metadata, local config and runtime data
     (cd "$SRC_DIR" && tar cf - --exclude='./.git' --exclude='./.venv' \
-         --exclude='./venv' --exclude='./config.yaml' --exclude='./data/*' \
+         --exclude='./venv' --exclude='./config.yaml' --exclude='./data' \
          --exclude='./.freebuff' .) | (cd "$INSTALL_DIR" && tar xf -)
-    mkdir -p "$INSTALL_DIR/data"
+  else
+    log "Runtime already present at $INSTALL_DIR - refreshing code files ..."
+    (cd "$SRC_DIR" && tar cf - --exclude='./.git' --exclude='./.venv' \
+         --exclude='./venv' --exclude='./config.yaml' --exclude='./data' \
+         --exclude='./.freebuff' .) | (cd "$INSTALL_DIR" && tar xf -)
   fi
+else
+  log "Installing directly into $INSTALL_DIR (no home clone detected)."
+  warn "Tip: the recommended layout keeps a git clone in ~ and the runtime in"
+  warn "  /opt - see docs/INSTALL.md. deploy.sh will not be usable for updates"
+  warn "  from this layout (git pull in /opt still works)."
 fi
+mkdir -p "$INSTALL_DIR/data"
 cd "$INSTALL_DIR"
 
 # --- detect the platform --------------------------------------------------------------
@@ -148,8 +168,16 @@ find "$INSTALL_DIR" -type d -exec chmod 750 {} \;
 find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
 # the bot's Python + helper scripts still need to be executable
 chmod 755 "$INSTALL_DIR/bot.py" "$INSTALL_DIR/install.sh" \
-         "$INSTALL_DIR/set-password.sh" "$INSTALL_DIR/manage.sh" \
+         "$INSTALL_DIR/deploy.sh" "$INSTALL_DIR/set-password.sh" \
+         "$INSTALL_DIR/manage.sh" \
          "$INSTALL_DIR/scripts/configure_bot.py" 2>/dev/null || true
+
+# --- record which code this runtime carries --------------------------------------------
+# No .git in the runtime (the checkout lives in ~), so bake the commit into a
+# plain file the version stamp reads - same mechanism the Docker build uses.
+if [[ -d "$SRC_DIR/.git" ]] && command -v git &>/dev/null; then
+  git -C "$SRC_DIR" rev-parse HEAD > "$INSTALL_DIR/.git-commit" 2>/dev/null || true
+fi
 if [[ -d .venv ]]; then
   find .venv -type d -exec chmod 755 {} \;
   find .venv -type f -name 'python*' -exec chmod 755 {} \; 2>/dev/null || true

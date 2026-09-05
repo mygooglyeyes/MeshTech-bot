@@ -29,10 +29,11 @@ repeater is the bot's mesh identity.
 Pick one way — full step-by-step instructions live in
 **[docs/INSTALL.md](docs/INSTALL.md)**:
 
-1. **Native Linux (recommended)** — one command gets the code, one command
-   installs it as a service that starts at boot:
-   `sudo git clone https://github.com/mygooglyeyes/MeshTech-bot.git /opt/meshtech-bot`,
-   then `cd /opt/meshtech-bot && sudo ./install.sh`.
+1. **Native Linux (recommended)** — clone into your home folder, install
+   the runtime as a service that starts at boot:
+   `git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot`,
+   then `cd ~/meshtech-bot && sudo ./install.sh`. Updates later are just
+   `./deploy.sh` from the same folder.
 2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
    `docker compose up -d --build`.
 3. **Quick local test** (any machine):
