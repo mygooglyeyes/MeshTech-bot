@@ -1,6 +1,6 @@
 """Admin control (DM only, allowlisted nodes).
 
-    !diag [full]     - database + traffic summary
+    !diag [x]        - database + traffic summary
     !reload          - re-read config.yaml and refresh handlers
     !shutdown        - stop the bot gracefully
 

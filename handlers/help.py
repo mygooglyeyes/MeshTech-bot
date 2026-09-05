@@ -18,44 +18,52 @@ class HelpHandler(Handler):
 
     async def handle(self, ctx) -> Optional[HandlerResult]:
         settings = ctx.service.settings
-        visible = []
+        kind = ctx.msg.kind
+
+        # Per-keyword visibility: handlers may declare keyword_scope /
+        # keyword_access overrides (e.g. !nodes DM-only, !path public).
+        pairs = []  # (handler, keyword, scope, access)
         for handler in ctx.service.registry:
-            if handler.access == "admin" and not ctx.is_admin:
-                continue
-            if handler.scope not in ("both", ctx.msg.kind):
-                continue
             if handler.name == "canned":
                 continue  # listed separately as plain words
-            visible.append((handler, handler.keywords))
+            scope_map = getattr(handler, "keyword_scope", {})
+            access_map = getattr(handler, "keyword_access", {})
+            for kw in handler.keywords:
+                scope = scope_map.get(kw, handler.scope)
+                if scope not in ("both", kind):
+                    continue
+                access = access_map.get(kw, handler.access)
+                if access == "admin" and not ctx.is_admin:
+                    continue
+                pairs.append((handler, kw, scope, access))
 
         canned_keywords = [kw for rule in settings.replies for kw in rule.keywords]
         canned_words = " ".join(sorted(set(canned_keywords))) or "(none)"
 
         if ctx.verbosity == "brief":
-            command_words = " ".join(sorted({kw for _, kws in visible for kw in kws}))
+            command_words = " ".join(sorted({kw for _, kw, _, _ in pairs}))
             lines = [
                 "Commands: " + command_words,
                 "Plain words I also answer: " + canned_words,
-                "Add 'full' for more detail (e.g. !nodes full).",
+                "Add 'x' for the extended version (e.g. !nodes x).",
                 "Admin can use: reload, shutdown, diag (DM only)." if ctx.is_admin
                 else "DM me for admin help once your node is allowlisted.",
             ]
             return HandlerResult(kind="text", data="\n".join(lines))
 
         rows = []
-        for handler, keywords in sorted(visible, key=lambda item: item[0].priority):
-            rows.append(["!" + keywords[0], handler.description,
-                         ("DM only" if handler.scope == "dm" else
-                          "channel/DM" if handler.scope == "both" else "channel")])
+        for handler, kw, scope, access in sorted(pairs, key=lambda p: p[0].priority):
+            where = ("DM only" if scope == "dm" else
+                     "channel/DM" if scope == "both" else "channel")
+            if access == "admin":
+                where += " (admin)"
+            rows.append(["!" + kw, handler.description, where])
         table = fmt_table(["Command", "What it does", "Where"], rows,
                           col_caps=[16, 46, 10])
         lines = list(table)
         lines.append("")
-        lines.append("You can add a detail word to most commands: "
-                     f"{'/'.join(settings.verbosity.all_brief())} = short, "
-                     f"{'/'.join(settings.verbosity.all_full())} = extended.")
-        lines.append("Examples: !nodes   |   !nodes full   |   !path <node> full")
+        lines.append("Append 'x' to most commands for the extended version "
+                     "(e.g. !nodes x, !path <node> x).")
+        lines.append("Examples: !nodes   |   !nodes x   |   !path <node> x")
         lines.append("Plain-word answers: " + canned_words)
-        if ctx.is_admin:
-            lines.append("Admin (DM): !diag, !reload, !shutdown")
         return HandlerResult(kind="text", data="\n".join(lines))

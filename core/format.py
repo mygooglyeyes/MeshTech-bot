@@ -107,7 +107,7 @@ def chunk_text(text: str, width: int, max_chunks: int = 6) -> List[str]:
     if len(messages) > max_chunks:
         messages = messages[: max_chunks - 1]
         messages.append("(" + ELLIPSIS + " more not shown - DM me with the "
-                        "'full' word to see everything)")
+                        "'x' word to see everything)")
     marked = [f"[{i}/{len(messages)}] {msg}" for i, msg in enumerate(messages, start=1)]
     # Guard: any single message that somehow still exceeds width gets hard cut
     return [truncate(m, width) for m in marked]

@@ -69,10 +69,10 @@ class DmCfg:
 
 @dataclass
 class VerbosityCfg:
-    aliases_brief: List[str] = field(default_factory=lambda: ["brief", "short", "simple", "list", "summary"])
-    aliases_full: List[str] = field(default_factory=lambda: ["full", "extended", "detail", "long", "verbose"])
+    aliases_brief: List[str] = field(default_factory=list)              # compact is the default; no words needed
+    aliases_full: List[str] = field(default_factory=lambda: ["x"])     # append "x" for the extended view
     channel_default: str = "brief"
-    dm_default: str = "full"
+    dm_default: str = "brief"
 
     def all_brief(self) -> List[str]:
         return _unique(self.aliases_brief + ["brief"])
@@ -278,13 +278,13 @@ def load(config_path: str = "config.yaml") -> Settings:
     # --- verbosity ---
     verb_raw = _section(raw, "verbosity", errors)
     channel_default = _text(verb_raw, "channel_default", "brief", errors, "verbosity.channel_default")
-    dm_default = _text(verb_raw, "dm_default", "full", errors, "verbosity.dm_default")
+    dm_default = _text(verb_raw, "dm_default", "brief", errors, "verbosity.dm_default")
     if channel_default not in ("brief", "full"):
         errors.append(f"verbosity.channel_default must be 'brief' or 'full' (found '{channel_default}').")
         channel_default = "brief"
     if dm_default not in ("brief", "full"):
         errors.append(f"verbosity.dm_default must be 'brief' or 'full' (found '{dm_default}').")
-        dm_default = "full"
+        dm_default = "brief"
     verbosity = VerbosityCfg(
         aliases_brief=_string_list(verb_raw.get("aliases_brief", []), errors, "verbosity.aliases_brief"),
         aliases_full=_string_list(verb_raw.get("aliases_full", []), errors, "verbosity.aliases_full"),

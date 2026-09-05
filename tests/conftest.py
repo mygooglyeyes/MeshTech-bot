@@ -22,10 +22,10 @@ def base_settings_dict() -> dict:
         ],
         "dm": {"enabled": True, "admin_pubkey_prefixes": ["aabbccddeeff"]},
         "verbosity": {
-            "aliases_brief": ["brief", "short"],
-            "aliases_full": ["full", "detail"],
+            "aliases_brief": [],
+            "aliases_full": ["x"],
             "channel_default": "brief",
-            "dm_default": "full",
+            "dm_default": "brief",
         },
         "storage": {"db_path": "data/bot.db", "contact_refresh_minutes": 30,
                     "capture_packets": True, "packet_raw_hex": False,

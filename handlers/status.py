@@ -27,9 +27,10 @@ class StatusHandler(Handler):
             f"{state['name']}" + ("" if state["reply"] else " (listen)")
             for state in service.effective_channel_states()
         )
-        lines = [f"meshtech-bot up {uptime} | connected: {_conn(service)}",
+        link = "\u2713" if service.client is not None and service.client.is_connected else "\u2717"
+        lines = [f"\u25cf up {uptime}  |  link {link}",
                  f"channels: {channel_text or '(none)'}",
-                 f"nodes: {counts['nodes']} | messages logged: {totals.get('total', 0)}"]
+                 f"nodes: {counts['nodes']}  msgs: {totals.get('total', 0)}"]
 
         if ctx.verbosity == "full":
             conn = service.settings.connection
@@ -58,9 +59,3 @@ class StatusHandler(Handler):
 
     def render_lines(self, result, verbosity: str) -> List[str]:
         return str(result.data).splitlines() or [""]
-
-
-def _conn(service) -> str:
-    if service.client is not None and service.client.is_connected:
-        return "yes"
-    return "no (reconnecting)"

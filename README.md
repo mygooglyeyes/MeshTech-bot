@@ -22,7 +22,7 @@ radio / mesh  <->  openHop Repeater  <->  TCP (companion port, default 5000)  <-
 - Hop-limit filter — ignores messages that travelled more than N hops, so distant nodes are not answered
 - Friendly replies using stored node names (`K7ABC (a1b2c3)` instead of raw hex)
 - SQLite database: node registry, message log, route snapshots, propagation-time statistics
-- Detail modifiers: `!nodes` (brief) vs `!nodes full` (extended) — `brief` is the default on channels to save airtime, `full` in DMs
+- Compact replies by default; append `x` for the extended version (`!nodes x`)
 - Plain-text formatting tuned for 133-character MeshCore messages (wrapping, aligned tables, `[1/2]` chunking)
 - Live-feed browser dashboard: status, channels, nodes with drill-down, message browser, mute toggles, reload/shutdown
 
@@ -203,20 +203,21 @@ the dashboard drill-down).
 
 | Command | Who | What it does |
 |---|---|---|
-| `!help` | anyone | list commands and modifier words |
-| `!status` / `!status full` | anyone | bot health, channels, counters |
-| `!nodes` / `!nodes full` | anyone | known nodes from the database |
+| `!help` | anyone | list commands; `x` gives the extended version |
+| `!status` / `!status x` | anyone | bot health, channels, counters |
 | `!2byte` | anyone | share of nodes using 2-byte path hashes (ASCII bar chart from packet capture) |
-| `!path <node>` / `full` | admin | route + route history for one node |
-| `!stats <node or #channel>` | admin | propagation delay + hop stats |
-| `!diag` / `!diag full` | admin (DM) | database + traffic summary |
+| `!nodes` / `!nodes x` | DM | known nodes from the database |
+| `!path <node>` / `!path <node> x` | anyone | route + route history for one node |
+| `!stats <node or #channel>` | admin (DM) | propagation delay + hop stats |
+| `!diag` / `!diag x` | admin (DM) | database + traffic summary |
 | `!reload` | admin (DM) | re-read config.yaml, refresh handlers |
 | `!shutdown` | admin (DM) | graceful stop |
 
-Admin = nodes whose prefix is listed in `dm.admin_pubkey_prefixes`. Add
-`full` (or `extended`, `detail`, ...) to a command for more detail; `brief`
-or `short` forces the compact view. Channel replies default to `brief`,
-DMs default to `full` (both configurable under `verbosity`).
+Admin = nodes whose prefix is listed in `dm.admin_pubkey_prefixes`. All
+replies default to the compact view to keep radio traffic short; append
+**`x`** to a command for the extended version (`!nodes x`, `!path <node> x`).
+The canonical words `brief`/`full` still work if you prefer them. Defaults
+are configurable under `verbosity`.
 
 Plain-word canned replies (`replies:` in config.yaml) are **empty by default**
 — the bot is built for testing, not chat, so it stays silent on words like
@@ -268,7 +269,7 @@ Two ways:
 2. **Python handler** — copy `handlers/_template.py` to `handlers/<name>.py`,
    rename the class, fill in `handle()`, restart (or `!reload`). It is picked
    up automatically. Handlers can read/write the database and any data source
-   you like; keep replies brief on channels and use `full` for detail.
+   you like; keep replies compact; use `x` for detail.
 
 ## Tests
 

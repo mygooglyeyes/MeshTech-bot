@@ -78,6 +78,7 @@ def _dm(text, sender="aabbccddeeff", hops=0, recv_delay=0.0):
 
 def test_tokenize_strips_command_mark():
     assert tokenize("!nodes full") == (["nodes", "full"], True)
+    assert tokenize("!nodes x") == (["nodes", "x"], True)
     assert tokenize("hello world") == (["hello", "world"], False)
 
 
@@ -140,15 +141,35 @@ def test_verbosity_resolution():
     from core.config import VerbosityCfg
     cfg = VerbosityCfg()
     assert resolve_verbosity(["nodes"], cfg, "brief") == "brief"
-    assert resolve_verbosity(["nodes", "full"], cfg, "brief") == "full"
-    assert resolve_verbosity(["status", "short", "detail"], cfg, "brief") == "full"
+    assert resolve_verbosity(["nodes", "x"], cfg, "brief") == "full"
+    assert resolve_verbosity(["status", "brief", "x"], cfg, "brief") == "full"
+    assert resolve_verbosity(["nodes", "full"], cfg, "brief") == "full"  # canonical word still works
 
 
 def test_handler_args_remove_command_and_modifiers():
     from core.config import VerbosityCfg
     cfg = VerbosityCfg()
     assert handler_args(["nodes", "full", "K7ABC"], "nodes", cfg) == ["K7ABC"]
+    assert handler_args(["nodes", "x", "K7ABC"], "nodes", cfg) == ["K7ABC"]
     assert handler_args(["path", "K7ABC"], "path", cfg) == ["K7ABC"]
+
+
+def test_meshinfo_keyword_scopes():
+    from handlers.meshinfo import MeshInfoHandler
+    assert MeshInfoHandler.keyword_scope == {"nodes": "dm", "path": "both", "stats": "dm"}
+    assert MeshInfoHandler.keyword_access == {"path": "public", "stats": "admin"}
+
+
+def test_path_public_but_nodes_and_stats_restricted(make_config):
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !path K7ABC", hops=0),        # public path on a channel
+        _channel("Alice: !nodes", hops=0),             # nodes DM-only -> silent
+        _dm("!path K7ABC", sender="000011112222"),    # path DM from a stranger
+        _dm("!stats K7ABC", sender="000011112222"),   # stats admin-only -> silent
+    ]))
+    kinds = [entry[0] for entry in sent]
+    assert kinds.count("channel") == 1   # only the channel !path
+    assert kinds.count("dm") == 1        # only the DM !path
 
 
 def test_select_handler_respects_prefix_and_access():

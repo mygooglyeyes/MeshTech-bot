@@ -261,7 +261,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/api/login   # 200
 |---|---|---|---|
 | 1 | Send `!help` on a configured channel | The bot replies with the command list | Channel path + replies work |
 | 2 | Send `!status` on the channel | A short status line | Config + database are sane |
-| 3 | DM the bot `!status` | A longer, more detailed reply | Direct-message path works |
+| 3 | DM the bot `!status` (try `!status x` too) | A reply; `x` gives the extended version | Direct-message path works |
 | 4 | DM `!nodes` | A list of nodes the bot knows | Advert/contact discovery works — find your own 12-hex prefix here |
 | 5 | DM `!2byte` | A one-line bar, e.g. `2-byte path nodes: [▓▓▒▒…] 38% (10/26 of registered nodes)` | Packet capture + data handlers work |
 | 6 | Add your prefix from step 4 to `dm.admin_pubkey_prefixes`, then DM `!diag` | A diagnostics summary | Admin access works |

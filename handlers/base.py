@@ -20,7 +20,7 @@ feature is simply a new file with a new class.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.models import HandlerResult
 
@@ -37,6 +37,9 @@ class Handler:
     keywords: List[str] = []
     scope: str = "both"            # both | channel | dm
     access: str = "public"         # public | admin
+    # Optional per-keyword overrides for handlers exposing several commands:
+    keyword_scope: Dict[str, str] = {}    # keyword -> scope override
+    keyword_access: Dict[str, str] = {}   # keyword -> access override
     require_prefix: bool = True    # !<keyword> unless False (plain word match)
     priority: int = 100            # lower runs first
 

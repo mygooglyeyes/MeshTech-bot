@@ -7,8 +7,9 @@
 4. Restart the bot (or ask it: !reload). Done - no other wiring needed.
 
 Rules to keep replies mesh-friendly:
-  * Channel answers default to 'brief' (radio airtime is precious).
-    Check ctx.verbosity and decide what to show.
+  * Every reply defaults to the COMPACT view (radio airtime is precious).
+    Append 'x' to the command for the extended version - ctx.verbosity
+    tells you which one was requested.
   * Keep lines short; the router splits long replies into [1/2] chunks.
   * Set scope="dm" when the reply is personal/verbose by nature.
 """

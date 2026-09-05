@@ -1,11 +1,11 @@
 """Mesh info - the database-backed commands.
 
-    !nodes [full]            - known nodes (public)
-    !path <node> [full]      - route + history for one node (admin)
-    !stats <node|#channel>   - propagation time + hop statistics (admin)
+    !nodes [x]               - known nodes (DM only)
+    !path <node> [x]         - route + history for one node (public)
+    !stats <node|#channel>   - propagation time + hop statistics (DM, admin)
 
-'brief' replies are compact and 'full' replies add detail (extra columns,
-route history, hop distributions).
+Compact replies by default; append "x" for the extended version
+(extra columns, route history, hop distributions).
 """
 from __future__ import annotations
 
@@ -21,17 +21,23 @@ class MeshInfoHandler(Handler):
     keywords = ["nodes", "path", "stats"]
     description = "Nodes, paths and propagation stats"
     scope = "both"
-    access = "public"          # path/stats additionally check admin inside
+    access = "public"
+    # Per-keyword visibility: !nodes is DM-only, !path is public everywhere,
+    # !stats stays admin-only (admins are only ever recognized on DMs).
+    keyword_scope = {"nodes": "dm", "path": "both", "stats": "dm"}
+    keyword_access = {"path": "public", "stats": "admin"}
     priority = 80
 
     # ------------------------------------------------------------------
 
     async def handle(self, ctx) -> Optional[HandlerResult]:
         command = ctx.command
+        if command == "nodes" and ctx.msg.kind != "dm":
+            return None  # node list is DM-only
+        if command == "stats" and not ctx.is_admin:
+            return None  # silent for non-admin senders
         if command == "nodes":
             return await self._nodes(ctx)
-        if command in ("path", "stats") and not ctx.is_admin:
-            return None  # silent for non-admin senders
         if command == "path":
             return await self._path(ctx)
         if command == "stats":
@@ -62,7 +68,7 @@ class MeshInfoHandler(Handler):
         caps = [18, 12, 8, 5, 7, 8]
         lines = fmt_table(headers, rows, col_caps=caps)
         if total > len(nodes):
-            lines.append(f"... and {total - len(nodes)} more (DM '!nodes full' for everything)")
+            lines.append(f"... and {total - len(nodes)} more (!nodes x for the full list)")
         lines.append(f"{total} node(s) in the local database")
         return HandlerResult(kind="text", data="\n".join(lines))
 
@@ -72,7 +78,7 @@ class MeshInfoHandler(Handler):
         store = ctx.service.store
         query = " ".join(ctx.args).strip()
         if not query:
-            return HandlerResult(kind="text", data="Usage: !path <node-name-or-prefix> [full]")
+            return HandlerResult(kind="text",                                 data="Usage: !path <node-name-or-prefix> [x]")
         node = store.find_node(query)
         if node is None:
             return HandlerResult(kind="text",
@@ -91,7 +97,7 @@ class MeshInfoHandler(Handler):
                 latest = history[0]
                 lines.append(f"latest route: hops={latest['hops'] if latest['hops'] is not None else '?'} "
                              f"(recorded {rel_time(latest['observed_at'], now)})")
-            lines.append("DM '!path <node> full' for route history.")
+            lines.append("!path <node> x for the full route history.")
         else:
             lines.append(f"Node: {name} ({prefix})")
             lines.append(f"First seen {rel_time(node['first_seen'], now)} | "
@@ -119,7 +125,7 @@ class MeshInfoHandler(Handler):
         query = " ".join(ctx.args).strip()
         if not query:
             return HandlerResult(kind="text",
-                                 data="Usage: !stats <node-name-or-prefix | #channel> [full]")
+                                 data="Usage: !stats <node-name-or-prefix | #channel> [x]")
         is_channel = query.startswith("#")
 
         prefix = None

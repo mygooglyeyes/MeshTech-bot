@@ -73,16 +73,17 @@ dm:
   # Everyone else can still use the public commands (help, status, nodes).
 
 # --- Reply detail levels -------------------------------------------------------
-# Users can add a modifier word to a command to change how much detail they get:
-#   !nodes          -> brief summary (recent nodes)
-#   !nodes full     -> extended list with all columns
-# Channel answers default to "brief" to save radio airtime; DM answers default
-# to "full" because a direct message only costs the recipient one packet.
+# --- Reply detail levels -------------------------------------------------------
+# Every reply defaults to the COMPACT version to keep radio traffic short.
+# Append "x" to a command for the EXTENDED version:
+#   !nodes          -> compact list (recent nodes)
+#   !nodes x        -> extended list with all columns
+# The canonical words "brief"/"full" still work if you prefer typing them.
 verbosity:
-  aliases_brief: ["brief", "short", "simple", "list", "summary"]
-  aliases_full:  ["full", "extended", "detail", "long", "verbose"]
+  aliases_brief: []              # compact is the default everywhere
+  aliases_full: ["x"]            # the only documented modifier
   channel_default: brief
-  dm_default: full
+  dm_default: brief
 
 # --- Database (node names, message history, paths/stats) ---------------------
 storage:
