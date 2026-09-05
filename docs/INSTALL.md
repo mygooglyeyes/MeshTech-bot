@@ -1,31 +1,26 @@
 # Installing MeshTech-Bot
 
-Simple, step-by-step instructions for running the bot on a Linux machine
-(Debian / Ubuntu / Raspberry Pi OS) or in Docker. The bot connects over TCP
+This guide walks you through setting up the bot on a Linux machine
+(Debian, Ubuntu, or Raspberry Pi OS) or in Docker. The bot talks over TCP
 to the **companion endpoint** of an openHop Repeater on your network.
 
-> **A note for the very first setup:** every option below ends with the bot
-> running as a service that survives reboots — you do not need to start it
-> by hand again. Re-running the installer later is how you update.
+Pick one install option below. Every option makes the bot start by itself
+when the machine boots — you won't need to run it by hand.
 
 ---
 
-## 0. What you need
+## 1. What you need
 
-- A **Linux machine** (Debian/Ubuntu/Raspberry Pi OS) or any machine with
-  Docker — Raspberry Pi 3 or newer is plenty.
-- Your **openHop Repeater** reachable over your network, with a **companion
-  identity enabled** (see step 1).
-- One mesh radio/node so you can test the bot afterwards (and know your
-  node's public-key prefix to become the admin).
+- A Linux machine (a Raspberry Pi 3 or newer is plenty), or any machine with Docker.
+- Your openHop Repeater reachable over the network, with a **companion identity** enabled (step 2).
+- A mesh radio so you can test the bot (and find your node's prefix, which makes you the admin).
 
 ---
 
-## 1. Prepare the openHop Repeater (one time, on the repeater)
+## 2. Set up the openHop Repeater (one time, on the repeater)
 
-On the machine running openHop, its config usually lives at
-`/etc/openhop_repeater/config.yaml`. Give the bot its own companion
-identity (an openHop companion exposes a plain TCP port for clients):
+On the repeater machine, edit `/etc/openhop_repeater/config.yaml` and give
+the bot its own companion identity:
 
 ```yaml
 mesh:
@@ -43,21 +38,19 @@ Then restart the repeater:
 sudo systemctl restart openhop-repeater
 ```
 
-**Notes**
+A few things to know:
 
-- One TCP client may connect per companion — the bot is that one client.
-- Port `5000` above is an example; whatever `tcp_port` you choose must match
+- Only **one** TCP client can connect per companion — the bot is that client.
+- Port `5000` is just an example. Whatever `tcp_port` you use must match
   `connection.port` in the bot's `config.yaml`.
-- If the bot machine and the repeater are the same box, the dashboard and
-  bot can still run — they are separate ports.
+- The bot and the repeater can run on the same machine.
+- Also consider setting `max_flood_hops` (e.g. 3) in the same repeater
+  config — it bounds how far channel floods, including the bot's replies,
+  spread across the mesh.
 
 ---
 
-## 2. Get the code from GitHub
-
-The project lives at **https://github.com/mygooglyeyes/MeshTech-bot**. The
-examples below install it into `/opt/meshtech-bot` — a **system-owned**
-folder — so the clone (and later updates) need `sudo`:
+## 3. Download the code
 
 ```bash
 sudo apt update
@@ -69,243 +62,175 @@ cd /opt/meshtech-bot
 
 Notes:
 
-- **HTTPS, not SSH, is used on purpose.** With `sudo`, git runs as the root
-  account, which has no SSH keys of its own — an SSH clone would fail, while
-  HTTPS needs nothing extra.
-- **Private repo?** If the repo is set to *Private* (as published), the
-  clone will ask for your GitHub **username** and a **personal access
-  token** — *not* your GitHub password. Create one at GitHub → *Settings* →
-  *Developer settings* → *Personal access tokens* → *Generate new token*
-  (classic) and tick the `repo` scope. If you later make the repo *Public*,
-  the prompt disappears.
-- Cloned your own fork instead? Swap the URL above for your fork's.
+- `sudo` is needed because `/opt` belongs to the system. It also means git
+  runs as root, which is why the guide uses HTTPS, not SSH.
+- If the repo is private, git will ask for your GitHub **username** and a
+  **personal access token** (not your GitHub password). Make a token at
+  GitHub → Settings → Developer settings → Personal access tokens.
+- Your `config.yaml` and `data/` are never touched by updates — they stay
+  on the machine.
 
-The folder `/opt/meshtech-bot` is where the bot will live — that is the
-**install folder**. You may clone anywhere you like, but only `/opt` paths
-need the `sudo`.
+Now choose an install option:
 
-> **Already have a config.yaml or data/ in the folder from testing?** They
-> are git-ignored and stay local — cloning fresh simply skips them.
-
-Now choose **one** install path:
-
-- [Option A — Native Linux + systemd (recommended)](#option-a--native-linux--systemd-recommended)
-- [Option B — Native Linux, no virtual environment](#option-b--native-linux-without-a-virtual-environment)
+- [Option A — Native install (recommended)](#option-a--native-install-recommended)
+- [Option B — Native install, no virtual environment](#option-b--native-install-without-a-virtual-environment)
 - [Option C — Docker](#option-c--docker)
 
 ---
 
-## Option A — Native Linux + systemd (recommended)
+## Option A — Native install (recommended)
 
-The installer creates a dedicated **`meshtech`** service account, installs
-the Python packages into a private environment inside the folder, copies
-`config.example.yaml` to `config.yaml`, fixes all file/group permissions so
-only the `meshtech` account can touch the data, and registers a systemd
-service that starts the bot at every boot and restarts it if it crashes.
+The installer does everything: it creates a dedicated **`meshtech`** user,
+installs the Python packages, creates your config, sets file permissions,
+and installs a service that starts the bot at every boot and restarts it
+if it crashes.
 
-**Step A1 — create and edit your config**
+**A1. Create and edit your config**
 
-`config.yaml` is **not** shipped in the GitHub repo (it would leak your
-passwords and keys) — you make it from the example template:
+`config.yaml` is not shipped with the code (it would leak your passwords),
+so you make your own from the example:
 
 ```bash
 cd /opt/meshtech-bot
 sudo cp config.example.yaml config.yaml
-sudo nano config.yaml
+sudo nano config.yaml    # save with Ctrl+O, exit with Ctrl+X
 ```
 
-Save with `Ctrl+O`, exit with `Ctrl+X`. Set at least:
+Set at least these:
 
-| Setting | What goes there |
+| Setting | What to put there |
 |---|---|
-| `connection.host` | LAN IP of the openHop Repeater machine |
-| `connection.port` | the companion `tcp_port` from openHop's config (the example says 5000 — use whatever YOUR repeater actually uses) |
-| `channels` | the `#channel` names to listen on; `reply: false` = log only |
-| `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
-| `web.password_file` | path to the dashboard-password file — the bot reads the **first line** as the password. The installer already created `data/.dashboard_password` for you |
+| `connection.host` | The LAN IP of your openHop Repeater machine |
+| `connection.port` | The companion `tcp_port` from step 2 (e.g. 5000) |
+| `channels` | The `#channel` names to listen on. `reply: false` = log only, never answer |
+| `dm.admin_pubkey_prefixes` | Your node's 12-character hex prefix, so you can use admin commands later |
+| `web.password_file` | Leave this as `data/.dashboard_password` — the installer creates it for you |
 
-**Step A2 — run the installer**
+**A2. Run the installer**
 
 ```bash
 cd /opt/meshtech-bot
 sudo ./install.sh
 ```
 
-The installer creates the `meshtech` account, installs the Python
-dependencies, checks your config, **asks you for a dashboard password**
-(type it twice — that is the only password you ever need to make up), and
-starts the service at boot.
+The installer asks you to **choose a dashboard password** (type it twice).
+That is the only password you need to make up.
 
-> Skipped Step A1? The installer still creates `config.yaml` from the
-> example automatically. Run `sudo nano config.yaml`, set the table above,
-> and save — the bot reloads the file on its own.
+Skipped step A1? The installer creates `config.yaml` anyway. Just edit it
+afterwards — the bot picks up the file on its own.
 
-**Step A2b — set or change the dashboard password (one command)**
-
-The dashboard password never lives in `config.yaml` (a copied or leaked
-config would give away the dashboard). It sits in its own file that only the
-bot account can read, and one helper script manages it for you:
+**A3. Change the dashboard password later (one command)**
 
 ```bash
 cd /opt/meshtech-bot
 sudo ./set-password.sh
 ```
 
-It asks you to type the password twice (hidden input), writes the file with
-correct permissions, and restarts the bot so the new password is active
-immediately. Run it any time you want to change the password.
+The password lives in its own file, not in `config.yaml`, so a leaked
+config can't unlock your dashboard. (Alternative: set the
+`MESHTECH_DASHBOARD_PASSWORD` environment variable — it wins over the file.)
 
-(Alternative: set the `MESHTECH_DASHBOARD_PASSWORD` environment variable in
-the service unit — it wins over the file.)
-
-**Step A3 — verify it is running**
+**A4. Check it is running**
 
 ```bash
-systemctl status meshtech-bot          # active (running)?
-journalctl -u meshtech-bot -f          # live logs (Ctrl-C to stop watching)
-curl http://127.0.0.1:8081/api/login   # dashboard answering? (expect 200)
+systemctl status meshtech-bot           # should say "active (running)"
+journalctl -u meshtech-bot -n 20        # recent logs; look for "Startup complete"
+curl -s http://127.0.0.1:8081/api/login # should reply {"auth_required":true}
 ```
 
-The service is **enabled at boot** already. Usual commands:
+Day-to-day commands:
 
 ```bash
-sudo systemctl restart meshtech-bot    # after editing install options
+sudo systemctl restart meshtech-bot
 sudo systemctl stop meshtech-bot
 sudo systemctl start meshtech-bot
 ```
 
-**Permissions — what the installer did**
-
-- Account: `meshtech` (system user, cannot log in, never runs as root).
-- Ownership: the whole install folder + `data/` belong to
-  `meshtech:meshtech`. Config is `640` (readable only by the bot and root).
-- The bot writes its SQLite database, JSONL capture and exports under
-  `<install>/data/`.
-- Everything runs from `WorkingDirectory=<install folder>`, so relative
-  paths in `config.yaml` just work.
-
 ---
 
-## Option B — Native Linux without a virtual environment
+## Option B — Native install, no virtual environment
 
-Same as Option A, but the Python packages are installed with the **system
-Python** instead of a private `.venv`. Choose this on an appliance box you
-fully control where a shared Python is acceptable.
+Same as Option A, but the Python packages go into the system Python
+instead of a private folder. Choose this only on a machine you fully
+control.
 
 ```bash
 cd /opt/meshtech-bot
-sudo apt update && sudo apt install -y python3 python3-pip
 sudo ./install.sh --no-venv
 ```
 
-Notes for this mode:
-
-- The installer falls back to `pip install --break-system-packages` on
-  Debian 12 / Ubuntu 23+ (these refuse global pip installs by default).
-  That is fine on a dedicated bot box, but if you also develop on the same
-  machine, prefer Option A so system packages stay untouched.
-- The service runs `/usr/bin/python3 bot.py` — everything else (config,
-  permissions, boot start) is identical to Option A.
-- You can switch between the two modes any time: rerun the installer with
-  the other flag; data in `data/` is unaffected.
+Everything else — config, permissions, service — works the same as
+Option A.
 
 ---
 
 ## Option C — Docker
 
-Run the bot in a container. Best if you already use Docker, want an
-immutable install, or the machine runs something other than Debian.
+Choose this if you already use Docker or want a self-contained install.
 
-**Step C1 — install Docker**
-
-On a Raspberry Pi or Debian/Ubuntu box:
+**C1. Install Docker** (on Debian/Ubuntu/Raspberry Pi):
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
-# log out and back in so the group takes effect
+# log out and back in so the group applies
 ```
 
-**Step C2 — prepare config and data**
+**C2. Prepare config and data**
 
 ```bash
-cd /opt/meshtech-bot            # your clone
+cd /opt/meshtech-bot
 cp config.example.yaml config.yaml
-sudo nano config.yaml           # set host/port/channels/admin prefix
+sudo nano config.yaml                 # set host, port, channels, admin prefix
 mkdir -p data
-sudo chown 1001:1001 data       # container runs as uid 1001 (meshtech)
-# dashboard password goes in its own file (config.yaml never holds it).
-# (On a native install you would run  sudo ./set-password.sh  instead - but
-# the container runs as uid 1001, so Docker owners set the file by hand:)
+sudo chown 1001:1001 data             # the container runs as uid 1001
+
 printf 'your-password\n' > data/.dashboard_password
 sudo chown 1001:1001 data/.dashboard_password
 sudo chmod 600 data/.dashboard_password
 ```
 
-**Step C3 — build and start**
+**C3. Build and start**
 
 ```bash
 docker compose up -d --build
-docker compose logs -f          # watch logs (Ctrl-C stops watching)
+docker compose logs -f               # watch logs; Ctrl-C stops watching
 ```
 
-The compose file uses `network_mode: host`, so the bot reaches your
-repeater on the LAN directly and the dashboard listens on `127.0.0.1:8081`
-of the host. The container restarts on boot via `restart: unless-stopped`.
-
-Useful commands:
+Other useful commands:
 
 ```bash
-docker compose down             # stop the container
-docker compose up -d --build    # rebuild + restart after a sudo git pull
-docker compose logs --tail 100 meshtech-bot
+docker compose down                  # stop
+docker compose up -d --build         # rebuild and restart
 ```
-
-**Updating the container after `sudo git pull`:** run `docker compose up -d --build`
-again — your `config.yaml` and `data/` are mounted from the host and
-survive.
 
 ---
 
-## 3. End-to-end verification (first run)
+## 4. Test that it works
 
-Work through this in order — it proves every layer, from the service down
-through the radio link to the captured data.
-
-**Server-side first** (on the bot machine):
+**On the bot machine first:**
 
 ```bash
-systemctl status meshtech-bot        # active (running)?
-journalctl -u meshtech-bot -n 20     # "Startup complete: N channel(s)" present?
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/api/login   # 200?
+systemctl status meshtech-bot
+journalctl -u meshtech-bot -n 20
 ```
 
-**Then from your radio** (the openHop app on your phone or the radio itself):
+**Then from your radio:**
 
-| # | Do this | Expected result | What it proves |
-|---|---|---|---|
-| 1 | Send `!help` on a configured channel | The bot replies with the command list | Channel path + replies work |
-| 2 | Send `!status` on the channel | A short status line | Config + database are sane |
-| 3 | DM the bot `!status` (try `!status x` too) | A reply; `x` gives the extended version | Direct-message path works |
-| 4 | DM `!nodes` | A list of nodes the bot knows | Advert/contact discovery works — find your own 12-hex prefix here |
-| 5 | DM `!2byte` | A one-line bar, e.g. `2-byte path nodes: [▓▓▒▒…] 38% (10/26 of registered nodes)` | Packet capture + data handlers work |
-| 6 | Add your prefix from step 4 to `dm.admin_pubkey_prefixes`, then DM `!diag` | A diagnostics summary | Admin access works |
-| 7 | From a node **farther than** `mesh.max_inbound_hops` away, send `!status` | No reply — the log shows `[skip] hops N > limit 3` | Hop limiting works |
-| 8 | Send a plain word like `hello` on the channel | Silence | The bot is not chatty (`replies: []` by default) |
-| 9 | On the repeater host: `sudo systemctl restart openhop-repeater` | The bot logs a `Disconnected` event, then reconnects on its own | Auto-reconnect works |
-| 10 | On the bot machine: `sudo reboot`, then after boot run `systemctl status meshtech-bot` | Active without you logging in | Starts at every boot |
-| 11 | Open `http://<bot-machine>:8081` and log in | Nodes and Packets tables populate with live data | Dashboard + capture work |
+| # | Do this | Expected |
+|---|---|---|
+| 1 | Send `!help` on a configured channel | The bot lists its commands |
+| 2 | Send `!status` | A short status line |
+| 3 | DM the bot `!status` (try `!status x`) | A reply; `x` gives more detail |
+| 4 | DM `!nodes` | A list of nodes the bot knows — your own 12-hex prefix is in here |
+| 5 | DM `!diag` | Works once your prefix is in `dm.admin_pubkey_prefixes` (step A1) |
+| 6 | Send `!status` from a node more than `mesh.max_inbound_hops` away | No reply — that is correct |
+| 7 | Restart the repeater | The bot disconnects, then reconnects by itself |
+| 8 | Reboot the bot machine | The bot is running again without you logging in |
+| 9 | Open the dashboard at `http://<bot-machine>:8081` and log in | Tables fill with live data |
 
-**Pass criteria:** rows 1–5 and 9–11 green means the install is healthy. Row 6
-is the only one that needs a config edit first (your node's prefix). Rows 7–8
-are just as important — they verify the bot stays *quiet* when it should,
-which is the whole point of a testing bot.
-
-**Pacing:** the bot rate-limits replies (3 s between any two, 30 s per DM
-sender, plus an optional per-channel cadence — see `limits` in
-`config.example.yaml`) so wait a few seconds between tests. Do rows 1–6 from
-close range — anything arriving over more hops than the limit is
-intentionally ignored.
+The bot spaces out its replies (a few seconds between any two), so wait a
+moment between tests.
 
 ---
 
@@ -313,24 +238,24 @@ intentionally ignored.
 
 ```bash
 cd /opt/meshtech-bot
-sudo git pull            # needs sudo: the folder is owned by the system
-sudo ./install.sh        # re-runs dependency install + permissions (safe)
+sudo git pull
+sudo ./install.sh        # safe to rerun — your config and data are kept
 ```
 
-The `meshtech` account, your `config.yaml` and your `data/` are all kept.
-For Docker: `sudo git pull` then `docker compose up -d --build`.
+With Docker, the update is `sudo git pull` and then `docker compose up -d --build`.
 
 ---
 
 ## Backups
 
-Everything worth keeping lives in one folder:
+Everything worth keeping is in two places:
 
 ```bash
-sudo tar czf meshtech-backup-$(date +%F).tar.gz /opt/meshtech-bot/config.yaml /opt/meshtech-bot/data
+sudo tar czf meshtech-backup-$(date +%F).tar.gz \
+  /opt/meshtech-bot/config.yaml /opt/meshtech-bot/data
 ```
 
-Restore = unpack into a fresh install before starting the service.
+To restore, unpack the file over a fresh install before starting the service.
 
 ---
 
@@ -338,48 +263,28 @@ Restore = unpack into a fresh install before starting the service.
 
 ```bash
 cd /opt/meshtech-bot
-sudo ./install.sh --uninstall     # stops service, removes account (data kept)
-sudo rm -rf /opt/meshtech-bot     # delete the files too, once you are sure
-# Docker instead:
+sudo ./install.sh --uninstall     # stops the service, keeps your data
+sudo rm -rf /opt/meshtech-bot     # delete the files too, when you are sure
+```
+
+With Docker instead:
+
+```bash
 docker compose down && docker rmi meshtech-bot:latest
 ```
 
 ---
 
-## Security checklist
+## Security in one paragraph
 
-These are the defaults and habits that keep a bot on your LAN boring:
-
-- **Dashboard password** — always set a real password, kept in the
-  `web.password_file` secrets file (`data/.dashboard_password`, mode 600),
-  never inside `config.yaml`. The bot refuses nothing: with the dashboard on
-  `0.0.0.0` and no password it is open to your whole network, and the bot
-  warns about this on purpose.
-- **Loopback is the safe default.** Leave `web.host` at `127.0.0.1` unless
-  you really need the dashboard from another device — the radio side of
-  the bot does not care where the dashboard listens.
-- **Plaintext on the LAN.** When you do bind the dashboard to the network,
-  the password and page travel as plaintext HTTP (anyone on the LAN could
-  sniff them). A TLS reverse proxy (nginx/caddy) in front of port 8081 is
-  the clean fix; the config warns about this too.
-- **Login attempts are throttled** — after a few wrong dashboard passwords
-  from one IP, further tries are refused for several minutes (429).
-- **Config never holds secrets** — the dashboard password lives in
-  `data/.dashboard_password` (600, bot-account only) or the
-  `MESHTECH_DASHBOARD_PASSWORD` environment variable, so pasting or leaking
-  `config.yaml` exposes nothing. Set or change it with one command:
-  `sudo ./set-password.sh`.
-- **Admin prefix = exactly 12 hex chars** — `dm.admin_pubkey_prefixes`
-  entries are your node's 12-character public-key prefix. Shorter entries
-  match many more nodes as admin; the config warns if one is not 12 hex.
-- **The service is sandboxed** — it runs as the unprivileged `meshtech`
-  account with the install folder mounted read-only at runtime; only
-  `data/` is writable (systemd hardening in `deploy/meshtech-bot.service`).
-- **CSV exports are formula-safe** — radio text can contain anything, so
-  exported cells that would start a spreadsheet formula (`=`, `+`, `-`, …)
-  are neutralised by `scripts/export_packets.py` before they reach Excel.
-- **Blocking is reversible** — mute a node with the dashboard checkbox or
-  by name; nothing deletes captured data.
+Keep the dashboard bound to `127.0.0.1` unless you really need it from
+another device — the radio side of the bot doesn't care where the
+dashboard listens. Always use a real password, stored via
+`sudo ./set-password.sh` (never inside `config.yaml`). If you do expose
+the dashboard on the network, put a reverse proxy in front of it for
+HTTPS: otherwise the password travels as plaintext on your LAN. Wrong
+passwords are throttled automatically, and the bot itself runs as an
+unprivileged user that can only write inside its `data/` folder.
 
 ---
 
@@ -387,26 +292,23 @@ These are the defaults and habits that keep a bot on your LAN boring:
 
 | Symptom | Fix |
 |---|---|
-| Logs show `Connection refused` / retrying | The companion port is not open: confirm openHop runs, has a companion with `tcp_port`, and was restarted. `telnet <repeater-ip> <port>` from the bot machine should connect. |
-| `only one client` / second bot cannot connect | One TCP client per companion — stop the old bot (`systemctl stop meshtech-bot`) before starting another. |
-| `permission denied` writing `data/…` | Ownership fix: `sudo chown -R meshtech:meshtech /opt/meshtech-bot` (install.sh does this too). |
-| `dubious ownership` on `sudo git pull` | The installer already adds the safe-directory exception; if you still see it (e.g. after re-cloning): `sudo git config --global --add safe.directory /opt/meshtech-bot`. |
-| Dashboard loads but says `not connected` | Bot is up but the repeater link is down — see first row. |
-| `python3 -m venv` fails | Install the venv module: `sudo apt install python3-venv`. |
-| `externally-managed-environment` with `--no-venv` | That is expected on Debian 12+/Ubuntu 23+; the installer handles it with `--break-system-packages`. Prefer Option A if unsure. |
-| Want the dashboard from another device | Set `web.host: "0.0.0.0"` AND a strong dashboard password in `data/.dashboard_password` (or use a reverse proxy for HTTPS). |
-| Bot answers far-away traffic | Raise/lower `mesh.max_inbound_hops`, and cap floods on the repeater (`max_flood_hops`) — see README. |
+| Logs show `Connection refused`, keeps retrying | The companion port isn't open. Check openHop has a companion with `tcp_port`, and that you restarted it. |
+| A second bot can't connect | One client per companion. Stop the old bot first. |
+| `Permission denied` when entering the install folder | Use `sudo` — the folder belongs to the `meshtech` account. |
+| `dubious ownership` on `git pull` | `sudo git config --global --add safe.directory /opt/meshtech-bot` |
+| Dashboard loads but says `not connected` | The repeater link is down — see the first row. |
+| `python3 -m venv` fails | `sudo apt install python3-venv` |
+| Want the dashboard from another device | Set `web.host: "0.0.0.0"`, set a strong password, and ideally use a reverse proxy (HTTPS). |
 
 ---
 
-## Reference: files you may care about
+## Files you may care about
 
 | Path | Purpose |
 |---|---|
-| `config.yaml` | your settings (created from `config.example.yaml`) |
-| `data/bot.db` | SQLite: nodes, messages, routes, overrides, packet capture |
-| `data/packets.jsonl` | append-only packet log for offline analysis |
-| `data/exports/` | CSV exports from `scripts/export_packets.py` |
-| `set-password.sh` | one command to set/change the dashboard password |
-| `/etc/systemd/system/meshtech-bot.service` | the native service unit |
-| `journalctl -u meshtech-bot` | native logs (systemd captures stdout) |
+| `config.yaml` | Your settings (created from `config.example.yaml`) |
+| `data/bot.db` | The database: nodes, messages, routes, packet capture |
+| `data/packets.jsonl` | Packet log for offline analysis |
+| `data/exports/` | CSV exports made by `scripts/export_packets.py` |
+| `data/.dashboard_password` | Your dashboard password (first line of the file) |
+| `set-password.sh` | Set or change the dashboard password |

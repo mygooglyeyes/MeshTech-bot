@@ -1,165 +1,148 @@
 # ============================================================
 #  MeshTech-Bot - configuration
 #
-#  This is the EXAMPLE config you copy on install:
+#  This is the EXAMPLE config. On install, copy it and edit:
 #      cp config.example.yaml config.yaml
-#  Edit the values below (marked "<--"), then run:
+#  Change the values marked "<--", then check it with:
 #      python bot.py --check
-#  to make sure everything is valid before starting the bot.
 # ============================================================
 
 # --- Connection to your openHop Repeater --------------------
 connection:
   host: "192.168.1.50"      # <-- LAN IP of the machine running openHop Repeater
-  port: 5000                # <-- companion identity port on the repeater. Matches the
-                            #     "tcp_port" set under companions in openHop's own
-                            #     config (/etc/openhop_repeater/config.yaml).
+  port: 5000                # <-- companion port on the repeater. Must match the
+                            #     "tcp_port" set in openHop's own config.
   reconnect: true           # keep trying if the connection drops
   reconnect_min_seconds: 3  # wait at least this long between attempts
   reconnect_max_seconds: 60 # ...and at most this long (backoff grows over time)
 
 # --- Bot behaviour -------------------------------------------
 bot:
-  advertise_on_start: true  # send a flood advert at startup so other nodes can
-                            # find the bot in their contact list and DM it
-  display_name: "me"        # FALLBACK name used in replies (e.g. the last hop
-                            # of the !pathx relay chain) when the bot cannot
-                            # learn its companion's name. The openHop companion's
-                            # node_name is used automatically when available.
-  # When the bot cannot identify who sent a message, stay silent.
-  #   false (default) = don't answer unknown senders (recommended)
+  advertise_on_start: true  # send an advert at startup so nodes can find the bot
+  display_name: "me"        # FALLBACK name for replies when the bot can't learn
+                            # its companion's name (the companion's node_name
+                            # is used automatically when available)
+  # Don't answer messages when the sender can't be identified:
+  #   false (default) = stay silent (recommended)
   #   true            = answer anyway - only for meshes where sender
-  #                     identity is never available (e.g. name-free gateways)
+  #                     identity is never available
   answer_unknown_senders: false
 
-# --- Hop limits (how far away a message may be before the bot answers) ----
-# MeshCore reports how many repeater hops an incoming message travelled.
+# --- Hop limits ------------------------------------------------
+# MeshCore reports how many hops an incoming message travelled.
 # max_inbound_hops: ignore messages that arrived via MORE hops than this.
-#                   0 = no limit (answer everything the radio hears).
+#                   0 = no limit.
 mesh:
   max_inbound_hops: 3
-  unknown_hops: "ignore"    # what to do when hop count can't be read:
+  unknown_hops: "ignore"    # when hop count can't be read:
                             #   "ignore" = play safe, don't answer
                             #   "respond" = answer anyway
-  # MeshCore embeds the sender's display name in every channel message
-  # ("Name: message"). How much to trust that embedded name:
-  #   "trust" = always strip it (protocol default - commands arrive as
-  #             "Name: !help" and still work)
-  #   "smart" = strip it only when the whole text wouldn't already match,
-  #             so a message like "hello: anyone around?" keeps "hello"
-  #   "off"   = never strip (for gateways that relay messages WITHOUT the
-  #             embedded name - commands then arrive bare, e.g. "!help")
+  # MeshCore embeds the sender's name in channel messages ("Name: message").
+  # How much to trust that embedded name:
+  #   "trust" = always strip it (default - commands arrive as "Name: !help")
+  #   "smart" = strip it only when the rest of the text wouldn't already match
+  #   "off"   = never strip (for gateways that relay messages WITHOUT names)
   channel_sender_name: "trust"
-  # NOTE on reply range: channel replies are flooded by repeaters, so also cap
-  # propagation on the repeater itself: set max_flood_hops in openHop's own
-  # config (/etc/openhop_repeater/config.yaml) - e.g. 3 - and restart the
-  # openHop service. See docs/INSTALL.md "Limit how far replies travel".
+  # Channel replies are flooded by repeaters, so also cap propagation on the
+  # repeater itself (max_flood_hops in openHop's config). See docs/INSTALL.md.
 
-# --- Channels the bot listens on -------------------------------------------
-# Names must match channels that exist on your mesh. The bot checks the
-# repeater's channel table and (where possible) adds missing ones.
-# A channel with reply: false is "listen-only" - traffic is logged to the
-# database and dashboard, but the bot never answers there.
+# --- Channels the bot listens on -------------------------------
+# Names must match channels on your mesh. The bot checks the repeater's
+# channel table and adds missing ones where possible.
+# reply: false = "listen-only" - traffic is logged, the bot never answers.
 channels:
   - name: "#bot"            # <-- main Q&A channel
     reply: true
-  - name: "#test"           # <-- second channel (log only example: reply: false)
+  - name: "#test"           # <-- second channel (set reply: false to log only)
     reply: false
 
-# --- Direct messages ---------------------------------------------------------
+# --- Direct messages -------------------------------------------
 dm:
   enabled: true
   # Nodes allowed to run control commands (reload, shutdown, full stats).
-  # Use the first 12 hex characters of the node's public key. To find keys,
-  # DM the bot "!nodes" once it has been running, or check the web dashboard.
+  # Use the first 12 hex characters of the node's public key. Find yours by
+  # DMing the bot "!nodes" once it's been running, or on the dashboard.
   admin_pubkey_prefixes:
     - "a1b2c3d4e5f6"        # <-- replace with YOUR node's prefix
   # Everyone else can still use the public commands (help, status, nodes).
 
-# --- Reply detail levels -------------------------------------------------------
-# --- Reply detail levels -------------------------------------------------------
-# Every reply defaults to the COMPACT version to keep radio traffic short.
-# Append "x" to a command for the EXTENDED version:
-#   !nodes          -> compact list (recent nodes)
-#   !nodes x        -> extended list with all columns
-# The canonical words "brief"/"full" still work if you prefer typing them.
+# --- Reply detail levels ---------------------------------------
+# Replies default to the COMPACT version to keep radio traffic short.
+# Append "x" for the EXTENDED version:
+#   !nodes          -> compact list
+#   !nodes x        -> extended list
+# The words "brief"/"full" still work if you prefer typing them.
 verbosity:
   aliases_brief: []              # compact is the default everywhere
   aliases_full: ["x"]            # the only documented modifier
   channel_default: brief
   dm_default: brief
 
-# --- Database (node names, message history, paths/stats) ---------------------
+# --- Database ----------------------------------------------
 storage:
   db_path: "data/bot.db"
   contact_refresh_minutes: 30   # how often to refresh the node table from adverts
-  # --- Packet capture (for later traffic analysis) ---
-  # Every decoded companion frame (channel msgs, DMs, adverts, paths, command
-  # responses...) is stored with frame type, hops, SNR, sender and timing.
+  # --- Packet capture (for traffic analysis) ---
+  # Every decoded companion frame is stored with frame type, hops, SNR,
+  # sender and timing.
   capture_packets: true
   # Also store the raw wire bytes of each frame (bulkier; useful for packet
-  # size/timing analysis of the companion link itself).
+  # size/timing analysis of the companion link).
   packet_raw_hex: false
-  # Append-only JSONL analysis file - one JSON object per line, easy to load
-  # in pandas later:  pd.read_json('data/packets.jsonl', lines=True)
-  # Empty string ("") disables the file (database capture still works).
+  # Append-only JSONL analysis file (one JSON object per line, easy to load
+  # in pandas). Empty string ("") disables the file.
   packet_jsonl: "data/packets.jsonl"
   packet_max_rows: 200000        # keep the last N rows in the database
 
-# --- Simple canned answers (no code needed) ------------------------------------
-# Whenever one of these keywords appears in a message, the bot replies with the
+# --- Simple canned answers (no code needed) ----------------------
+# When one of these keywords appears in a message, the bot replies with the
 # matching text. If several texts are listed, one is chosen at random.
 #
-# EMPTY by default: this bot is built for testing, not chat, so the bot stays
-# silent on plain words. Add your own test triggers here when you need them:
+# EMPTY by default: this bot is for testing, not chat. Add your own test
+# triggers here when you need them:
 #
 # replies:
 #   - keywords: ["ping", "test"]
 #     text:
 #       - "pong - mesh path OK"
 #
-# (Leave the section as an empty list if you want NO plain-word replies.)
 replies: []
 
-# --- Limits (keep the mesh happy) ------------------------------------------------
+# --- Limits (keep the mesh happy) -----------------------------
 limits:
-  min_interval_seconds: 3    # minimum gap between ANY two bot replies (airtime floor)
+  min_interval_seconds: 3    # minimum gap between ANY two bot replies
   per_sender_seconds: 30     # ignore repeat DM requests from the same node
-  # Per-channel reply cadence: at most ONE bot reply per channel every N
-  # seconds (0 = off, the default). This stops one busy channel - or a single
-  # noisy node spamming it - from resetting the global reply pace above and
-  # crowding out replies on every other channel. Reply pacing then happens
-  # per channel, so other channels and DMs stay responsive.
+  # Per-channel cadence: at most ONE reply per channel every N seconds
+  # (0 = off, the default). Stops one busy channel from crowding out
+  # replies on the others; DMs are never throttled by this.
   channel_interval_seconds: 0
-  # Optional per-channel overrides (channel -> seconds; 0 disables for that
-  # channel). Unlisted channels use channel_interval_seconds above:
+  # Optional per-channel overrides (channel -> seconds; 0 disables):
   # channel_intervals:
   #   "#bot": 30
   #   "#test": 0
   max_reply_length: 133      # MeshCore text limit per message
   max_chunks: 6              # max messages one reply may be split into
 
-# --- Web management dashboard -----------------------------------------------------
+# --- Web management dashboard -----------------------------------
 # Browser UI at  http://<this machine>:8081
 web:
   enabled: true
   host: "127.0.0.1"          # 127.0.0.1 = this machine only (recommended).
-                             # Use 0.0.0.0 ONLY if you know your firewall blocks
+                             # Use 0.0.0.0 ONLY if your firewall blocks
                              # outside access, then visit from another device.
   port: 8081
-  # The dashboard password lives in its OWN file (first line = password), NOT
-  # in this config - so if config.yaml is ever copied, pasted or leaked it
-  # does not carry the password. Set it with ONE command (native install):
+  # The dashboard password lives in its OWN file (first line = password),
+  # NOT in this config - so a leaked config.yaml can't unlock the dashboard.
+  # Set it with ONE command (native install):
   #     sudo ./set-password.sh       # prompts twice, saves, restarts the bot
-  # The installer (install.sh) also asks for it during setup. Or set the
-  # MESHTECH_DASHBOARD_PASSWORD environment variable instead - it wins over
-  # the file.
+  # The installer (install.sh) also asks during setup. Or set the
+  # MESHTECH_DASHBOARD_PASSWORD environment variable - it wins over the file.
   password_file: "data/.dashboard_password"   # <-- recommended
   # LEGACY alternative - password stored in this file. Still works, but it
   # travels with config.yaml and the bot warns about it:
   # password: "change-me"
 
-# --- Logging ----------------------------------------------------------------------
+# --- Logging ----------------------------------------------------
 # With the systemd service, leave file empty and watch logs with:
 #   journalctl -u meshtech-bot -f
 logging:
