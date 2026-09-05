@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
+import json
 import sqlite3
 import sys
 from datetime import datetime
@@ -45,6 +47,10 @@ if str(_ROOT) not in sys.path:
 _PACKET_COLUMNS = ["id", "ts_iso", "ts", "layer", "direction", "frame_type",
                    "sender", "hops", "path_hash_size", "snr",
                    "channel_name", "text", "size"]
+
+# Browser-download columns: same as the folder export, plus ``raw_hex`` with
+# the captured wire bytes for raw-layer frames (empty for decoded rows).
+_CSV_TEXT_COLUMNS = _PACKET_COLUMNS + ["raw_hex"]
 
 _HOP_BUCKETS: List[Any] = [0, 1, 2, 3, "4+"]
 
@@ -258,6 +264,59 @@ def export_packets(db_path: str, out_dir: str,
     files.append(str(summary_path))
 
     return {"rows": rows_written, "files": files}
+
+
+def packets_csv_text(db_path: str, layer: Optional[str] = None,
+                     limit: Optional[int] = None) -> tuple[str, int]:
+    """Build ONE CSV string of packets for a browser download.
+
+    Same escaping rules as the folder export (CWE-1236 safe). Raw frames
+    get a ``raw_hex`` column with the captured wire bytes. Returns
+    ``(csv_text, row_count)`` - row_count is 0 when nothing matched.
+    """
+    where: List[str] = []
+    params: List[Any] = []
+    if layer in ("decoded", "raw"):
+        where.append("layer = ?")
+        params.append(layer)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    # Select the newest frames first when a limit applies, then re-sort
+    # chronologically for the file (same approach as export_packets).
+    select_cols = [c for c in _CSV_TEXT_COLUMNS
+                   if c not in ("ts_iso", "raw_hex")] + ["payload_json"]
+    if limit:
+        params.append(int(limit))
+        order_sql = ("SELECT * FROM (SELECT %s FROM packets%s "
+                     "ORDER BY ts DESC, id DESC LIMIT ?) "
+                     "ORDER BY ts ASC, id ASC")
+    else:
+        order_sql = "SELECT %s FROM packets%s ORDER BY ts ASC, id ASC"
+    sql = order_sql % (", ".join(select_cols), where_sql)
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(_CSV_TEXT_COLUMNS)
+    count = 0
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        for row in conn.execute(sql, params):
+            raw_hex = ""
+            if row["layer"] == "raw" and row["payload_json"]:
+                try:
+                    raw_hex = json.loads(row["payload_json"]).get("raw_hex", "")
+                except Exception:
+                    raw_hex = ""
+            values = list(row)
+            values.pop()                          # payload_json: only for raw_hex
+            values.insert(1, _iso(row["ts"]))   # human-readable ts after id
+            values.append(raw_hex)
+            writer.writerow([_csv_cell(v) for v in values])
+            count += 1
+    finally:
+        conn.close()
+    return out.getvalue(), count
 
 
 def _cli(db_path: str, out_dir: str, hours: Optional[float],

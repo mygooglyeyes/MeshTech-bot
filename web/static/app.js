@@ -728,7 +728,30 @@ async function refreshPackets() {
   const qs = new URLSearchParams();
   if (layer) qs.set("layer", layer);
   qs.set("limit", "40");
-  const data = await api("/api/packets?" + qs.toString());
+  let data = await api("/api/packets?" + qs.toString());
+  // Selecting "raw" turns raw capture on in the running bot - no config edit
+  // or restart needed. Only posts when capture is actually off, then refetches
+  // so the list shows fresh rows immediately. Switching back to "decoded"
+  // turns the runtime capture off again (config-enabled capture is left alone).
+  if (layer === "raw" && data.raw_capture === false) {
+    try {
+      await api("/api/packets/raw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      });
+      data = await api("/api/packets?" + qs.toString());
+    } catch (e) { /* warning below explains why the list stays empty */ }
+  } else if (layer === "decoded" && data.raw_override === true) {
+    try {
+      await api("/api/packets/raw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      });
+      data = await api("/api/packets?" + qs.toString());
+    } catch (e) { /* capture keeps running; harmless */ }
+  }
   const rows = data.packets || [];
   const stats = data.stats || {};
   const wrap = $("pkt-list");
@@ -744,15 +767,15 @@ async function refreshPackets() {
     " · raw " + (byLayer.raw || 0);
   wrap.appendChild(caption);
 
-  // When "raw" is selected but raw capture is disabled in the config, the
-  // list can never fill up - say so instead of looking broken.
+  // If raw capture still isn't running after the auto-enable attempt (e.g.
+  // packet capture is disabled in config), say so instead of looking broken.
   if (layer === "raw" && data.raw_capture === false) {
     const warn = document.createElement("div");
     warn.className = "muted-note";
     warn.style.fontSize = "11px";
     warn.style.fontWeight = "400";
-    warn.textContent = "raw capture is OFF - set storage.packet_raw_hex: true " +
-      "in config.yaml, then restart the bot";
+    warn.textContent = "raw capture could not be turned on - check that " +
+      "storage.capture_packets is true in config.yaml";
     wrap.appendChild(warn);
   }
 
@@ -810,6 +833,41 @@ async function refreshPackets() {
 
 $("btn-load-packets").addEventListener("click", refreshPackets);
 $("pkt-layer").addEventListener("change", refreshPackets);
+
+$("btn-export-packets").addEventListener("click", async () => {
+  const layer = $("pkt-layer").value || "decoded";
+  const what = layer === "raw" ? "raw packet capture" : "decoded packet capture";
+  if (!confirm("Save the " + what + " to a CSV file?")) return;
+  let resp;
+  try {
+    resp = await fetch("/api/packets/export?layer=" + layer, {
+      headers: { Authorization: "Bearer " + token },
+    });
+  } catch (e) {
+    alert("Export failed: " + e);
+    return;
+  }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    alert("Export failed: " + (err.detail || resp.status));
+    return;
+  }
+  const rows = parseInt(resp.headers.get("X-Rows") || "0", 10);
+  if (!rows) {
+    alert("No " + layer + " packets captured yet - nothing to export.");
+    return;
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "meshtech-packets-" + layer + "-" +
+    new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-") + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
 
 // ------------------------------------------------------------------ actions + config
 

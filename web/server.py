@@ -7,6 +7,7 @@ Endpoints:
     /api/mute POST               - global reply mute
     /api/nodes, /api/nodes/{id}  - node table + drill-down
     /api/messages, /api/config   - message browser + config view
+    /api/packets/raw POST        - runtime raw-capture toggle
     /api/actions POST            - reload / shutdown
     /ws                          - live activity feed (WebSocket)
     /, /app.js, /style.css       - dashboard page
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -180,8 +182,39 @@ def build_app(service) -> FastAPI:
         rows = capture.recent(layer=layer, limit=max(1, min(limit, 500)))
         return {"packets": rows, "total": capture.stats()["total"],
                 "stats": capture.stats(),
-                "raw_capture": (service.settings.storage.packet_raw_hex
-                                 and capture.enabled)}
+                "raw_capture": bool(capture.enabled and capture.raw_enabled()),
+                "raw_override": capture.raw_override()}
+
+    @app.post("/api/packets/raw", dependencies=[Depends(require_auth)])
+    async def packets_raw_toggle(payload: Dict[str, Any]):
+        """Turn raw capture on/off in the running bot (not persisted)."""
+        if service.capture is None:
+            raise HTTPException(status_code=400,
+                                detail="packet capture is disabled in config")
+        service.capture.set_raw_enabled(bool(payload.get("enabled")))
+        return {"raw_capture": service.capture.raw_enabled()}
+
+    @app.get("/api/packets/export", dependencies=[Depends(require_auth)])
+    async def packets_export(layer: Optional[str] = None):
+        """Download captured packets as a CSV file (browser attachment)."""
+        layer = layer if layer in ("decoded", "raw") else None
+        try:
+            from scripts.export_packets import packets_csv_text
+            text, count = packets_csv_text(service.settings.storage.db_path,
+                                           layer=layer, limit=100000)
+        except Exception as exc:
+            log.warning("packet CSV export failed: %s", exc)
+            raise HTTPException(status_code=500, detail="CSV export failed")
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"meshtech-packets-{layer or 'all'}-{stamp}.csv"
+        return Response(
+            content=text,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Rows": str(count),
+            },
+        )
 
     @app.get("/api/packets/profile", dependencies=[Depends(require_auth)])
     async def packets_profile():

@@ -6,9 +6,9 @@ frame type, hops, SNR, sender and timing:
 * ``decoded`` layer - one row per decoded event (channel messages, DMs,
   adverts, paths, command responses). Comes from subscribing to every
   event type the meshcore library dispatches.
-* ``raw`` layer (optional, ``storage.packet_raw_hex: true``) - one row per
-  wire frame, including the raw hex bytes. Comes from wrapping the
-  library's reader entry point.
+* ``raw`` layer (optional, ``storage.packet_raw_hex: true`` OR the runtime
+  toggle - one row per wire frame, including the raw hex bytes. Comes from
+  wrapping the library's reader entry point.
 
 Rows land in the SQLite ``packets`` table (bounded by
 ``storage.packet_max_rows``) and are appended to a JSONL file
@@ -40,6 +40,9 @@ class PacketCapture:
         self._settings = settings_getter   # callable -> Settings (survives reload)
         self._jsonl_handle = None
         self._jsonl_path = None
+        # Runtime switch for raw capture, set from the dashboard. None = fall
+        # back to the config value; never persisted (resets on restart).
+        self._raw_override = None
 
     # ------------------------------------------------------------------ state
 
@@ -49,6 +52,20 @@ class PacketCapture:
 
     def _cfg(self):
         return self._settings().storage
+
+    def set_raw_enabled(self, enabled: bool) -> None:
+        """Turn raw capture on/off at runtime (not persisted)."""
+        self._raw_override = bool(enabled)
+
+    def raw_override(self) -> Optional[bool]:
+        """The runtime override value, or None when only the config applies."""
+        return self._raw_override
+
+    def raw_enabled(self) -> bool:
+        """Effective raw-capture state: runtime override, else the config flag."""
+        if self._raw_override is not None:
+            return self._raw_override
+        return bool(self._cfg().packet_raw_hex)
 
     # ------------------------------------------------------------------ decoded
 
@@ -85,8 +102,9 @@ class PacketCapture:
     # ------------------------------------------------------------------ raw
 
     def record_raw(self, ts: float, data: bytes) -> None:
-        """Record one raw wire frame (optional; gated by packet_raw_hex)."""
-        if not self.enabled or not self._cfg().packet_raw_hex:
+        """Record one raw wire frame (optional; gated by packet_raw_hex or the
+        runtime toggle)."""
+        if not self.enabled or not self.raw_enabled():
             return
         try:
             from meshcore.packets import PacketType  # lazy: venv-only import

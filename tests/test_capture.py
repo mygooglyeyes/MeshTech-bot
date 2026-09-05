@@ -146,6 +146,33 @@ def test_raw_gated_by_config(tmp_path):
     assert json.loads(raw)["raw_hex"] == "080068656c6c6f"
 
 
+def test_raw_runtime_toggle_overrides_config(tmp_path):
+    capture, store = _capture(tmp_path)   # packet_raw_hex: False
+    assert capture.raw_enabled() is False
+    assert capture.raw_override() is None
+
+    # Turning it on at runtime records raw frames even with config off.
+    capture.set_raw_enabled(True)
+    assert capture.raw_enabled() is True
+    assert capture.raw_override() is True
+    capture.record_raw(1.0, b"\x08\x00hello")
+    assert len(store.recent_packets(layer="raw")) == 1
+
+    # Turning it back off stops recording again.
+    capture.set_raw_enabled(False)
+    assert capture.raw_enabled() is False
+    assert capture.raw_override() is False
+    capture.record_raw(2.0, b"\x08\x00bye")
+    assert len(store.recent_packets(layer="raw")) == 1
+
+
+def test_raw_override_respects_config_when_unset(tmp_path):
+    # No runtime override: the config flag alone decides.
+    capture, _ = _capture(tmp_path, {"packet_raw_hex": True})
+    assert capture.raw_override() is None
+    assert capture.raw_enabled() is True
+
+
 def test_jsonl_append(tmp_path):
     jsonl_path = str(tmp_path / "packets.jsonl")
     capture, store = _capture(tmp_path, {"packet_jsonl": jsonl_path})

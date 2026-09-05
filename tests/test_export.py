@@ -6,6 +6,7 @@ database via the same Store the bot uses.
 from __future__ import annotations
 
 import csv
+import io
 from pathlib import Path
 
 from core.store import Store
@@ -46,6 +47,42 @@ def _populate(db_path: str) -> None:
 def _read(path: Path) -> list[list[str]]:
     with open(path, newline="", encoding="utf-8") as handle:
         return list(csv.reader(handle))
+
+
+def test_packets_csv_text_raw_layer(tmp_path):
+    db = str(tmp_path / "packets.db")
+    _populate(db)
+    store = Store(db)
+    try:
+        store.add_packet(HOUR_A + 300, "raw", "in", "CHANNEL_MSG", size=9,
+                         payload_json='{"raw_hex": "08010203ff"}')
+        # attacker-controlled text must stay formula-safe in the CSV
+        store.add_packet(HOUR_A + 400, "decoded", "in", "CHANNEL_MSG_RECV",
+                         sender="2b926f3ab12f", hops=1, snr=10.0,
+                         channel_name="#bot", text="=HYPERLINK(evil)")
+    finally:
+        store.close()
+
+    text, count = export_packets.packets_csv_text(db, layer="raw")
+    rows = list(csv.reader(io.StringIO(text)))
+    assert count == 3
+    assert rows[0] == ["id", "ts_iso", "ts", "layer", "direction", "frame_type",
+                       "sender", "hops", "path_hash_size", "snr",
+                       "channel_name", "text", "size", "raw_hex"]
+    # raw rows carry the captured wire bytes in the last column, and every
+    # row lines up with the header (no stray payload_json column)
+    assert "08010203ff" in {r[-1] for r in rows[1:]}
+    assert all(len(r) == len(rows[0]) for r in rows[1:])
+    # every raw row has the layer marker; decoded rows are filtered out
+    assert all(r[3] == "raw" for r in rows[1:])
+
+    # decoded export keeps the escaping rule (CWE-1236); 5 rows from
+    # _populate plus the one injected above
+    text2, count2 = export_packets.packets_csv_text(db, layer="decoded")
+    rows2 = list(csv.reader(io.StringIO(text2)))
+    assert count2 == 6
+    escaped = next(r for r in rows2[1:] if r[11].startswith("'="))
+    assert escaped[11] == "'=HYPERLINK(evil)"
 
 
 def test_full_dump(tmp_path):
