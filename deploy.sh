@@ -83,17 +83,19 @@ if [[ -n "$APPLY_TARBALL" ]]; then
     || warn "pip install had warnings (continuing)"
 
   log "Validating your config with the new code..."
-  # validate as the service user when possible (proves it can read the
-  # config); fall back to root on systems without sudo - a failed drop
-  # must not block the deploy itself
+  # Run from the RUNTIME directory: bot.py resolves data/ (password file,
+  # database) relative to the current directory, so validating from elsewhere
+  # would check a throwaway state instead of the live one. Validate as the
+  # service user when possible (proves it can read the config from its own
+  # folder); fall back to root on systems without sudo.
   if command -v sudo &>/dev/null; then
-    if ! sudo -u "$SERVICE_USER" "$PY" "$RUNTIME/bot.py" --check --config "$RUNTIME/config.yaml"; then
+    if ! (cd "$RUNTIME" && sudo -u "$SERVICE_USER" "$PY" bot.py --check --config "$RUNTIME/config.yaml"); then
       warn "could not validate as '$SERVICE_USER' - retrying as root"
-      "$PY" "$RUNTIME/bot.py" --check --config "$RUNTIME/config.yaml" \
+      (cd "$RUNTIME" && "$PY" bot.py --check --config "$RUNTIME/config.yaml") \
         || die "validation failed - the OLD code keeps running until this passes"
     fi
   else
-    "$PY" "$RUNTIME/bot.py" --check --config "$RUNTIME/config.yaml" \
+    (cd "$RUNTIME" && "$PY" bot.py --check --config "$RUNTIME/config.yaml") \
       || die "validation failed - the OLD code keeps running until this passes"
   fi
 

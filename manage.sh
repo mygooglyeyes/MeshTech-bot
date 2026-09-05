@@ -203,9 +203,10 @@ do_update() {
   log "Refreshing Python dependencies..."
   "$PY" -m pip install -q -r "$runtime/requirements.txt" || warn "pip install had warnings (continuing)"
   log "Validating the new version..."
-  # Validate the INSTALLATION's config explicitly: bot.py would otherwise
-  # read './config.yaml' from wherever this panel happens to run.
-  "$PY" "$runtime/bot.py" --check --config "$runtime/config.yaml" \
+  # Validate from the INSTALLATION directory: bot.py resolves data/ (password
+  # file, database) relative to the current directory, so running it from
+  # elsewhere would check a throwaway state instead of the live one.
+  (cd "$runtime" && "$PY" bot.py --check --config "$runtime/config.yaml") \
     || { warn "validation failed - check the output above"; return 1; }
   log "Restarting the service..."
   if systemctl restart "$SERVICE.service"; then
