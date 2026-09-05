@@ -160,6 +160,67 @@ def test_meshinfo_keyword_scopes():
     assert MeshInfoHandler.keyword_access == {"path": "public", "stats": "admin"}
 
 
+def test_expand_glued_x():
+    from core.router import expand_glued_x
+    from handlers.meshinfo import MeshInfoHandler
+    handlers = [MeshInfoHandler]
+    assert expand_glued_x(["pathx"], True, handlers) == ["path", "x"]
+    assert expand_glued_x(["pathx", "K7ABC"], True, handlers) == ["path", "K7ABC", "x"]
+    assert expand_glued_x(["path", "x"], True, handlers) == ["path", "x"]   # already separate
+    assert expand_glued_x(["status"], True, handlers) == ["status"]          # no trailing x
+    assert expand_glued_x(["2byte"], True, handlers) == ["2byte"]
+    assert expand_glued_x(["box"], False, handlers) == ["box"]               # unprefixed untouched
+    assert expand_glued_x(["x"], True, handlers) == ["x"]                    # bare !x untouched
+
+
+def test_format_rxlog_chain():
+    from handlers.meshinfo import format_rxlog_chain
+    copies = [
+        {"ts": 100.000, "plen": 6, "snr": 12.0, "hash_size": 2,
+         "path": "faae3d446cd3800893181b9d"},
+        {"ts": 100.902, "plen": 7, "snr": 4.75, "hash_size": 2,
+         "path": "faae3d446cd3800893181b9d66e1"},
+    ]
+    lines = format_rxlog_chain("LoganBot", hops=7, snr=4.75, delay_ms=340, copies=copies)
+    # closest to the bot first, newly-heard relays annotated, sender at the end
+    assert lines[0] == ("66(SNR 4.8, 902ms) -> 1b(SNR 12.0, 0ms) -> 93 -> 80 "
+                        "-> 6c -> 3d -> fa -> LoganBot")
+    assert lines[1] == "7 hop(s) RX 4.8 dB 340 ms to me"
+
+
+def test_format_rxlog_chain_direct_or_unknown():
+    from handlers.meshinfo import format_rxlog_chain
+    lines = format_rxlog_chain("LoganBot", hops=0, snr=12.25, delay_ms=88, copies=[])
+    assert lines[0] == "LoganBot -> me"
+    assert "0 hop(s)" in lines[1] and "88 ms" in lines[1]
+
+
+def test_pathx_uses_rxlog_relay_chain(make_config):
+    import json
+    import time as _time
+
+    def prepare(store):
+        now = _time.time()
+        payload = {"payload": {"path_len": 1, "snr": 10.5, "path": "1122",
+                                "path_hash_size": 2, "pkt_hash": "pk1",
+                                "payload_typename": "GRP_TXT"}}
+        store.add_packet(ts=now - 0.20, layer="decoded", direction="in",
+                         frame_type="RX_LOG_DATA",
+                         payload_json=json.dumps(payload))
+        payload["payload"].update({"path_len": 2, "snr": 9.0, "path": "11223344"})
+        store.add_packet(ts=now - 0.05, layer="decoded", direction="in",
+                         frame_type="RX_LOG_DATA",
+                         payload_json=json.dumps(payload))
+
+    sent = asyncio.run(_run_router(make_config, [
+        _dm("!pathx", sender="000011112222", hops=2),
+    ], prepare=prepare))
+    assert len(sent) == 1
+    reply = sent[0][2]
+    assert "33(SNR 9.0, 150ms) -> 11(SNR 10.5, 0ms) -> 00" in reply
+    assert "2 hop(s)" in reply
+
+
 def test_path_public_but_nodes_and_stats_restricted(make_config):
     sent = asyncio.run(_run_router(make_config, [
         _channel("Alice: !path K7ABC", hops=0),        # public path on a channel

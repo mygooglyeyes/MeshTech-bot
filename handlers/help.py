@@ -45,7 +45,7 @@ class HelpHandler(Handler):
             lines = [
                 "Commands: " + command_words,
                 "Plain words I also answer: " + canned_words,
-                "Add 'x' for the extended version (e.g. !nodes x).",
+                "Add 'x' for the extended version (e.g. !nodes x, !pathx).",
                 "Admin can use: reload, shutdown, diag (DM only)." if ctx.is_admin
                 else "DM me for admin help once your node is allowlisted.",
             ]
@@ -63,7 +63,8 @@ class HelpHandler(Handler):
         lines = list(table)
         lines.append("")
         lines.append("Append 'x' to most commands for the extended version "
-                     "(e.g. !nodes x, !path <node> x).")
-        lines.append("Examples: !nodes   |   !nodes x   |   !path <node> x")
+                     "(e.g. !nodes x, !pathx, !path <node> x) - glued on is fine "
+                     "(!pathx == !path x).")
+        lines.append("Examples: !nodes   |   !nodes x   |   !pathx   |   !path K7ABC x")
         lines.append("Plain-word answers: " + canned_words)
         return HandlerResult(kind="text", data="\n".join(lines))

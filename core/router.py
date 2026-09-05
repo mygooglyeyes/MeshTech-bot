@@ -59,6 +59,26 @@ def _keyword_matches(keyword: str, tokens: List[str], prefixed: bool) -> bool:
     return keyword in phrase
 
 
+def expand_glued_x(tokens: List[str], prefixed: bool, handlers: List[Any]) -> List[str]:
+    """Support '!pathx' as shorthand for '!path x' (extended modifier).
+
+    Only fires when the message starts with '!', the first token is a known
+    command keyword with a trailing 'x', and the base itself is a registered
+    keyword - so plain words ('box'), bare '!x' and future keywords that
+    legitimately end in 'x' are left alone.
+    """
+    if not prefixed or not tokens:
+        return tokens
+    first = tokens[0]
+    if len(first) <= 1 or not first.endswith("x"):
+        return tokens
+    base = first[:-1]
+    known = {kw for h in handlers for kw in getattr(h, "keywords", [])}
+    if base in known:
+        return [base] + tokens[1:] + ["x"]
+    return tokens
+
+
 def resolve_verbosity(tokens: List[str], cfg: VerbosityCfg, default: str) -> str:
     """Last explicit modifier word wins; otherwise use *default*."""
     level = default
@@ -330,6 +350,9 @@ class Router:
         tokens, prefixed = tokenize(body)
         if not tokens:
             return
+
+        # '!pathx' is shorthand for '!path x' (extended version)
+        tokens = expand_glued_x(tokens, prefixed, self.handlers)
 
         picked = select_handler(tokens, prefixed, self.handlers, msg.kind, is_admin)
         if picked is None:

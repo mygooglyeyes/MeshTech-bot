@@ -506,6 +506,61 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def rxlog_copies(self, ts: float, hops: Optional[int], window: float = 2.5,
+                     limit: int = 200) -> List[Dict[str, Any]]:
+        """RX_LOG copies of the radio frame a just-decoded message arrived in.
+
+        The companion logs every received radio frame (RX_LOG_DATA); a flood
+        heard several times logs one row per hearing, and each hearing's
+        ``path`` is the previous one plus one appended relay. Matching the
+        decoded message (its hop count + arrival time) to one of those rows
+        therefore exposes, per relay: the path order, the SNR of each heard
+        retransmission and the arrival offsets. Returns parsed payloads sorted
+        by time - empty when nothing in the log correlates.
+        """
+        import json as _json
+
+        def _parse(row):
+            try:
+                payload = _json.loads(row[1])
+            except Exception:
+                return None
+            inner = payload.get("payload") if isinstance(payload, dict) else payload
+            if not isinstance(inner, dict):
+                return None
+            try:
+                plen = int(inner["path_len"]) if inner.get("path_len") is not None else None
+            except (TypeError, ValueError):
+                plen = None
+            try:
+                snr = float(inner["snr"]) if inner.get("snr") is not None else None
+            except (TypeError, ValueError):
+                snr = None
+            try:
+                hsize = int(inner["path_hash_size"]) if inner.get("path_hash_size") is not None else 1
+            except (TypeError, ValueError):
+                hsize = 1
+            return {"ts": row[0], "pkt_hash": inner.get("pkt_hash"),
+                    "plen": plen, "snr": snr, "path": inner.get("path") or "",
+                    "hash_size": hsize, "typename": inner.get("payload_typename")}
+
+        lo, hi = ts - window, ts + window
+        rows = self._conn.execute(
+            "SELECT ts, payload_json FROM packets "
+            "WHERE layer='decoded' AND frame_type='RX_LOG_DATA' "
+            "AND ts BETWEEN ? AND ? ORDER BY ts LIMIT ?",
+            (lo, hi, int(limit))).fetchall()
+        parsed = [p for r in rows if (p := _parse(r)) is not None]
+        if not parsed:
+            return []
+        # Anchor: the row that matches the decoded message (hop count + time).
+        anchors = [p for p in parsed if hops is None or p["plen"] == hops]
+        pool = anchors or parsed
+        best = min(pool, key=lambda p: abs(p["ts"] - ts))
+        if best.get("pkt_hash") is None:
+            return [best]
+        return [p for p in parsed if p["pkt_hash"] == best["pkt_hash"]]
+
     # ------------------------------------------------------------------ overrides
 
     def get_override(self, key: str) -> Optional[str]:

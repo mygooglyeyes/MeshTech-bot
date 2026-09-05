@@ -1,11 +1,12 @@
 """Mesh info - the database-backed commands.
 
     !nodes [x]               - known nodes (DM only)
-    !path <node> [x]         - route + history for one node (public)
+    !path [x]                - path YOUR message took to the bot (public)
+    !path <node> [x]         - route + history for another node (public)
     !stats <node|#channel>   - propagation time + hop statistics (DM, admin)
 
-Compact replies by default; append "x" for the extended version
-(extra columns, route history, hop distributions).
+Compact replies by default; "x" gives the extended version - as a separate
+word (!path K7ABC x) or glued on (!pathx, !nodesx).
 """
 from __future__ import annotations
 
@@ -14,6 +15,64 @@ from typing import List, Optional
 from core.format import (fmt_delay, fmt_path_hop, fmt_table, rel_time)
 from core.models import HandlerResult
 from .base import Handler
+
+
+def format_rxlog_chain(sender_label: str, hops: Optional[int], snr: Optional[float],
+                       delay_ms: Optional[int], copies: List[dict]) -> List[str]:
+    """Relay-chain report for !pathx, mined from RX_LOG capture copies.
+
+    copies: parsed RX_LOG rows for the message's packet, each with path
+    (hex), plen, hash_size, snr and ts. Relays are identified by their
+    path hash (first two hex chars - names are not in the protocol) and
+    listed closest to the bot first; when the same flood was heard several
+    times, each newly-heard relay carries the SNR and arrival offset of its
+    retransmission. Sender is named at the far end. Returns 1-2 lines.
+    """
+    def _totals() -> str:
+        parts = []
+        if hops is not None:
+            parts.append(f"{hops} hop(s)")
+        if snr is not None:
+            parts.append(f"RX {snr:.1f} dB")
+        if delay_ms is not None:
+            parts.append(f"{delay_ms} ms to me")
+        return " ".join(parts)
+
+    # The decoded message matches the deepest (final) copy of its packet.
+    deep = max(copies, key=lambda c: (c.get("plen") or 0, c.get("ts") or 0)) if copies else None
+    path_hex = (deep or {}).get("path") or ""
+    hsize = int((deep or {}).get("hash_size") or 1)
+    step = hsize * 2
+    ids = [path_hex[i:i + step][:2] for i in range(0, len(path_hex), step)]
+    ids = [i for i in ids if i]
+
+    if not ids:
+        # Direct reception, or no correlating radio log - endpoints only.
+        line = f"{sender_label} -> me"
+        totals = _totals()
+        return [line] + ([totals] if totals else [])
+
+    # Heard retransmissions: each additional copy appended one relay (the
+    # transmitter we heard), exposing its SNR + arrival offset.
+    heard: dict = {}
+    base_ts = min((c.get("ts") or 0) for c in copies)
+    seen_plen = set()
+    for c in sorted(copies, key=lambda c: c.get("ts") or 0):
+        plen = c.get("plen")
+        if plen is None or plen in seen_plen or plen < 1 or plen > len(ids):
+            continue
+        seen_plen.add(plen)
+        bits = []
+        if c.get("snr") is not None:
+            bits.append(f"SNR {c['snr']:.1f}")
+        bits.append(f"{int(round(((c.get('ts') or 0) - base_ts) * 1000))}ms")
+        heard[plen - 1] = "(" + ", ".join(bits) + ")"
+
+    segments = [ids[idx] + heard.get(idx, "") for idx in range(len(ids) - 1, -1, -1)]
+    segments.append(sender_label)
+    line = " -> ".join(segments)
+    totals = _totals()
+    return [line] + ([totals] if totals else [])
 
 
 class MeshInfoHandler(Handler):
@@ -78,7 +137,7 @@ class MeshInfoHandler(Handler):
         store = ctx.service.store
         query = " ".join(ctx.args).strip()
         if not query:
-            return HandlerResult(kind="text",                                 data="Usage: !path <node-name-or-prefix> [x]")
+            return await self._own_path(ctx)
         node = store.find_node(query)
         if node is None:
             return HandlerResult(kind="text",
@@ -116,6 +175,70 @@ class MeshInfoHandler(Handler):
             else:
                 lines.append("No route snapshots yet - they are recorded as the "
                              "mesh reports path/advert data.")
+        return HandlerResult(kind="text", data="\n".join(lines))
+
+    # ------------------------------------------------------------------ own path
+
+    @staticmethod
+    def _short_label(store, prefix: Optional[str], name: Optional[str]) -> str:
+        """A relay/node label: registry name, else the first 2 chars."""
+        if name:
+            return name
+        if prefix:
+            return prefix[:2]
+        return "?"
+
+    async def _own_path(self, ctx) -> HandlerResult:
+        """Path the sender's message took to reach the bot (no node argument).
+
+        Sender identity: DMs carry the public-key prefix; channel messages
+        carry only the embedded display name, resolved to a known node via
+        the registry when possible.
+
+        Extended view: mines the RX_LOG capture for the actual frame the
+        message arrived in. The log lists the relay chain (path hashes, one
+        per hop) and - when the same flood was heard several times - the
+        SNR and arrival offset of each relay's retransmission.
+        """
+        store = ctx.service.store
+        prefix = ctx.msg.sender_prefix
+        sender_name = None
+        if not prefix and ctx.msg.kind == "channel" and ctx.msg.sender_name:
+            node = store.find_node(ctx.msg.sender_name)
+            if node:
+                prefix = node["prefix"]
+                sender_name = node.get("name")
+        if not prefix:
+            return HandlerResult(kind="text",
+                                 data="I can't identify your node yet - message me "
+                                      "again once your node has advertised, or check "
+                                      "the dashboard.")
+        sender_name = sender_name or store.resolve_name(prefix)
+        hops_now = ctx.msg.hops
+        history = store.link_history(prefix,
+                                     limit=8 if ctx.verbosity == "full" else 3)
+
+        if ctx.verbosity == "brief":
+            hop_txt = f"{hops_now} hop(s)" if hops_now is not None else "hops unknown"
+            lines = [f"{self._short_label(store, prefix, sender_name)}: "
+                     f"path to bot = {hop_txt}"]
+            if history:
+                latest = history[0]
+                h = str(latest["hops"]) if latest.get("hops") is not None else "?"
+                snr = f"{latest['snr']:.0f} dB" if latest.get("snr") is not None else "-"
+                lines.append(f"latest: {h} hop(s), SNR {snr} "
+                             f"({rel_time(latest['ts'], ctx.now)})")
+            lines.append("!pathx for the relay chain")
+            return HandlerResult(kind="text", data="\n".join(lines))
+
+        # Extended: relay chain straight from the raw radio log.
+        copies = store.rxlog_copies(ctx.msg.recv_ts, hops_now)
+        delay_ms = None
+        if ctx.msg.sender_ts and ctx.msg.recv_ts:
+            delay_ms = max(0, int(round((ctx.msg.recv_ts - ctx.msg.sender_ts) * 1000)))
+        lines = format_rxlog_chain(
+            sender_label=self._short_label(store, prefix, sender_name),
+            hops=hops_now, snr=ctx.msg.snr, delay_ms=delay_ms, copies=copies)
         return HandlerResult(kind="text", data="\n".join(lines))
 
     # ------------------------------------------------------------------ stats

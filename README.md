@@ -207,7 +207,7 @@ the dashboard drill-down).
 | `!status` / `!status x` | anyone | bot health, channels, counters |
 | `!2byte` | anyone | share of nodes using 2-byte path hashes (ASCII bar chart from packet capture) |
 | `!nodes` / `!nodes x` | DM | known nodes from the database |
-| `!path <node>` / `!path <node> x` | anyone | route + route history for one node |
+| `!path` / `!pathx` / `!path <node>` | anyone | path your message took to the bot, or route to another node |
 | `!stats <node or #channel>` | admin (DM) | propagation delay + hop stats |
 | `!diag` / `!diag x` | admin (DM) | database + traffic summary |
 | `!reload` | admin (DM) | re-read config.yaml, refresh handlers |
