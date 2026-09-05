@@ -124,22 +124,6 @@ Save with `Ctrl+O`, exit with `Ctrl+X`. Set at least:
 | `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
 | `web.password_file` | path to the dashboard-password file — the bot reads the **first line** as the password. The installer already created `data/.dashboard_password` for you |
 
-**Step A1b — set the dashboard password (one time)**
-
-The dashboard password never lives in `config.yaml` (a copied or leaked
-config would give away the dashboard). It sits in its own file that only the
-bot account can read:
-
-```bash
-sudo nano /opt/meshtech-bot/data/.dashboard_password   # type your password, save
-sudo chown meshtech:meshtech /opt/meshtech-bot/data/.dashboard_password
-sudo chmod 600 /opt/meshtech-bot/data/.dashboard_password
-```
-
-Then restart so the bot picks it up: `sudo systemctl restart meshtech-bot`.
-(Alternative: set the `MESHTECH_DASHBOARD_PASSWORD` environment variable in
-the service unit — it wins over the file.)
-
 **Step A2 — run the installer**
 
 ```bash
@@ -148,13 +132,31 @@ sudo ./install.sh
 ```
 
 The installer creates the `meshtech` account, installs the Python
-dependencies, checks your config, and starts the service at boot.
+dependencies, checks your config, **asks you for a dashboard password**
+(type it twice — that is the only password you ever need to make up), and
+starts the service at boot.
 
 > Skipped Step A1? The installer still creates `config.yaml` from the
-> example automatically (and the empty `data/.dashboard_password` file).
-> Run `sudo nano config.yaml`, set the table above, save — the bot reloads
-> the file on its own — then follow Step A1b for the dashboard password
-> and `sudo systemctl restart meshtech-bot`.
+> example automatically. Run `sudo nano config.yaml`, set the table above,
+> and save — the bot reloads the file on its own.
+
+**Step A2b — set or change the dashboard password (one command)**
+
+The dashboard password never lives in `config.yaml` (a copied or leaked
+config would give away the dashboard). It sits in its own file that only the
+bot account can read, and one helper script manages it for you:
+
+```bash
+cd /opt/meshtech-bot
+sudo ./set-password.sh
+```
+
+It asks you to type the password twice (hidden input), writes the file with
+correct permissions, and restarts the bot so the new password is active
+immediately. Run it any time you want to change the password.
+
+(Alternative: set the `MESHTECH_DASHBOARD_PASSWORD` environment variable in
+the service unit — it wins over the file.)
 
 **Step A3 — verify it is running**
 
@@ -232,7 +234,9 @@ cp config.example.yaml config.yaml
 sudo nano config.yaml           # set host/port/channels/admin prefix
 mkdir -p data
 sudo chown 1001:1001 data       # container runs as uid 1001 (meshtech)
-# dashboard password goes in its own file (config.yaml never holds it):
+# dashboard password goes in its own file (config.yaml never holds it).
+# (On a native install you would run  sudo ./set-password.sh  instead - but
+# the container runs as uid 1001, so Docker owners set the file by hand:)
 printf 'your-password\n' > data/.dashboard_password
 sudo chown 1001:1001 data/.dashboard_password
 sudo chmod 600 data/.dashboard_password
@@ -363,8 +367,8 @@ These are the defaults and habits that keep a bot on your LAN boring:
 - **Config never holds secrets** — the dashboard password lives in
   `data/.dashboard_password` (600, bot-account only) or the
   `MESHTECH_DASHBOARD_PASSWORD` environment variable, so pasting or leaking
-  `config.yaml` exposes nothing. Changing the password = edit the file,
-  then restart the bot.
+  `config.yaml` exposes nothing. Set or change it with one command:
+  `sudo ./set-password.sh`.
 - **Admin prefix = exactly 12 hex chars** — `dm.admin_pubkey_prefixes`
   entries are your node's 12-character public-key prefix. Shorter entries
   match many more nodes as admin; the config warns if one is not 12 hex.
@@ -403,5 +407,6 @@ These are the defaults and habits that keep a bot on your LAN boring:
 | `data/bot.db` | SQLite: nodes, messages, routes, overrides, packet capture |
 | `data/packets.jsonl` | append-only packet log for offline analysis |
 | `data/exports/` | CSV exports from `scripts/export_packets.py` |
+| `set-password.sh` | one command to set/change the dashboard password |
 | `/etc/systemd/system/meshtech-bot.service` | the native service unit |
 | `journalctl -u meshtech-bot` | native logs (systemd captures stdout) |

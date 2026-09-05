@@ -149,12 +149,11 @@ web:
   port: 8081
   # The dashboard password lives in its OWN file (first line = password), NOT
   # in this config - so if config.yaml is ever copied, pasted or leaked it
-  # does not carry the password. Create the file once with:
-  #     sudo nano data/.dashboard_password      # type your password, save
-  #     sudo chown meshtech:meshtech data/.dashboard_password
-  #     sudo chmod 600 data/.dashboard_password
-  # Then restart the bot. (Or set the MESHTECH_DASHBOARD_PASSWORD environment
-  # variable instead - it wins over the file.)
+  # does not carry the password. Set it with ONE command (native install):
+  #     sudo ./set-password.sh       # prompts twice, saves, restarts the bot
+  # The installer (install.sh) also asks for it during setup. Or set the
+  # MESHTECH_DASHBOARD_PASSWORD environment variable instead - it wins over
+  # the file.
   password_file: "data/.dashboard_password"   # <-- recommended
   # LEGACY alternative - password stored in this file. Still works, but it
   # travels with config.yaml and the bot warns about it:

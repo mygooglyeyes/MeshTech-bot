@@ -131,9 +131,8 @@ if [[ ! -f config.yaml ]]; then
   log "Creating config.yaml from config.example.yaml ..."
   cp config.example.yaml config.yaml
   warn "Edit config.yaml first! At minimum set connection.host, connection.port,"
-  warn "your channels and admin_pubkey_prefixes. Then set the dashboard password:"
-  warn "    sudo nano $INSTALL_DIR/data/.dashboard_password   # your password on line 1"
-  warn "The installer creates that file below (mode 600, owned by $SERVICE_USER)."
+  warn "your channels and admin_pubkey_prefixes. The installer will also ask"
+  warn "you for a dashboard password (or run:  sudo ./set-password.sh) later."
   warn "Validate with:  sudo -u $SERVICE_USER '$PYTHON' bot.py --check"
 else
   log "config.yaml already present - leaving it untouched."
@@ -147,8 +146,9 @@ chmod 750 "$INSTALL_DIR" "$INSTALL_DIR/data"
 chmod 640 config.yaml config.example.yaml 2>/dev/null || true
 find "$INSTALL_DIR" -type d -exec chmod 750 {} \;
 find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
-# the bot's Python + venv binaries still need to be executable
-chmod 755 "$INSTALL_DIR/bot.py" "$INSTALL_DIR/install.sh" 2>/dev/null || true
+# the bot's Python + helper scripts still need to be executable
+chmod 755 "$INSTALL_DIR/bot.py" "$INSTALL_DIR/install.sh" \
+         "$INSTALL_DIR/set-password.sh" 2>/dev/null || true
 if [[ -d .venv ]]; then
   find .venv -type d -exec chmod 755 {} \;
   find .venv -type f -name 'python*' -exec chmod 755 {} \; 2>/dev/null || true
@@ -156,15 +156,33 @@ if [[ -d .venv ]]; then
 fi
 
 # --- dashboard password file (config.example.yaml points here) -------------------------------
-# config.yaml never stores the dashboard password; this separate file does.
-# Create it empty when missing - the bot then warns until you put your
-# password on the first line (mode 600 = only the bot account and root).
+# config.yaml never stores the dashboard password; this separate file does
+# (mode 600 = only the bot account and root). When the file is empty the
+# installer asks the operator for a password - one question, no nano needed.
 PW_FILE="$INSTALL_DIR/data/.dashboard_password"
 if [[ ! -f "$PW_FILE" ]]; then
-  log "Creating $PW_FILE (dashboard password file - put your password on the first line)."
+  log "Creating $PW_FILE (dashboard password file)."
   : > "$PW_FILE"
-  chown "$SERVICE_USER:$SERVICE_GROUP" "$PW_FILE"
-  chmod 600 "$PW_FILE"
+fi
+chown "$SERVICE_USER:$SERVICE_GROUP" "$PW_FILE"
+chmod 600 "$PW_FILE"
+if [[ ! -s "$PW_FILE" && -t 0 ]]; then
+  echo
+  log "Dashboard password: type a password twice (hidden input, one question):"
+  read -r -s -p "  New dashboard password: " pw1; echo
+  read -r -s -p "  Type it again to confirm: " pw2; echo
+  if [[ -n "$pw1" && "$pw1" == "$pw2" ]]; then
+    printf '%s\n' "$pw1" > "$PW_FILE"
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$PW_FILE"
+    chmod 600 "$PW_FILE"
+    log "Dashboard password saved to $PW_FILE."
+  else
+    warn "Passwords were empty or did not match - set one later with:"
+    warn "    sudo $INSTALL_DIR/set-password.sh"
+  fi
+elif [[ ! -s "$PW_FILE" ]]; then
+  warn "The dashboard password file is empty - set one after installing with:"
+  warn "    sudo $INSTALL_DIR/set-password.sh"
 fi
 
 # --- git safe.directory (avoids the 'dubious ownership' error) -----------------------------
@@ -208,8 +226,9 @@ echo "  Data   :  $INSTALL_DIR/data/  (owned by $SERVICE_USER)"
 echo
 echo "  Next steps:"
 echo "    1. Edit $INSTALL_DIR/config.yaml (host, port, channels, admin prefix)."
-echo "    2. Set the dashboard password:  sudo nano $INSTALL_DIR/data/.dashboard_password"
-echo "       (config changes auto-reload; the dashboard password needs a restart)."
+echo "    2. Set the dashboard password (if you skipped the installer's question):"
+echo "       sudo $INSTALL_DIR/set-password.sh"
+echo "       (config edits auto-reload; the dashboard password needs a restart)."
 echo "    3. Open the dashboard:  http://127.0.0.1:8081"
 echo "    4. Install docs + troubleshooting: $INSTALL_DIR/docs/INSTALL.md"
 echo "=============================================================================="

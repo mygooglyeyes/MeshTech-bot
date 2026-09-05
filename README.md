@@ -53,10 +53,11 @@ Pick one way to run it — full step-by-step instructions for each live in
 1. **Native Linux service (recommended)** — Debian/Ubuntu/Raspberry Pi OS.
    `sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot`
    (`sudo` because `/opt` is system-owned), then `cd /opt/meshtech-bot`, run
-   `sudo ./install.sh` once and edit `config.yaml` (and put the dashboard
-   password in `data/.dashboard_password`): the bot gets its own
-   `meshtech` account, correct file permissions, and a systemd service that
-   starts at boot and restarts on crashes.
+   `sudo ./install.sh` once (it will ask for a dashboard password) and edit
+   `config.yaml`: the bot gets its own `meshtech` account, correct file
+   permissions, and a systemd service that starts at boot and restarts on
+   crashes. Change the dashboard password any time with
+   `sudo ./set-password.sh`.
 2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
    `docker compose up -d --build`. Config and data stay on the host.
 3. **Local development / quick test** (this machine):
@@ -227,9 +228,9 @@ Plain-word canned replies (`replies:` in config.yaml) are **empty by default**
 ## Web dashboard
 
 With `web.enabled: true` open `http://127.0.0.1:8081` on the bot machine
-(or the configured host) and enter the dashboard password (kept in the
-`web.password_file` secrets file — see `config.example.yaml`; a legacy
-inline `web.password` in config.yaml also works but warns). The dashboard shows live
+(or the configured host) and enter the dashboard password — set it once with
+`sudo ./set-password.sh` (it lives in a `web.password_file` secrets file, not
+in `config.yaml`; a legacy inline `web.password` also works but warns). The dashboard shows live
 activity, per-channel mute toggles, the node table with drill-down
 (propagation stats, route snapshots) and per-node **block checkboxes**
 (tick one to ignore every message from that node — blocked senders show
