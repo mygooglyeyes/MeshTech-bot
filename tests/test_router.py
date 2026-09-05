@@ -297,10 +297,10 @@ def test_select_handler_respects_prefix_and_access():
 
 def test_hop_filter_and_listen_only(make_config):
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=1),      # within limit -> reply
-        _channel("Alice: !status", hops=9),      # beyond limit -> no reply
-        _channel("Alice: !status", hops=0, channel="#diagnostics"),  # listen-only
-        _channel("Alice: !status", hops=0, channel="#other"),        # unconfigured
+        _channel("Alice: !2byte", hops=1),      # within limit -> reply
+        _channel("Alice: !2byte", hops=9),      # beyond limit -> no reply
+        _channel("Alice: !2byte", hops=0, channel="#diagnostics"),  # listen-only
+        _channel("Alice: !2byte", hops=0, channel="#other"),        # unconfigured
     ]))
     assert len(sent) == 1
     assert sent[0][0] == "channel"
@@ -309,13 +309,13 @@ def test_hop_filter_and_listen_only(make_config):
 def test_unknown_hops_policy(make_config):
     # unknown hops + policy=ignore -> silent (even for a valid command)
     dropped = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status (ignore-unknown)", hops=None),
+        _channel("Alice: !2byte (ignore-unknown)", hops=None),
     ]))
     assert dropped == []
 
     # unknown hops + policy=respond -> reply is allowed
     responded = asyncio.run(_run_router(
-        make_config, [_channel("Alice: !status (respond-unknown)", hops=None)],
+        make_config, [_channel("Alice: !2byte (respond-unknown)", hops=None)],
         extra={"mesh": {"unknown_hops": "respond"}}))
     assert len(responded) == 1
 
@@ -344,7 +344,7 @@ def test_channel_sender_name_prefix_does_not_block_commands(make_config):
     # The radio embeds '<sender name>: ' in every group message; a command
     # after that prefix must still trigger (regression: !help never matched).
     sent = asyncio.run(_run_router(make_config, [
-        _channel("LoganHome\U0001f3e0: !status", hops=0),
+        _channel("LoganHome\U0001f3e0: !2byte", hops=0),
     ]))
     assert len(sent) == 1
     assert sent[0][0] == "channel"
@@ -378,9 +378,9 @@ def test_channel_sender_name_smart_keeps_likely_message_text(make_config):
 
 
 def test_channel_sender_name_smart_still_splits_real_names(make_config):
-    # "smart": a real "Name: !status" must still split so the command works.
+    # "smart": a real "Name: !2byte" must still split so the command works.
     sent = asyncio.run(_run_router(make_config, [
-        _channel("LoganHome\U0001f3e0: !status", hops=0),
+        _channel("LoganHome\U0001f3e0: !2byte", hops=0),
     ], extra={"mesh": {"channel_sender_name": "smart"}}))
     assert len(sent) == 1
     assert sent[0][0] == "channel"
@@ -389,8 +389,8 @@ def test_channel_sender_name_smart_still_splits_real_names(make_config):
 def test_channel_sender_name_off_never_splits(make_config):
     # "off": no embedded names on this mesh - commands arrive bare.
     sent = asyncio.run(_run_router(make_config, [
-        _channel("LoganHome: !status", hops=0),
-        _channel("!status", hops=0),
+        _channel("LoganHome: !2byte", hops=0),
+        _channel("!2byte", hops=0),
     ], extra={"mesh": {"channel_sender_name": "off"}}))
     assert len(sent) == 1  # only the bare command matches
     assert sent[0][0] == "channel"
@@ -398,7 +398,7 @@ def test_channel_sender_name_off_never_splits(make_config):
 
 def test_global_mute_blocks_replies(make_config):
     sent = asyncio.run(_run_router(
-        make_config, [_channel("Alice: !status", hops=0)],
+        make_config, [_channel("Alice: !2byte", hops=0)],
         prepare=lambda store: store.set_global_mute(True)))
     assert sent == []
 
@@ -411,9 +411,9 @@ def test_dedupe_same_message_answered_once(make_config):
 
 def test_verbosity_defaults_by_channel_and_dm(make_config):
     # The canned 'hello' response is constant; instead verify that a channel
-    # reply for a verbose handler (status) fits one brief message.
+    # reply for a handler fits one brief message.
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),
+        _channel("Alice: !2byte", hops=0),
     ]))
     assert len(sent) == 1
     assert "\n" not in sent[0][2] or len(sent[0][2]) <= 133
@@ -435,7 +435,7 @@ def test_blocked_channel_sender_ignored(make_config):
         store.block_node("aabbccddeeff")
 
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),
+        _channel("Alice: !2byte", hops=0),
     ], prepare=prepare))
     assert sent == []
 
@@ -454,7 +454,7 @@ def test_blocked_then_unblocked_replies_again(make_config):
 def test_unknown_sender_ignored_by_default(make_config):
     # Fail closed: no sender identity -> no answer (default).
     sent = asyncio.run(_run_router(make_config, [
-        _channel("!status", hops=0),                 # no embedded name
+        _channel("!2byte", hops=0),                 # no embedded name
         _dm("!help", sender=None),                  # DM without a prefix
     ]))
     assert sent == []
@@ -463,7 +463,7 @@ def test_unknown_sender_ignored_by_default(make_config):
 def test_unknown_sender_answered_when_opted_in(make_config):
     sent = asyncio.run(_run_router(
         make_config, [
-            _channel("!status", hops=0),
+            _channel("!2byte", hops=0),
             _dm("!help", sender=None),
         ],
         extra={"bot": {"answer_unknown_senders": True}}))
@@ -475,7 +475,7 @@ def test_unknown_sender_answered_when_opted_in(make_config):
 def test_channel_cadence_off_by_default(make_config):
     # Legacy behaviour: two channel commands back to back are both answered.
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),
+        _channel("Alice: !2byte", hops=0),
         _channel("Bob: !2byte", hops=0),
     ]))
     assert len(sent) == 2
@@ -484,7 +484,7 @@ def test_channel_cadence_off_by_default(make_config):
 def test_channel_cadence_paces_each_channel(make_config):
     # With a 60 s cadence on a channel, the second request there is skipped.
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),
+        _channel("Alice: !2byte", hops=0),
         _channel("Bob: !2byte", hops=0),   # too soon on #bot -> silent
     ], extra={"limits": {"channel_interval_seconds": 60.0}}))
     assert len(sent) == 1
@@ -497,9 +497,9 @@ def test_channel_cadence_does_not_starve_other_lanes(make_config):
              "channels": [{"name": "#bot", "reply": True},
                           {"name": "#test", "reply": True}]}
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),                          # #bot: answered
+        _channel("Alice: !2byte", hops=0),                          # #bot: answered
         _channel("Bob: !2byte", hops=0),                             # #bot: cadence -> skip
-        _channel("Carol: !status", hops=0, channel="#test"),        # other channel: answered
+        _channel("Carol: !2byte", hops=0, channel="#test"),        # other channel: answered
         _dm("!status", sender="000011112222"),                     # DM: answered
     ], extra=extra))
     kinds = [entry[0] for entry in sent]
@@ -513,9 +513,9 @@ def test_channel_cadence_per_channel_override(make_config):
              "channels": [{"name": "#bot", "reply": True},
                           {"name": "#test", "reply": True}]}
     sent = asyncio.run(_run_router(make_config, [
-        _channel("Alice: !status", hops=0),                          # #bot: answered
+        _channel("Alice: !2byte", hops=0),                          # #bot: answered
         _channel("Bob: !2byte", hops=0),                             # #bot: cadence -> skip
-        _channel("Carol: !status", hops=0, channel="#test"),        # answered
+        _channel("Carol: !2byte", hops=0, channel="#test"),        # answered
         _channel("Dave: !2byte", hops=0, channel="#test"),          # answered (no cadence)
     ], extra=extra))
     assert len(sent) == 3
