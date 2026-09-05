@@ -116,6 +116,14 @@ class LimitsCfg:
     per_sender_seconds: float = 30.0
     max_reply_length: int = 133
     max_chunks: int = 6
+    # Per-channel reply cadence: at most one bot reply per channel every N
+    # seconds (0 = off, the old behaviour). Stops one busy channel - or a
+    # single noisy node spamming it - from resetting the global reply pace
+    # (min_interval_seconds) and crowding out replies everywhere else.
+    channel_interval_seconds: float = 0.0
+    # Optional per-channel overrides: channel name -> seconds (0 disables
+    # the cadence for that channel). Absent channels use the default above.
+    channel_intervals: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -354,11 +362,40 @@ def load(config_path: str = "config.yaml") -> Settings:
 
     # --- limits ---
     limits_raw = _section(raw, "limits", errors)
+    channel_intervals: Dict[str, float] = {}
+    intervals_raw = limits_raw.get("channel_intervals")
+    if intervals_raw is not None:
+        if not isinstance(intervals_raw, dict):
+            errors.append("'limits.channel_intervals' must be a mapping like "
+                          "{channel: seconds} - e.g. {'#bot': 30}.")
+        else:
+            for name_value, seconds_value in intervals_raw.items():
+                name = str(name_value).strip()
+                if not name.startswith("#"):
+                    name = "#" + name.lstrip("#")
+                try:
+                    seconds = float(seconds_value)
+                except (TypeError, ValueError):
+                    errors.append(f"limits.channel_intervals['{name}'] must be "
+                                  f"a number of seconds (found '{seconds_value}').")
+                    continue
+                if seconds < 0:
+                    errors.append(f"limits.channel_intervals['{name}'] cannot be "
+                                  f"negative (found '{seconds}').")
+                    continue
+                channel_intervals[name] = seconds
+    for interval_name in channel_intervals:
+        if not any(ch.name == interval_name for ch in channels):
+            warnings.append(
+                f"limits.channel_intervals references '{interval_name}' which is not "
+                "in the channels list (check the spelling / leading '#').")
     limits = LimitsCfg(
         min_interval_seconds=max(0.0, _float(limits_raw, "min_interval_seconds", 3.0, errors, "limits.min_interval_seconds")),
         per_sender_seconds=max(0.0, _float(limits_raw, "per_sender_seconds", 30.0, errors, "limits.per_sender_seconds")),
         max_reply_length=max(40, _int(limits_raw, "max_reply_length", 133, errors, "limits.max_reply_length")),
         max_chunks=max(1, _int(limits_raw, "max_chunks", 6, errors, "limits.max_chunks")),
+        channel_interval_seconds=max(0.0, _float(limits_raw, "channel_interval_seconds", 0.0, errors, "limits.channel_interval_seconds")),
+        channel_intervals=channel_intervals,
     )
 
     # --- web ---
@@ -584,6 +621,8 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                     "contact_refresh_minutes": settings.storage.contact_refresh_minutes},
         "limits": {"min_interval_seconds": settings.limits.min_interval_seconds,
                    "per_sender_seconds": settings.limits.per_sender_seconds,
+                   "channel_interval_seconds": settings.limits.channel_interval_seconds,
+                   "channel_intervals": settings.limits.channel_intervals,
                    "max_reply_length": settings.limits.max_reply_length,
                    "max_chunks": settings.limits.max_chunks},
         "web": {"enabled": settings.web.enabled, "host": settings.web.host,

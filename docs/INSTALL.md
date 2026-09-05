@@ -297,9 +297,11 @@ is the only one that needs a config edit first (your node's prefix). Rows 7–8
 are just as important — they verify the bot stays *quiet* when it should,
 which is the whole point of a testing bot.
 
-**Pacing:** the bot rate-limits replies (3 s between any two, 30 s per sender)
-so wait a few seconds between tests. Do rows 1–6 from close range — anything
-arriving over more hops than the limit is intentionally ignored.
+**Pacing:** the bot rate-limits replies (3 s between any two, 30 s per DM
+sender, plus an optional per-channel cadence — see `limits` in
+`config.example.yaml`) so wait a few seconds between tests. Do rows 1–6 from
+close range — anything arriving over more hops than the limit is
+intentionally ignored.
 
 ---
 

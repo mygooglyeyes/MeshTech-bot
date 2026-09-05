@@ -470,3 +470,52 @@ def test_unknown_sender_answered_when_opted_in(make_config):
     # both messages were answered (the DM help reply chunks into several msgs)
     assert any(entry[0] == "channel" for entry in sent)
     assert any(entry[0] == "dm" for entry in sent)
+
+
+def test_channel_cadence_off_by_default(make_config):
+    # Legacy behaviour: two channel commands back to back are both answered.
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !status", hops=0),
+        _channel("Bob: !2byte", hops=0),
+    ]))
+    assert len(sent) == 2
+
+
+def test_channel_cadence_paces_each_channel(make_config):
+    # With a 60 s cadence on a channel, the second request there is skipped.
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !status", hops=0),
+        _channel("Bob: !2byte", hops=0),   # too soon on #bot -> silent
+    ], extra={"limits": {"channel_interval_seconds": 60.0}}))
+    assert len(sent) == 1
+    assert sent[0][0] == "channel"
+
+
+def test_channel_cadence_does_not_starve_other_lanes(make_config):
+    # A busy #bot keeps its own timer; other channels and DMs stay responsive.
+    extra = {"limits": {"channel_interval_seconds": 60.0},
+             "channels": [{"name": "#bot", "reply": True},
+                          {"name": "#test", "reply": True}]}
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !status", hops=0),                          # #bot: answered
+        _channel("Bob: !2byte", hops=0),                             # #bot: cadence -> skip
+        _channel("Carol: !status", hops=0, channel="#test"),        # other channel: answered
+        _dm("!status", sender="000011112222"),                     # DM: answered
+    ], extra=extra))
+    kinds = [entry[0] for entry in sent]
+    assert kinds.count("channel") == 2
+    assert kinds.count("dm") == 1
+
+
+def test_channel_cadence_per_channel_override(make_config):
+    # Only #bot carries a cadence; unlisted channels keep the default (off).
+    extra = {"limits": {"channel_intervals": {"#bot": 60.0}},
+             "channels": [{"name": "#bot", "reply": True},
+                          {"name": "#test", "reply": True}]}
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !status", hops=0),                          # #bot: answered
+        _channel("Bob: !2byte", hops=0),                             # #bot: cadence -> skip
+        _channel("Carol: !status", hops=0, channel="#test"),        # answered
+        _channel("Dave: !2byte", hops=0, channel="#test"),          # answered (no cadence)
+    ], extra=extra))
+    assert len(sent) == 3

@@ -74,6 +74,33 @@ def test_empty_password_file_warns(make_config, tmp_path):
     assert any("is empty" in w for w in settings.warnings)
 
 
+def test_channel_cadence_limits_parse(make_config):
+    path = make_config({"limits": {"channel_interval_seconds": 20.0,
+                                   "channel_intervals": {"#bot": 60, "test": 0}}})
+    settings = load(path)
+    assert settings.limits.channel_interval_seconds == 20.0
+    # a missing '#' is normalised, values become floats
+    assert settings.limits.channel_intervals == {"#bot": 60.0, "#test": 0.0}
+
+
+def test_channel_cadence_default_off(make_config):
+    settings = load(make_config())
+    assert settings.limits.channel_interval_seconds == 0.0
+    assert settings.limits.channel_intervals == {}
+
+
+def test_channel_cadence_unknown_channel_warns(make_config):
+    path = make_config({"limits": {"channel_intervals": {"#nope": 30}}})
+    settings = load(path)
+    assert any("not in the channels list" in w for w in settings.warnings)
+
+
+def test_channel_cadence_bad_value_rejected(make_config):
+    path = make_config({"limits": {"channel_intervals": {"#bot": "soon"}}})
+    with pytest.raises(ConfigError):
+        load(path)
+
+
 def test_legacy_inline_password_warns(make_config):
     path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
                                 "password": "inline-secret"}})

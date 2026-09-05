@@ -230,6 +230,9 @@ class Router:
         self._dedupe = _Dedupe()
         self._last_reply_at = 0.0
         self._last_answer: Dict[str, float] = {}
+        # Last-reply time per channel, for limits.channel_interval_seconds -
+        # one busy channel must not reset the global pace for everyone else.
+        self._last_channel_reply: Dict[str, float] = {}
         self._rebuild_registry()
 
     # ------------------------------------------------------------------ registry
@@ -383,6 +386,19 @@ class Router:
         if now - self._last_reply_at < settings.limits.min_interval_seconds:
             log.debug("Rate limited: too soon since last reply.")
             return
+        # -- per-channel reply cadence: each channel is paced on its own
+        #    timer so a busy channel (or one noisy node spamming it) cannot
+        #    keep resetting the global pace above and crowd out replies on
+        #    other channels or in DMs. 0 / unlisted = no cadence (default).
+        if msg.kind == "channel":
+            lane = self._lane_of(msg)
+            interval = self._channel_interval(lane, settings)
+            if interval > 0:
+                last = self._last_channel_reply.get(lane, 0.0)
+                if now - last < interval:
+                    log.debug("Channel %s reply cadence: too soon since the "
+                              "last reply there (%.0fs interval).", lane, interval)
+                    return
         if msg.kind == "dm" and msg.sender_prefix and not is_admin:
             last = self._last_answer.get(msg.sender_prefix, 0.0)
             if now - last < settings.limits.per_sender_seconds:
@@ -462,6 +478,26 @@ class Router:
             return False
         return True
 
+    # ------------------------------------------------------------------ lanes
+
+    @staticmethod
+    def _lane_of(msg: InboundMessage) -> str:
+        """Which reply lane a message belongs to (its channel name)."""
+        if msg.channel_name:
+            return msg.channel_name
+        if msg.channel_idx is not None:
+            return f"#ch{msg.channel_idx}"
+        return "#?"
+
+    @staticmethod
+    def _channel_interval(lane: str, settings: Settings) -> float:
+        """Reply cadence for one channel: per-channel override or the global
+        default (0 = off)."""
+        overrides = settings.limits.channel_intervals or {}
+        if lane in overrides:
+            return max(0.0, float(overrides[lane]))
+        return max(0.0, float(settings.limits.channel_interval_seconds))
+
     # ------------------------------------------------------------------ outbound
 
     @staticmethod
@@ -495,7 +531,10 @@ class Router:
                     sent += 1
                     await asyncio.sleep(0.2)
         if sent:
-            self._last_reply_at = time.time()
+            now = time.time()
+            self._last_reply_at = now
+            if ctx.msg.kind == "channel":
+                self._last_channel_reply[self._lane_of(ctx.msg)] = now
             if ctx.msg.kind == "dm" and ctx.msg.sender_prefix:
-                self._last_answer[ctx.msg.sender_prefix] = time.time()
+                self._last_answer[ctx.msg.sender_prefix] = now
             log.info("OUT %s: %s", ctx.sender_display(), _log_line(text))

@@ -123,8 +123,19 @@ replies: []
 
 # --- Limits (keep the mesh happy) ------------------------------------------------
 limits:
-  min_interval_seconds: 3    # minimum gap between any two bot replies
-  per_sender_seconds: 30     # ignore repeat requests from the same node
+  min_interval_seconds: 3    # minimum gap between ANY two bot replies (airtime floor)
+  per_sender_seconds: 30     # ignore repeat DM requests from the same node
+  # Per-channel reply cadence: at most ONE bot reply per channel every N
+  # seconds (0 = off, the default). This stops one busy channel - or a single
+  # noisy node spamming it - from resetting the global reply pace above and
+  # crowding out replies on every other channel. Reply pacing then happens
+  # per channel, so other channels and DMs stay responsive.
+  channel_interval_seconds: 0
+  # Optional per-channel overrides (channel -> seconds; 0 disables for that
+  # channel). Unlisted channels use channel_interval_seconds above:
+  # channel_intervals:
+  #   "#bot": 30
+  #   "#test": 0
   max_reply_length: 133      # MeshCore text limit per message
   max_chunks: 6              # max messages one reply may be split into
 
