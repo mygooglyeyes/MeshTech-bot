@@ -22,6 +22,10 @@ connection:
 bot:
   advertise_on_start: true  # send a flood advert at startup so other nodes can
                             # find the bot in their contact list and DM it
+  display_name: "me"        # FALLBACK name used in replies (e.g. the last hop
+                            # of the !pathx relay chain) when the bot cannot
+                            # learn its companion's name. The openHop companion's
+                            # node_name is used automatically when available.
   # When the bot cannot identify who sent a message, stay silent.
   #   false (default) = don't answer unknown senders (recommended)
   #   true            = answer anyway - only for meshes where sender

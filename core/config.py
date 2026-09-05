@@ -41,6 +41,8 @@ class BotCfg:
     # (DM without a sender prefix, channel message with no embedded
     # sender name), stay silent. Set True to answer anyway.
     answer_unknown_senders: bool = False
+    # How the bot names itself in replies (e.g. the !pathx chain's last hop).
+    display_name: str = "me"
 
 
 @dataclass
@@ -217,6 +219,7 @@ def load(config_path: str = "config.yaml") -> Settings:
     bot = BotCfg(
         advertise_on_start=_bool(bot_raw, "advertise_on_start", True, errors, "bot.advertise_on_start"),
         answer_unknown_senders=_bool(bot_raw, "answer_unknown_senders", False, errors, "bot.answer_unknown_senders"),
+        display_name=_text(bot_raw, "display_name", "me", errors, "bot.display_name"),
     )
 
     # --- mesh ---
@@ -492,7 +495,8 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
             "reconnect": settings.connection.reconnect,
         },
         "bot": {"advertise_on_start": settings.bot.advertise_on_start,
-                 "answer_unknown_senders": settings.bot.answer_unknown_senders},
+                 "answer_unknown_senders": settings.bot.answer_unknown_senders,
+                 "display_name": settings.bot.display_name},
         "mesh": {"max_inbound_hops": settings.mesh.max_inbound_hops,
                  "unknown_hops": settings.mesh.unknown_hops,
                  "channel_sender_name": settings.mesh.channel_sender_name},

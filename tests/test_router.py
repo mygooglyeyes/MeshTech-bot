@@ -173,6 +173,18 @@ def test_expand_glued_x():
     assert expand_glued_x(["x"], True, handlers) == ["x"]                    # bare !x untouched
 
 
+def test_bot_display_name_priority():
+    from handlers.meshinfo import bot_display_name
+    from core.config import BotCfg
+    settings = type("S", (), {"bot": BotCfg(display_name="meshtech-bot")})()
+    # companion name wins when the client has learned it
+    assert bot_display_name(type("C", (), {"own_name": "loganbot"})(), settings) == "loganbot"
+    # ...else the config override...
+    assert bot_display_name(type("C", (), {"own_name": ""})(), settings) == "meshtech-bot"
+    # ...else the default
+    assert bot_display_name(None, type("S", (), {"bot": BotCfg()})()) == "me"
+
+
 def test_format_rxlog_chain():
     from handlers.meshinfo import format_rxlog_chain
     copies = [
@@ -181,18 +193,20 @@ def test_format_rxlog_chain():
         {"ts": 100.902, "plen": 7, "snr": 4.75, "hash_size": 2,
          "path": "faae3d446cd3800893181b9d66e1"},
     ]
-    lines = format_rxlog_chain("LoganBot", hops=7, snr=4.75, delay_ms=340, copies=copies)
-    # closest to the bot first, newly-heard relays annotated, sender at the end
-    assert lines[0] == ("66(SNR 4.8, 902ms) -> 1b(SNR 12.0, 0ms) -> 93 -> 80 "
-                        "-> 6c -> 3d -> fa -> LoganBot")
-    assert lines[1] == "7 hop(s) RX 4.8 dB 340 ms to me"
+    lines = format_rxlog_chain("LoganBot", "me", hops=7, snr=4.75,
+                               delay_ms=340, copies=copies)
+    # sender first, relays in travel order, bot last; travel time on the pipe
+    assert lines[0] == ("[LoganBot] -> [fa] -> [3d] -> [6c] -> [80] -> [93] -> [1b] "
+                        "-> [66] -> [me] | travel time 340 ms to me")
+    assert lines[1] == "4.8 dB | 7 hop(s)"
 
 
 def test_format_rxlog_chain_direct_or_unknown():
     from handlers.meshinfo import format_rxlog_chain
-    lines = format_rxlog_chain("LoganBot", hops=0, snr=12.25, delay_ms=88, copies=[])
-    assert lines[0] == "LoganBot -> me"
-    assert "0 hop(s)" in lines[1] and "88 ms" in lines[1]
+    lines = format_rxlog_chain("LoganBot", "loganbot", hops=0, snr=12.25,
+                               delay_ms=88, copies=[])
+    assert lines[0] == "[LoganBot] -> [loganbot] | travel time 88 ms to me"
+    assert lines[1] == "12.2 dB | 0 hop(s)"
 
 
 def test_pathx_uses_rxlog_relay_chain(make_config):
@@ -217,8 +231,18 @@ def test_pathx_uses_rxlog_relay_chain(make_config):
     ], prepare=prepare))
     assert len(sent) == 1
     reply = sent[0][2]
-    assert "33(SNR 9.0, 150ms) -> 11(SNR 10.5, 0ms) -> 00" in reply
+    # sender (00 = first 2 chars of unknown prefix) -> relays in log order -> bot
+    assert "[00] -> [11] -> [33] -> [me]" in reply
     assert "2 hop(s)" in reply
+
+
+def test_path_brief_compact_line(make_config):
+    now = time.time()
+    msg = _msg("dm", "!path", sender="000011112222", hops=2)
+    msg.sender_ts = now - 0.340
+    msg.snr = -8.2
+    sent = asyncio.run(_run_router(make_config, [msg]))
+    assert sent and sent[0][2] == "2 hop(s) to [me] | -8.2 dB | 340 ms"
 
 
 def test_path_public_but_nodes_and_stats_restricted(make_config):

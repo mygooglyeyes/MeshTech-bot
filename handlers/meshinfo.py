@@ -17,27 +17,28 @@ from core.models import HandlerResult
 from .base import Handler
 
 
-def format_rxlog_chain(sender_label: str, hops: Optional[int], snr: Optional[float],
-                       delay_ms: Optional[int], copies: List[dict]) -> List[str]:
+def bot_display_name(client, settings) -> str:
+    """The bot's own name for replies: the openHop companion's node name
+    when available, else the config override (bot.display_name), else "me"."""
+    own = (getattr(client, "own_name", "") or "").strip(" \x00")
+    if own:
+        return own
+    return settings.bot.display_name or "me"
+
+
+def format_rxlog_chain(sender_label: str, bot_label: str, hops: Optional[int],
+                       snr: Optional[float], delay_ms: Optional[int],
+                       copies: List[dict]) -> List[str]:
     """Relay-chain report for !pathx, mined from RX_LOG capture copies.
 
     copies: parsed RX_LOG rows for the message's packet, each with path
-    (hex), plen, hash_size, snr and ts. Relays are identified by their
-    path hash (first two hex chars - names are not in the protocol) and
-    listed closest to the bot first; when the same flood was heard several
-    times, each newly-heard relay carries the SNR and arrival offset of its
-    retransmission. Sender is named at the far end. Returns 1-2 lines.
-    """
-    def _totals() -> str:
-        parts = []
-        if hops is not None:
-            parts.append(f"{hops} hop(s)")
-        if snr is not None:
-            parts.append(f"RX {snr:.1f} dB")
-        if delay_ms is not None:
-            parts.append(f"{delay_ms} ms to me")
-        return " ".join(parts)
+    (hex), plen and hash_size. Relays are identified by their path hash
+    (first two hex chars - names are not in the protocol) and listed in
+    travel order from the sender to the bot:
 
+        LoganBot -> 41 -> d6 -> 0b -> 70 -> 66 -> 1b -> me | travel time 340 ms to me
+        11.5 dB | 7 hop(s)
+    """
     # The decoded message matches the deepest (final) copy of its packet.
     deep = max(copies, key=lambda c: (c.get("plen") or 0, c.get("ts") or 0)) if copies else None
     path_hex = (deep or {}).get("path") or ""
@@ -46,33 +47,17 @@ def format_rxlog_chain(sender_label: str, hops: Optional[int], snr: Optional[flo
     ids = [path_hex[i:i + step][:2] for i in range(0, len(path_hex), step)]
     ids = [i for i in ids if i]
 
-    if not ids:
-        # Direct reception, or no correlating radio log - endpoints only.
-        line = f"{sender_label} -> me"
-        totals = _totals()
-        return [line] + ([totals] if totals else [])
+    chain = " -> ".join([f"[{sender_label}]"]
+                        + [f"[{i}]" for i in ids]
+                        + [f"[{bot_label}]"])
+    if delay_ms is not None:
+        chain += f" | travel time {delay_ms} ms to me"
 
-    # Heard retransmissions: each additional copy appended one relay (the
-    # transmitter we heard), exposing its SNR + arrival offset.
-    heard: dict = {}
-    base_ts = min((c.get("ts") or 0) for c in copies)
-    seen_plen = set()
-    for c in sorted(copies, key=lambda c: c.get("ts") or 0):
-        plen = c.get("plen")
-        if plen is None or plen in seen_plen or plen < 1 or plen > len(ids):
-            continue
-        seen_plen.add(plen)
-        bits = []
-        if c.get("snr") is not None:
-            bits.append(f"SNR {c['snr']:.1f}")
-        bits.append(f"{int(round(((c.get('ts') or 0) - base_ts) * 1000))}ms")
-        heard[plen - 1] = "(" + ", ".join(bits) + ")"
-
-    segments = [ids[idx] + heard.get(idx, "") for idx in range(len(ids) - 1, -1, -1)]
-    segments.append(sender_label)
-    line = " -> ".join(segments)
-    totals = _totals()
-    return [line] + ([totals] if totals else [])
+    stats = " | ".join(part for part in (
+        f"{snr:.1f} dB" if snr is not None else None,
+        f"{hops} hop(s)" if hops is not None else None,
+    ) if part)
+    return [chain] + ([stats] if stats else [])
 
 
 class MeshInfoHandler(Handler):
@@ -215,29 +200,27 @@ class MeshInfoHandler(Handler):
                                       "the dashboard.")
         sender_name = sender_name or store.resolve_name(prefix)
         hops_now = ctx.msg.hops
-        history = store.link_history(prefix,
-                                     limit=8 if ctx.verbosity == "full" else 3)
-
-        if ctx.verbosity == "brief":
-            hop_txt = f"{hops_now} hop(s)" if hops_now is not None else "hops unknown"
-            lines = [f"{self._short_label(store, prefix, sender_name)}: "
-                     f"path to bot = {hop_txt}"]
-            if history:
-                latest = history[0]
-                h = str(latest["hops"]) if latest.get("hops") is not None else "?"
-                snr = f"{latest['snr']:.0f} dB" if latest.get("snr") is not None else "-"
-                lines.append(f"latest: {h} hop(s), SNR {snr} "
-                             f"({rel_time(latest['ts'], ctx.now)})")
-            lines.append("!pathx for the relay chain")
-            return HandlerResult(kind="text", data="\n".join(lines))
-
-        # Extended: relay chain straight from the raw radio log.
-        copies = store.rxlog_copies(ctx.msg.recv_ts, hops_now)
+        bot_label = bot_display_name(ctx.service.client, ctx.settings)
         delay_ms = None
         if ctx.msg.sender_ts and ctx.msg.recv_ts:
             delay_ms = max(0, int(round((ctx.msg.recv_ts - ctx.msg.sender_ts) * 1000)))
+
+        if ctx.verbosity == "brief":
+            # Compact one-liner: hops to [bot] | dB | travel time - no labels.
+            parts = []
+            if hops_now is not None:
+                parts.append(f"{hops_now} hop(s) to [{bot_label}]")
+            if ctx.msg.snr is not None:
+                parts.append(f"{ctx.msg.snr:.1f} dB")
+            if delay_ms is not None:
+                parts.append(f"{delay_ms} ms")
+            return HandlerResult(kind="text", data=" | ".join(parts))
+
+        # Extended: relay chain straight from the raw radio log.
+        copies = store.rxlog_copies(ctx.msg.recv_ts, hops_now)
         lines = format_rxlog_chain(
             sender_label=self._short_label(store, prefix, sender_name),
+            bot_label=bot_label,
             hops=hops_now, snr=ctx.msg.snr, delay_ms=delay_ms, copies=copies)
         return HandlerResult(kind="text", data="\n".join(lines))
 

@@ -41,6 +41,9 @@ class RadioClient:
         self.feed: FeedHub = service.feed
         self.mc: Optional[MeshCore] = None
         self.is_connected = False
+        # The companion's own node name (read from the SELF_INFO the openHop
+        # companion sends at connect) - how the bot presents itself in replies.
+        self.own_name: str = ""
         self._slot_info: Dict[int, dict] = {}
         self._on_inbound: Optional[Callable[[InboundMessage], Awaitable[None]]] = None
         self._contact_sync_again_at = 0.0
@@ -85,6 +88,11 @@ class RadioClient:
         self.mc = mc
         self.is_connected = True
         log.info("Connected to %s:%s", cfg.host, cfg.port)
+
+        # openHop names its companion (node_name) - use that as our own name.
+        self.own_name = str((mc.self_info() or {}).get("name") or "").strip(" \x00")
+        if self.own_name:
+            log.info("Companion node name: %s", self.own_name)
 
         await self._try("set device time",
                          lambda: mc.commands.set_time(int(time.time())))
