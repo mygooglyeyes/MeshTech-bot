@@ -11,7 +11,7 @@ Open an issue on GitHub. Say:
 2. **What happened** — paste the error text or the bot log lines.
 3. **What you expected** — one sentence is fine.
 4. **Your setup** — Linux or Docker, and the bot version (shown in the
-   dashboard header and in the startup log, e.g. `v0.0.2`).
+   dashboard header and in the startup log, e.g. `v0.0.003`).
 
 Include the config section that matters (a password or key is never
 needed — leave those out).
