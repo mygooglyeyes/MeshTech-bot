@@ -416,7 +416,10 @@ class Router:
             return
 
         reply_text = self._render(handler, result, verbosity)
-        await self._send_reply(ctx, reply_text)
+        # kind="dm_text" forces the reply out as a DM to the sender, even
+        # when the command arrived on a channel (used by !dm).
+        await self._send_reply(ctx, reply_text,
+                               force_dm=(result.kind == "dm_text"))
 
     # ------------------------------------------------------------------ guards
 
@@ -508,7 +511,8 @@ class Router:
         lines = handler.render_lines(result, verbosity)
         return "\n".join(lines)
 
-    async def _send_reply(self, ctx: RouterCtx, text: str) -> None:
+    async def _send_reply(self, ctx: RouterCtx, text: str,
+                          force_dm: bool = False) -> None:
         settings = self.service.settings
         width = settings.limits.max_reply_length
         messages = chunk_text(text, width, settings.limits.max_chunks)
@@ -519,7 +523,23 @@ class Router:
             log.warning("No radio client attached; reply dropped.")
             return
         sent = 0
-        if ctx.msg.kind == "channel":
+        dm_target = None
+        if force_dm:
+            # The sender of a channel message is identified by the embedded
+            # name - resolve it to a registry node prefix to address the DM.
+            dm_target = ctx.msg.sender_prefix
+            if not dm_target and ctx.msg.sender_name:
+                node = self.service.store.find_node(ctx.msg.sender_name)
+                dm_target = node["prefix"] if node else None
+            if not dm_target:
+                log.warning("!dm reply dropped: cannot resolve sender of %s.",
+                            ctx.msg.kind)
+                return
+            for message in messages:
+                if await client.send_dm(dm_target, message):
+                    sent += 1
+                    await asyncio.sleep(0.2)
+        elif ctx.msg.kind == "channel":
             idx = ctx.msg.channel_idx
             for message in messages:
                 if await client.send_channel(idx, message):
@@ -537,4 +557,6 @@ class Router:
                 self._last_channel_reply[self._lane_of(ctx.msg)] = now
             if ctx.msg.kind == "dm" and ctx.msg.sender_prefix:
                 self._last_answer[ctx.msg.sender_prefix] = now
+            if force_dm and dm_target:
+                self._last_answer[dm_target] = now
             log.info("OUT %s: %s", ctx.sender_display(), _log_line(text))

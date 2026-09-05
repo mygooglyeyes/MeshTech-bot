@@ -92,6 +92,7 @@ packet capture views, and reload/shutdown buttons. Blocks survive restarts.
 | Command | Who | What it does |
 |---|---|---|
 | `!help` | anyone | List commands |
+| `!dm` | anyone | The bot DMs you back, starting a direct thread |
 | `!status` / `!status x` | DM | Bot health, channels, counters |
 | `!2byte` | anyone | Share of nodes using 2-byte path hashes (bar chart) |
 | `!nodes` / `!nodes x` | DM | Known nodes from the database |

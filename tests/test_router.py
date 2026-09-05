@@ -529,3 +529,37 @@ def test_channel_cadence_per_channel_override(make_config):
         _channel("Dave: !2byte", hops=0, channel="#test"),          # answered (no cadence)
     ], extra=extra))
     assert len(sent) == 3
+
+
+# ------------------------------------------------------------- !dm
+
+def test_dm_command_on_channel_replies_by_dm(make_config):
+    # "Hilltop-1: !dm" on a channel -> the bot DMs Hilltop-1 back, using the
+    # prefix resolved from the node registry (not a channel reply).
+    def seed(store):
+        store.upsert_node("aabbccddeeff001122334455", name="Hilltop-1")
+    sent = asyncio.run(_run_router(
+        make_config, [_channel("Hilltop-1: !dm", hops=0)], prepare=seed))
+    assert len(sent) == 1
+    kind, target, text = sent[0]
+    assert kind == "dm"
+    assert target == "aabbccddeeff"
+    assert "DM from" in text
+
+
+def test_dm_command_in_dm_replies_inline(make_config):
+    # Already inside a DM: no magic needed, just confirm.
+    sent = asyncio.run(_run_router(make_config, [_dm("!dm", hops=0)]))
+    assert len(sent) == 1
+    kind, target, text = sent[0]
+    assert kind == "dm"
+    assert target == "aabbccddeeff"
+    assert "Already in a DM" in text
+
+
+def test_dm_command_with_unknown_sender_stays_silent(make_config):
+    # The channel sender's embedded name does not resolve to a known node,
+    # so the bot cannot address a DM to them - and must not spam the channel.
+    sent = asyncio.run(_run_router(
+        make_config, [_channel("Stranger: !dm", hops=0)]))
+    assert sent == []
