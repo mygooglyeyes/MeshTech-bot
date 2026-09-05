@@ -175,6 +175,38 @@ def test_summary_hops_snr_senders(tmp_path):
     assert int(body[0][1]) == 2
 
 
+def test_csv_formula_injection_neutralised(tmp_path):
+    """Cells starting with =/+/-/@ (radio-controlled text, senders) must
+    not survive as live formulas in spreadsheets (CWE-1236)."""
+    db = str(tmp_path / "packets.db")
+    store = Store(db)
+    try:
+        store.add_packet(HOUR_A, "decoded", "in", "CHANNEL_MSG_RECV",
+                         sender="=HYPERLINK(\"http://evil\")", hops=1,
+                         channel_name="#bot", text="+SUM(A1:A9)")
+        store.add_packet(HOUR_A + 60, "decoded", "in", "CHANNEL_MSG_RECV",
+                         sender="-2+3", hops=1, text="@cmd")
+    finally:
+        store.close()
+    out = tmp_path / "out"
+    export_packets.export_packets(db, str(out))
+
+    body = _read(out / "packets.csv")[1:]
+    for row in body:
+        assert all(not cell.startswith(("=", "+", "-", "@")) for cell in row)
+        assert all(cell.startswith("'") for cell in row
+                   if cell.startswith(("'", "=", "+", "-", "@")))
+    # the payload text survived with its leading apostrophe guard
+    texts = {r[11] for r in body}
+    assert "'+SUM(A1:A9)" in texts
+    assert "'@cmd" in texts
+    senders = {r[6] for r in body}
+    assert "'=HYPERLINK(\"http://evil\")" in senders
+    # summary_senders.csv is neutralised the same way
+    send_rows = _read(out / "summary_senders.csv")[1:]
+    assert all(r[0].startswith("'") for r in send_rows)
+
+
 def test_packets_only_skips_summaries(tmp_path):
     db = str(tmp_path / "packets.db")
     _populate(db)

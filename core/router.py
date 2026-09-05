@@ -27,6 +27,16 @@ from .service import BotService
 log = logging.getLogger("meshtech-bot.router")
 
 
+def _log_line(text: str, limit: int = 80) -> str:
+    """Radio text made safe for one log line.
+
+    Message bodies are attacker-controlled (anyone on the mesh); collapsing
+    every run of whitespace to a single space stops embedded newlines/tabs
+    from forging extra log lines or faking journalctl entries.
+    """
+    return " ".join((text or "").split())[:limit]
+
+
 # --------------------------------------------------------------------------
 # Pure parsing helpers (unit-testable without a radio)
 # --------------------------------------------------------------------------
@@ -301,13 +311,13 @@ class Router:
         log.info("IN %s%s: %s%s", msg.kind,
                  f" {msg.channel_name}" if msg.channel_name else
                  (f" from {msg.sender_prefix}" if msg.sender_prefix else ""),
-                 msg.text[:80], f" (hops={msg.hops})" if msg.hops is not None else "")
+                 _log_line(msg.text), f" (hops={msg.hops})" if msg.hops is not None else "")
 
         # -- blocked node: operator marked this sender to be ignored entirely
         blocked_by = self._blocked_identity(msg, settings)
         if blocked_by is not None:
             log.info("Ignoring message from blocked node %s: %s",
-                     blocked_by, msg.text[:60])
+                     blocked_by, _log_line(msg.text, 60))
             self.service.feed.publish("dropped", {
                 "reason": "node blocked",
                 "kind": msg.kind,
@@ -334,7 +344,7 @@ class Router:
         # -- unknown sender: fail closed unless the operator opted in
         if not settings.bot.answer_unknown_senders and not self._sender_known(msg, settings):
             log.info("Ignoring message from unknown sender (%s): %s",
-                     msg.kind, msg.text[:60])
+                     msg.kind, _log_line(msg.text, 60))
             self.service.feed.publish("dropped", {
                 "reason": "unknown sender",
                 "kind": msg.kind,
@@ -441,7 +451,7 @@ class Router:
             return False
         if msg.hops > limit:
             log.info("Ignoring message %d hop(s) away (limit %d): %s",
-                     msg.hops, limit, msg.text[:60])
+                     msg.hops, limit, _log_line(msg.text, 60))
             self.service.feed.publish("dropped", {
                 "reason": f"hops {msg.hops} > limit {limit}",
                 "kind": msg.kind,
@@ -488,4 +498,4 @@ class Router:
             self._last_reply_at = time.time()
             if ctx.msg.kind == "dm" and ctx.msg.sender_prefix:
                 self._last_answer[ctx.msg.sender_prefix] = time.time()
-            log.info("OUT %s: %s", ctx.sender_display(), text[:80].replace("\n", " / "))
+            log.info("OUT %s: %s", ctx.sender_display(), _log_line(text))

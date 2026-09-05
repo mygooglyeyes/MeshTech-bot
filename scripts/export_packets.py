@@ -48,6 +48,18 @@ _PACKET_COLUMNS = ["id", "ts_iso", "ts", "layer", "direction", "frame_type",
 
 _HOP_BUCKETS: List[Any] = [0, 1, 2, 3, "4+"]
 
+# CSV cells starting with these characters are interpreted as formulas by
+# Excel/LibreOffice/Google Sheets. Mesh traffic (message text, sender
+# names) is attacker-controlled, so such cells are neutralised with a
+# leading apostrophe (CWE-1236). Numeric cells are unaffected.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_cell(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
 
 def _iso(ts: Optional[float]) -> str:
     if ts is None:
@@ -131,7 +143,7 @@ def export_packets(db_path: str, out_dir: str,
                 ts = row["ts"]
                 # insert the human-readable timestamp right after the id
                 values.insert(1, _iso(ts))
-                writer.writerow(values)
+                writer.writerow([_csv_cell(v) for v in values])
                 rows_written += 1
                 if not include_summaries:
                     continue
@@ -227,7 +239,7 @@ def export_packets(db_path: str, out_dir: str,
         writer.writerow(["sender", "frames"])
         for sender, count in sorted(sender_counts.items(),
                                     key=lambda kv: (-kv[1], kv[0])):
-            writer.writerow([sender, count])
+            writer.writerow([_csv_cell(sender), count])
     files.append(str(summary_path))
 
     # --- path hash size: how senders address path nodes ------------------------

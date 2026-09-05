@@ -15,9 +15,20 @@ WorkingDirectory={INSTALL_DIR}
 ExecStart={PYTHON} bot.py
 Restart=on-failure
 RestartSec=5
-# Small hardening without breaking the install:
+# Hardening: the bot only needs to write its data folder at runtime, so
+# the whole install (code, venv, config) is mounted read-only for it.
+# Flags are conservative - unknown options on older systemd are ignored.
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths={INSTALL_DIR}/data
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target

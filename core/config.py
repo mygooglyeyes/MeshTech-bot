@@ -275,6 +275,14 @@ def load(config_path: str = "config.yaml") -> Settings:
                 admin_prefixes.append(item.strip().lower())
     if not admin_prefixes:
         warnings.append("dm.admin_pubkey_prefixes is empty - no node can run admin commands yet. " + DEFAULT_ADMIN_HELP)
+    else:
+        for pfx in admin_prefixes:
+            if len(pfx) != 12 or any(c not in "0123456789abcdef" for c in pfx):
+                warnings.append(
+                    f"dm.admin_pubkey_prefixes entry '{pfx}' is not a 12-character hex "
+                    "prefix. Shorter or non-hex prefixes match many more nodes as "
+                    "admin - use the first 12 hex chars of the node's public key "
+                    "(ask '!nodes' or open the web dashboard to find it).")
     dm = DmCfg(enabled=_bool(dm_raw, "enabled", True, errors, "dm.enabled"),
                admin_pubkey_prefixes=admin_prefixes)
 
@@ -355,9 +363,14 @@ def load(config_path: str = "config.yaml") -> Settings:
         port=_int(web_raw, "port", 8081, errors, "web.port"),
         password=str(web_raw.get("password", "") or ""),
     )
-    if web.enabled and web.host not in ("127.0.0.1", "localhost", "::1") and not web.password:
-        warnings.append("web.host is not loopback and web.password is empty - the dashboard "
-                        "will be open to your whole network. Set a password!")
+    if web.enabled and web.host not in ("127.0.0.1", "localhost", "::1"):
+        if not web.password:
+            warnings.append("web.host is not loopback and web.password is empty - the dashboard "
+                            "will be open to your whole network. Set a password!")
+        else:
+            warnings.append("web.host is not loopback - the dashboard password and traffic "
+                            "travel as plaintext HTTP over your network. Consider a TLS "
+                            "reverse proxy (nginx/caddy) if the LAN is not fully trusted.")
 
     # --- logging ---
     log_raw = _section(raw, "logging", errors)

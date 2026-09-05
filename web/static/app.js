@@ -122,7 +122,11 @@ function connectWs() {
   const seq = wsSeq;
   if (ws) try { ws.close(); } catch (e) { /* ignore */ }
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") +
-                     location.host + "/ws?token=" + encodeURIComponent(token));
+                     location.host + "/ws");
+  // The token travels as the first frame, never in the URL - so it cannot
+  // end up in browser history, access logs or proxy logs. The server
+  // closes with 4401 if the token is missing/invalid.
+  ws.onopen = () => { try { ws.send(JSON.stringify({ token })); } catch (e) { /* ignore */ } };
   ws.onmessage = (event) => {
     try { handleFeedEvent(JSON.parse(event.data)); } catch (e) { /* ignore */ }
   };

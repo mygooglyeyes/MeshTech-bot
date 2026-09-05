@@ -7,6 +7,32 @@ import yaml
 from core.config import ConfigError, load, sanitized_snapshot
 
 
+def test_short_admin_prefix_warns(make_config):
+    path = make_config({"dm": {"admin_pubkey_prefixes": ["abcd"]}})
+    settings = load(path)
+    assert any("12-character hex" in w for w in settings.warnings)
+
+
+def test_nonhex_admin_prefix_warns(make_config):
+    path = make_config({"dm": {"admin_pubkey_prefixes": ["zzzyyyxxxwww"]}})
+    settings = load(path)
+    assert any("12-character hex" in w for w in settings.warnings)
+
+
+def test_open_dashboard_warns_without_password(make_config):
+    path = make_config({"web": {"enabled": True, "host": "0.0.0.0",
+                                "password": ""}})
+    settings = load(path)
+    assert any("Set a password" in w for w in settings.warnings)
+
+
+def test_plaintext_dashboard_warns_with_password(make_config):
+    path = make_config({"web": {"enabled": True, "host": "0.0.0.0",
+                                "password": "topsecret"}})
+    settings = load(path)
+    assert any("plaintext" in w for w in settings.warnings)
+
+
 def test_loads_valid_config(make_config):
     path = make_config()
     settings = load(path)

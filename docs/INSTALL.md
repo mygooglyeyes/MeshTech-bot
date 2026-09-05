@@ -319,6 +319,36 @@ docker compose down && docker rmi meshtech-bot:latest
 
 ---
 
+## Security checklist
+
+These are the defaults and habits that keep a bot on your LAN boring:
+
+- **Dashboard password** — always set a real `web.password`. The bot refuses
+  nothing: with the dashboard on `0.0.0.0` and an empty password it is open
+  to your whole network, and the installer warns about this on purpose.
+- **Loopback is the safe default.** Leave `web.host` at `127.0.0.1` unless
+  you really need the dashboard from another device — the radio side of
+  the bot does not care where the dashboard listens.
+- **Plaintext on the LAN.** When you do bind the dashboard to the network,
+  the password and page travel as plaintext HTTP (anyone on the LAN could
+  sniff them). A TLS reverse proxy (nginx/caddy) in front of port 8081 is
+  the clean fix; the config warns about this too.
+- **Login attempts are throttled** — after a few wrong dashboard passwords
+  from one IP, further tries are refused for several minutes (429).
+- **Admin prefix = exactly 12 hex chars** — `dm.admin_pubkey_prefixes`
+  entries are your node's 12-character public-key prefix. Shorter entries
+  match many more nodes as admin; the config warns if one is not 12 hex.
+- **The service is sandboxed** — it runs as the unprivileged `meshtech`
+  account with the install folder mounted read-only at runtime; only
+  `data/` is writable (systemd hardening in `deploy/meshtech-bot.service`).
+- **CSV exports are formula-safe** — radio text can contain anything, so
+  exported cells that would start a spreadsheet formula (`=`, `+`, `-`, …)
+  are neutralised by `scripts/export_packets.py` before they reach Excel.
+- **Blocking is reversible** — mute a node with the dashboard checkbox or
+  by name; nothing deletes captured data.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |

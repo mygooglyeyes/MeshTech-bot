@@ -21,11 +21,16 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse
 
-from .auth import Auth
+from .auth import Auth, LoginThrottle
 
 log = logging.getLogger("meshtech-bot.web")
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+# All dashboard POST bodies are small JSON documents; refuse anything bigger
+# so a LAN peer cannot exhaust memory with a giant request to /api/login.
+_MAX_BODY_BYTES = 32 * 1024
+_WS_AUTH_TIMEOUT = 15.0
 
 
 # --------------------------------------------------------------------------
@@ -35,9 +40,19 @@ _STATIC_DIR = Path(__file__).parent / "static"
 def build_app(service) -> FastAPI:
     auth = Auth(service.settings.web.password)
     store = service.store
+    login_throttle = LoginThrottle()
     app = FastAPI(title="MeshTech-Bot", docs_url=None, redoc_url=None)
 
     # ------------------------------------------------------------- helpers
+
+    @app.middleware("http")
+    async def limit_body_size(request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length is not None and content_length.isdigit() \
+                and int(content_length) > _MAX_BODY_BYTES:
+            return JSONResponse({"ok": False, "error": "Request too large"},
+                                status_code=413)
+        return await call_next(request)
 
     def require_auth(request: Request) -> None:
         if not auth.check(auth.bearer_token(request.headers.get("authorization", ""))):
@@ -53,12 +68,24 @@ def build_app(service) -> FastAPI:
         return {"auth_required": auth.required()}
 
     @app.post("/api/login")
-    async def login(payload: Dict[str, Any]):
+    async def login(payload: Dict[str, Any], request: Request):
+        # Brute-force protection: after a handful of failures from one IP,
+        # refuse further attempts until the cooldown passes.
+        ip = request.client.host if request.client else ""
+        if login_throttle.locked_out(ip):
+            retry = login_throttle.retry_after(ip)
+            response = JSONResponse({"ok": False,
+                                     "error": "Too many attempts - try again in a few minutes"},
+                                    status_code=429)
+            response.headers["Retry-After"] = str(max(1, int(retry)))
+            return response
         token = auth.issue(str(payload.get("password", "")))
         if not auth.required():
             return {"token": ""}
         if not token:
+            login_throttle.record_failure(ip)
             raise HTTPException(status_code=401, detail="Wrong password")
+        login_throttle.record_success(ip)
         return {"token": token}
 
     # ------------------------------------------------------------- core
@@ -180,11 +207,20 @@ def build_app(service) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws_feed(websocket: WebSocket):
-        token = websocket.query_params.get("token", "")
-        if not auth.check(token):
+        await websocket.accept()
+        # The bearer token is sent as the first frame - never in the URL -
+        # so it cannot leak into browser history, access logs or proxies.
+        authenticated = False
+        try:
+            first = await asyncio.wait_for(websocket.receive_json(),
+                                           timeout=_WS_AUTH_TIMEOUT)
+            token = str((first or {}).get("token", "")) if isinstance(first, dict) else ""
+            authenticated = auth.check(token)
+        except Exception:
+            authenticated = False
+        if not authenticated:
             await websocket.close(code=4401)
             return
-        await websocket.accept()
         queue = await service.feed.subscribe()
         try:
             for event in service.feed.history(limit=30):

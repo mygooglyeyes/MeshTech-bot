@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Dict
+from collections import OrderedDict, deque
+from typing import Deque, Dict, Optional
 
 TOKEN_TTL_SECONDS = 12 * 3600
 
@@ -48,3 +49,76 @@ class Auth:
         if authorization and authorization.lower().startswith("bearer "):
             return authorization[len("bearer "):].strip()
         return ""
+
+
+class LoginThrottle:
+    """In-memory per-IP lockout for failed dashboard logins.
+
+    After ``max_failures`` failed attempts from one client IP within
+    ``window`` seconds, further attempts from that IP are refused for
+    ``cooldown`` seconds. A successful login resets the counter. This stops
+    LAN peers from guessing a weak dashboard password indefinitely.
+
+    Memory is bounded: at most ``max_ips`` client IPs are tracked, and
+    stale entries are pruned as they age out.
+    """
+
+    def __init__(self, max_failures: int = 5, window: float = 900.0,
+                 cooldown: float = 300.0, max_ips: int = 1024):
+        self.max_failures = max_failures
+        self.window = window
+        self.cooldown = cooldown
+        self._fails: "OrderedDict[str, Deque[float]]" = OrderedDict()
+        self._max_ips = max_ips
+
+    def _touch(self, ip: str, now: float) -> Optional[Deque[float]]:
+        """Fetch the failure log for ``ip``, pruning entries older than the
+        window. Returns None (and forgets the IP) when nothing remains."""
+        failures = self._fails.get(ip)
+        if failures is None:
+            return None
+        while failures and now - failures[0] > self.window:
+            failures.popleft()
+        if not failures:
+            del self._fails[ip]
+            return None
+        self._fails.move_to_end(ip)
+        return failures
+
+    def locked_out(self, ip: str, now: Optional[float] = None) -> bool:
+        if not ip:
+            return False
+        now = time.time() if now is None else now
+        failures = self._touch(ip, now)
+        if not failures:
+            return False
+        return (len(failures) >= self.max_failures
+                and now - failures[-1] < self.cooldown)
+
+    def retry_after(self, ip: str, now: Optional[float] = None) -> float:
+        if not ip:
+            return 0.0
+        now = time.time() if now is None else now
+        failures = self._touch(ip, now)
+        if not failures:
+            return 0.0
+        return max(0.0, self.cooldown - (now - failures[-1]))
+
+    def record_failure(self, ip: str, now: Optional[float] = None) -> None:
+        if not ip:
+            return
+        now = time.time() if now is None else now
+        failures = self._fails.get(ip)
+        if failures is None:
+            if len(self._fails) >= self._max_ips:
+                self._fails.popitem(last=False)  # drop the least-recent IP
+            failures = deque()
+            self._fails[ip] = failures
+        else:
+            self._fails.move_to_end(ip)
+        failures.append(now)
+        self._touch(ip, now)
+
+    def record_success(self, ip: str) -> None:
+        if ip:
+            self._fails.pop(ip, None)
