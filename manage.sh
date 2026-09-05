@@ -2,13 +2,14 @@
 # =============================================================================
 #  MeshTech-Bot - control panel (SSH / headless friendly)
 #
-#  One command for day-to-day bot management:
+#  One command for day-to-day bot management, run from YOUR clone:
 #
-#      sudo /opt/meshtech-bot/manage.sh              # interactive menu
-#      sudo /opt/meshtech-bot/manage.sh update       # the one update command
+#      cd ~/meshtech-bot
+#      sudo ./manage.sh          # interactive menu
+#      sudo ./manage.sh update   # the one update command
 #
-#  You can also run this panel from your ~/meshtech-bot clone - it always
-#  manages the RUNTIME (/opt/meshtech-bot), never the clone itself.
+#  The panel always manages the RUNTIME (/opt/meshtech-bot), never the
+#  clone it is started from.
 #
 #  Plain ASCII boxes only, so it renders the same over any SSH client.
 #  If whiptail is installed (most Debian/Ubuntu/Raspberry Pi systems) and a
@@ -186,6 +187,11 @@ do_update() {
   fi
   [[ -z "$uh" && -d "/home/$invoker" ]] && uh="/home/$invoker"
   local clone="${uh:-$HOME}/meshtech-bot"
+  # prefer the clone's own deploy.sh (freshest update logic); the runtime's
+  # copy is the fallback for panels started outside a clone
+  if [[ -f "$clone/deploy.sh" ]]; then
+    deploy="$clone/deploy.sh"
+  fi
   if [[ -f "$deploy" ]]; then
     log "Updating: pulling into $clone (as $invoker), applying to $runtime."
     if "$deploy" --clone "$clone" --runtime "$runtime" --user "$SERVICE_USER" \

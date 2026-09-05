@@ -222,17 +222,19 @@ moment between tests.
 
 ## Updating the bot
 
-One command, from anywhere:
+One command, from your home clone:
 
 ```bash
-sudo /opt/meshtech-bot/manage.sh update
+cd ~/meshtech-bot
+sudo ./manage.sh update
 ```
 
-That pulls the latest code (into your `~/meshtech-bot` clone, as you —
-the panel creates the clone if you don't have one yet), applies it to
+That pulls the latest code into your clone (as you), applies it to
 `/opt`, validates your config and restarts the service. Your
 `config.yaml`, `data/` and `.venv` are never touched. Prefer the menu?
-`sudo ./manage.sh` → option 2 does the same thing.
+`sudo ./manage.sh` → option 2 does the same thing. (The panel can also
+be started from `/opt/meshtech-bot` — it always manages the runtime,
+never the folder it lives in.)
 
 Want to preview first? `./deploy.sh --dry-run` (from
 `~/meshtech-bot`) lists exactly which files would change in `/opt` —

@@ -32,8 +32,8 @@ Pick one way — full step-by-step instructions live in
 1. **Native Linux (recommended)** — clone into your home folder, install
    the runtime as a service that starts at boot:
    `git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot`,
-   then `cd ~/meshtech-bot && sudo ./install.sh`. Updating later is one
-   command: `sudo /opt/meshtech-bot/manage.sh update`.
+   then `cd ~/meshtech-bot && sudo ./install.sh`. Updating later, from that
+   same folder: `sudo ./manage.sh update`.
 2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
    `docker compose up -d --build`.
 3. **Quick local test** (any machine):
