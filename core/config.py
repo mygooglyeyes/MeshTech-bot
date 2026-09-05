@@ -6,6 +6,7 @@ so a non-programmer can fix the YAML themselves.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -123,6 +124,11 @@ class WebCfg:
     host: str = "127.0.0.1"
     port: int = 8081
     password: str = ""
+    # Recommended: keep the dashboard password OUT of config.yaml in a
+    # dedicated file (first line = password, mode 600). The legacy inline
+    # ``password`` above still works but warns: a copied or leaked config
+    # would otherwise expose the dashboard password.
+    password_file: str = ""
 
 
 @dataclass
@@ -362,7 +368,10 @@ def load(config_path: str = "config.yaml") -> Settings:
         host=_text(web_raw, "host", "127.0.0.1", errors, "web.host"),
         port=_int(web_raw, "port", 8081, errors, "web.port"),
         password=str(web_raw.get("password", "") or ""),
+        password_file=_text(web_raw, "password_file", "", errors,
+                            "web.password_file"),
     )
+    web.password = _effective_web_password(web, warnings)
     if web.enabled and web.host not in ("127.0.0.1", "localhost", "::1"):
         if not web.password:
             warnings.append("web.host is not loopback and web.password is empty - the dashboard "
@@ -497,6 +506,57 @@ def _looks_like_host(host: str) -> bool:
     if re.match(r"^[\w.\-]+$", host) and " " not in host:
         return True
     return False
+
+
+# Dashboard password sources, in order of preference:
+#   1. MESHTECH_DASHBOARD_PASSWORD environment variable (containers, services)
+#   2. web.password_file - a dedicated secrets file outside config.yaml
+#      (recommended: a leaked config.yaml then never contains the password)
+#   3. web.password inside config.yaml (legacy - warns when used)
+_DASHBOARD_PASSWORD_ENV = "MESHTECH_DASHBOARD_PASSWORD"
+
+
+def _effective_web_password(web: WebCfg, warnings: List[str]) -> str:
+    """Resolve the dashboard password without ever logging it."""
+    env_value = os.environ.get(_DASHBOARD_PASSWORD_ENV, "")
+    if env_value:
+        return env_value.strip()
+    if web.password_file:
+        content = _read_password_file(web.password_file)
+        if content is None:
+            if web.enabled:
+                warnings.append(
+                    f"web.password_file '{web.password_file}' is set but could "
+                    "not be read - the dashboard will have NO password. Create "
+                    "the file with your password on the first line (chmod 600), "
+                    "then restart the bot.")
+            return ""
+        if not content.strip():
+            if web.enabled:
+                warnings.append(
+                    f"web.password_file '{web.password_file}' is empty - the "
+                    "dashboard will have NO password. Put your password on the "
+                    "first line of the file, then restart the bot.")
+            return ""
+        return content.strip()
+    if web.password:
+        if web.enabled:
+            warnings.append(
+                "web.password is set inside config.yaml - anyone who sees that "
+                "file sees the dashboard password. Move it to web.password_file "
+                "(recommended) or the MESHTECH_DASHBOARD_PASSWORD environment "
+                "variable so a copied config never leaks it.")
+        return web.password
+    return ""
+
+
+def _read_password_file(path: str) -> Optional[str]:
+    """First line of the secrets file; None when the file cannot be read."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.readline()
+    except OSError:
+        return None
 
 
 def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:

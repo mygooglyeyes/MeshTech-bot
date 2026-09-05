@@ -122,7 +122,23 @@ Save with `Ctrl+O`, exit with `Ctrl+X`. Set at least:
 | `connection.port` | the companion `tcp_port` from openHop's config (the example says 5000 — use whatever YOUR repeater actually uses) |
 | `channels` | the `#channel` names to listen on; `reply: false` = log only |
 | `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
-| `web.password` | a real password for the dashboard |
+| `web.password_file` | path to the dashboard-password file — the bot reads the **first line** as the password. The installer already created `data/.dashboard_password` for you |
+
+**Step A1b — set the dashboard password (one time)**
+
+The dashboard password never lives in `config.yaml` (a copied or leaked
+config would give away the dashboard). It sits in its own file that only the
+bot account can read:
+
+```bash
+sudo nano /opt/meshtech-bot/data/.dashboard_password   # type your password, save
+sudo chown meshtech:meshtech /opt/meshtech-bot/data/.dashboard_password
+sudo chmod 600 /opt/meshtech-bot/data/.dashboard_password
+```
+
+Then restart so the bot picks it up: `sudo systemctl restart meshtech-bot`.
+(Alternative: set the `MESHTECH_DASHBOARD_PASSWORD` environment variable in
+the service unit — it wins over the file.)
 
 **Step A2 — run the installer**
 
@@ -135,9 +151,10 @@ The installer creates the `meshtech` account, installs the Python
 dependencies, checks your config, and starts the service at boot.
 
 > Skipped Step A1? The installer still creates `config.yaml` from the
-> example automatically — but with placeholder values. Run
-> `sudo nano config.yaml`, set the table above, and save: the bot reloads
-> the file on its own.
+> example automatically (and the empty `data/.dashboard_password` file).
+> Run `sudo nano config.yaml`, set the table above, save — the bot reloads
+> the file on its own — then follow Step A1b for the dashboard password
+> and `sudo systemctl restart meshtech-bot`.
 
 **Step A3 — verify it is running**
 
@@ -212,9 +229,13 @@ sudo usermod -aG docker $USER
 ```bash
 cd /opt/meshtech-bot            # your clone
 cp config.example.yaml config.yaml
-sudo nano config.yaml           # set host/port/channels/admin/dashboard password
+sudo nano config.yaml           # set host/port/channels/admin prefix
 mkdir -p data
 sudo chown 1001:1001 data       # container runs as uid 1001 (meshtech)
+# dashboard password goes in its own file (config.yaml never holds it):
+printf 'your-password\n' > data/.dashboard_password
+sudo chown 1001:1001 data/.dashboard_password
+sudo chmod 600 data/.dashboard_password
 ```
 
 **Step C3 — build and start**
@@ -323,9 +344,11 @@ docker compose down && docker rmi meshtech-bot:latest
 
 These are the defaults and habits that keep a bot on your LAN boring:
 
-- **Dashboard password** — always set a real `web.password`. The bot refuses
-  nothing: with the dashboard on `0.0.0.0` and an empty password it is open
-  to your whole network, and the installer warns about this on purpose.
+- **Dashboard password** — always set a real password, kept in the
+  `web.password_file` secrets file (`data/.dashboard_password`, mode 600),
+  never inside `config.yaml`. The bot refuses nothing: with the dashboard on
+  `0.0.0.0` and no password it is open to your whole network, and the bot
+  warns about this on purpose.
 - **Loopback is the safe default.** Leave `web.host` at `127.0.0.1` unless
   you really need the dashboard from another device — the radio side of
   the bot does not care where the dashboard listens.
@@ -335,6 +358,11 @@ These are the defaults and habits that keep a bot on your LAN boring:
   the clean fix; the config warns about this too.
 - **Login attempts are throttled** — after a few wrong dashboard passwords
   from one IP, further tries are refused for several minutes (429).
+- **Config never holds secrets** — the dashboard password lives in
+  `data/.dashboard_password` (600, bot-account only) or the
+  `MESHTECH_DASHBOARD_PASSWORD` environment variable, so pasting or leaking
+  `config.yaml` exposes nothing. Changing the password = edit the file,
+  then restart the bot.
 - **Admin prefix = exactly 12 hex chars** — `dm.admin_pubkey_prefixes`
   entries are your node's 12-character public-key prefix. Shorter entries
   match many more nodes as admin; the config warns if one is not 12 hex.
@@ -360,7 +388,7 @@ These are the defaults and habits that keep a bot on your LAN boring:
 | Dashboard loads but says `not connected` | Bot is up but the repeater link is down — see first row. |
 | `python3 -m venv` fails | Install the venv module: `sudo apt install python3-venv`. |
 | `externally-managed-environment` with `--no-venv` | That is expected on Debian 12+/Ubuntu 23+; the installer handles it with `--break-system-packages`. Prefer Option A if unsure. |
-| Want the dashboard from another device | Set `web.host: "0.0.0.0"` AND a strong `web.password` (or use a reverse proxy for HTTPS). |
+| Want the dashboard from another device | Set `web.host: "0.0.0.0"` AND a strong dashboard password in `data/.dashboard_password` (or use a reverse proxy for HTTPS). |
 | Bot answers far-away traffic | Raise/lower `mesh.max_inbound_hops`, and cap floods on the repeater (`max_flood_hops`) — see README. |
 
 ---

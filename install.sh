@@ -131,8 +131,10 @@ if [[ ! -f config.yaml ]]; then
   log "Creating config.yaml from config.example.yaml ..."
   cp config.example.yaml config.yaml
   warn "Edit config.yaml first! At minimum set connection.host, connection.port,"
-  warn "your channels, admin_pubkey_prefixes and web.password. Then run:"
-  warn "    sudo -u $SERVICE_USER '$PYTHON' bot.py --check"
+  warn "your channels and admin_pubkey_prefixes. Then set the dashboard password:"
+  warn "    sudo nano $INSTALL_DIR/data/.dashboard_password   # your password on line 1"
+  warn "The installer creates that file below (mode 600, owned by $SERVICE_USER)."
+  warn "Validate with:  sudo -u $SERVICE_USER '$PYTHON' bot.py --check"
 else
   log "config.yaml already present - leaving it untouched."
 fi
@@ -151,6 +153,18 @@ if [[ -d .venv ]]; then
   find .venv -type d -exec chmod 755 {} \;
   find .venv -type f -name 'python*' -exec chmod 755 {} \; 2>/dev/null || true
   find .venv -type f \( -name '*.so' -o -perm -u+x \) -exec chmod 755 {} \; 2>/dev/null || true
+fi
+
+# --- dashboard password file (config.example.yaml points here) -------------------------------
+# config.yaml never stores the dashboard password; this separate file does.
+# Create it empty when missing - the bot then warns until you put your
+# password on the first line (mode 600 = only the bot account and root).
+PW_FILE="$INSTALL_DIR/data/.dashboard_password"
+if [[ ! -f "$PW_FILE" ]]; then
+  log "Creating $PW_FILE (dashboard password file - put your password on the first line)."
+  : > "$PW_FILE"
+  chown "$SERVICE_USER:$SERVICE_GROUP" "$PW_FILE"
+  chmod 600 "$PW_FILE"
 fi
 
 # --- git safe.directory (avoids the 'dubious ownership' error) -----------------------------
@@ -193,8 +207,9 @@ echo "  Config :  $INSTALL_DIR/config.yaml"
 echo "  Data   :  $INSTALL_DIR/data/  (owned by $SERVICE_USER)"
 echo
 echo "  Next steps:"
-echo "    1. Edit $INSTALL_DIR/config.yaml (host, port, channels, admin prefix,"
-echo "       dashboard password) - the bot auto-reloads config changes."
-echo "    2. Open the dashboard:  http://127.0.0.1:8081"
-echo "    3. Install docs + troubleshooting: $INSTALL_DIR/docs/INSTALL.md"
+echo "    1. Edit $INSTALL_DIR/config.yaml (host, port, channels, admin prefix)."
+echo "    2. Set the dashboard password:  sudo nano $INSTALL_DIR/data/.dashboard_password"
+echo "       (config changes auto-reload; the dashboard password needs a restart)."
+echo "    3. Open the dashboard:  http://127.0.0.1:8081"
+echo "    4. Install docs + troubleshooting: $INSTALL_DIR/docs/INSTALL.md"
 echo "=============================================================================="

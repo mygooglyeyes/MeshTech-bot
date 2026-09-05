@@ -136,7 +136,18 @@ web:
                              # Use 0.0.0.0 ONLY if you know your firewall blocks
                              # outside access, then visit from another device.
   port: 8081
-  password: "change-me"      # <-- set a real password
+  # The dashboard password lives in its OWN file (first line = password), NOT
+  # in this config - so if config.yaml is ever copied, pasted or leaked it
+  # does not carry the password. Create the file once with:
+  #     sudo nano data/.dashboard_password      # type your password, save
+  #     sudo chown meshtech:meshtech data/.dashboard_password
+  #     sudo chmod 600 data/.dashboard_password
+  # Then restart the bot. (Or set the MESHTECH_DASHBOARD_PASSWORD environment
+  # variable instead - it wins over the file.)
+  password_file: "data/.dashboard_password"   # <-- recommended
+  # LEGACY alternative - password stored in this file. Still works, but it
+  # travels with config.yaml and the bot warns about it:
+  # password: "change-me"
 
 # --- Logging ----------------------------------------------------------------------
 # With the systemd service, leave file empty and watch logs with:

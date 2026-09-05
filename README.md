@@ -53,7 +53,8 @@ Pick one way to run it — full step-by-step instructions for each live in
 1. **Native Linux service (recommended)** — Debian/Ubuntu/Raspberry Pi OS.
    `sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot`
    (`sudo` because `/opt` is system-owned), then `cd /opt/meshtech-bot`, run
-   `sudo ./install.sh` once and edit `config.yaml`: the bot gets its own
+   `sudo ./install.sh` once and edit `config.yaml` (and put the dashboard
+   password in `data/.dashboard_password`): the bot gets its own
    `meshtech` account, correct file permissions, and a systemd service that
    starts at boot and restarts on crashes.
 2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
@@ -226,7 +227,9 @@ Plain-word canned replies (`replies:` in config.yaml) are **empty by default**
 ## Web dashboard
 
 With `web.enabled: true` open `http://127.0.0.1:8081` on the bot machine
-(or the configured host) and enter `web.password`. The dashboard shows live
+(or the configured host) and enter the dashboard password (kept in the
+`web.password_file` secrets file — see `config.example.yaml`; a legacy
+inline `web.password` in config.yaml also works but warns). The dashboard shows live
 activity, per-channel mute toggles, the node table with drill-down
 (propagation stats, route snapshots) and per-node **block checkboxes**
 (tick one to ignore every message from that node — blocked senders show
@@ -302,8 +305,9 @@ companion channel table and tests whether the client may add channels.
 - Propagation delay uses sender-provided timestamps, so clocks can skew;
   treat numbers as relative trends.
 - The dashboard binds to `127.0.0.1` by default. To reach it from another
-  device set `web.host` to the LAN IP **and** set a password (or put it
-  behind a reverse proxy for HTTPS).
+  device set `web.host` to the LAN IP **and** set a strong dashboard
+  password via `web.password_file` (never keep it in config.yaml — or put
+  the dashboard behind a reverse proxy for HTTPS).
 - Hop metadata may be unavailable on some frames — the `mesh.unknown_hops`
   policy decides whether those are answered or ignored.
 

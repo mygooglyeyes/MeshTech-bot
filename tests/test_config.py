@@ -33,6 +33,55 @@ def test_plaintext_dashboard_warns_with_password(make_config):
     assert any("plaintext" in w for w in settings.warnings)
 
 
+def test_password_file_supplies_password(make_config, tmp_path):
+    secrets_file = tmp_path / "dashboard.secret"
+    secrets_file.write_text("  file-secret\n", encoding="utf-8")
+    path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
+                                "password": "inline-legacy",
+                                "password_file": str(secrets_file)}})
+    settings = load(path)
+    assert settings.web.password == "file-secret"
+    # the file source suppresses the legacy-inline warning
+    assert not any("inside config.yaml" in w for w in settings.warnings)
+
+
+def test_env_password_wins_over_all(monkeypatch, make_config, tmp_path):
+    secrets_file = tmp_path / "dashboard.secret"
+    secrets_file.write_text("file-secret\n", encoding="utf-8")
+    monkeypatch.setenv("MESHTECH_DASHBOARD_PASSWORD", "env-secret")
+    path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
+                                "password": "inline-legacy",
+                                "password_file": str(secrets_file)}})
+    settings = load(path)
+    assert settings.web.password == "env-secret"
+
+
+def test_missing_password_file_warns_and_stays_unset(make_config, tmp_path):
+    path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
+                                "password_file": str(tmp_path / "missing.txt")}})
+    settings = load(path)
+    assert settings.web.password == ""
+    assert any("could not be read" in w for w in settings.warnings)
+
+
+def test_empty_password_file_warns(make_config, tmp_path):
+    secrets_file = tmp_path / "dashboard.secret"
+    secrets_file.write_text("\n", encoding="utf-8")
+    path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
+                                "password_file": str(secrets_file)}})
+    settings = load(path)
+    assert settings.web.password == ""
+    assert any("is empty" in w for w in settings.warnings)
+
+
+def test_legacy_inline_password_warns(make_config):
+    path = make_config({"web": {"enabled": True, "host": "127.0.0.1",
+                                "password": "inline-secret"}})
+    settings = load(path)
+    assert settings.web.password == "inline-secret"  # legacy still works
+    assert any("inside config.yaml" in w for w in settings.warnings)
+
+
 def test_loads_valid_config(make_config):
     path = make_config()
     settings = load(path)
