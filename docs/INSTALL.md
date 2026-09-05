@@ -38,8 +38,8 @@ cd ~/meshtech-bot
 Notes:
 
 - The clone goes in your **home folder** — no `sudo` for git, ever. Updates
-  are pulled here and applied to `/opt` with `./deploy.sh` (see "Updating
-  the bot" below).
+  pull here and get applied to `/opt` by `sudo ./manage.sh update` (see
+  "Updating the bot" below).
 - If the repo is private, git will ask for your GitHub **username** and a
   **personal access token** (not your GitHub password). Make a token at
   GitHub → Settings → Developer settings → Personal access tokens.
@@ -222,20 +222,21 @@ moment between tests.
 
 ## Updating the bot
 
-From your home clone:
+One command, from anywhere:
 
 ```bash
-cd ~/meshtech-bot
-./deploy.sh
+sudo /opt/meshtech-bot/manage.sh update
 ```
 
-That pulls the latest code as you, then applies it to `/opt` (it will ask
-for your sudo password once): code refreshed, dependencies checked, config
-validated, service restarted. Your `config.yaml`, `data/` and `.venv` are
-never touched. `sudo ./manage.sh` → option 2 does the same thing.
+That pulls the latest code (into your `~/meshtech-bot` clone, as you —
+the panel creates the clone if you don't have one yet), applies it to
+`/opt`, validates your config and restarts the service. Your
+`config.yaml`, `data/` and `.venv` are never touched. Prefer the menu?
+`sudo ./manage.sh` → option 2 does the same thing.
 
-Not sure what an update will bring? `./deploy.sh --dry-run` lists exactly
-which files would change in `/opt` — without changing anything.
+Want to preview first? `./deploy.sh --dry-run` (from
+`~/meshtech-bot`) lists exactly which files would change in `/opt` —
+without changing anything.
 
 To confirm the update landed, compare the version in the dashboard
 header (or the startup log) with the newest number in
@@ -314,5 +315,5 @@ unprivileged user that can only write inside its `data/` folder.
 | `data/.dashboard_password` | Your dashboard password (first line of the file) |
 | `set-password.sh` | Set or change the dashboard password |
 | `manage.sh` | The control panel: configure, update, uninstall, restart, logs |
-| `deploy.sh` | Apply an update from your home clone to the runtime |
+| `deploy.sh` | The update engine behind `manage.sh update` (rarely run by hand) |
 | `scripts/configure_bot.py` | The interactive config editor (menu option 1) |

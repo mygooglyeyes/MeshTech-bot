@@ -4,7 +4,8 @@
 #
 #  One command for day-to-day bot management:
 #
-#      sudo /opt/meshtech-bot/manage.sh
+#      sudo /opt/meshtech-bot/manage.sh              # interactive menu
+#      sudo /opt/meshtech-bot/manage.sh update       # the one update command
 #
 #  You can also run this panel from your ~/meshtech-bot clone - it always
 #  manages the RUNTIME (/opt/meshtech-bot), never the clone itself.
@@ -166,33 +167,37 @@ do_configure() {
 }
 
 # --- 2) update ----------------------------------------------------------------
-# Preferred flow: pull in the invoking user's home clone (~/meshtech-bot)
-# and apply the new code to the runtime with deploy.sh - the runtime never
-# needs a .git and its config/data/venv are never touched by git.
-# Fallback: if the runtime IS a git checkout (older direct installs), pull
-# in place exactly as before.
+# The one update command for everyone. Delegates to deploy.sh, which:
+#   - uses (or creates) the invoking user's clone at ~/meshtech-bot, where
+#     git runs as the user, never root
+#   - applies the new code to the runtime: config, data and .venv untouched
+#   - validates the live config, then restarts the service
+# Fallback: a runtime that is itself a git checkout (old direct installs)
+# is updated by pulling in place.
 do_update() {
-  local runtime="${INSTALL_ROOT}"
+  local runtime="$INSTALL_ROOT"
   local deploy="$runtime/deploy.sh"
-  local clone="${HOME:-/root}/meshtech-bot"
-  if [[ -n "${SUDO_USER:-}" ]]; then
-    local uh; uh="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-    [[ -n "$uh" ]] && clone="$uh/meshtech-bot"
+  # the clone belongs to the person at the keyboard (SUDO_USER when the
+  # panel runs under sudo, otherwise the current user)
+  local invoker="${SUDO_USER:-$(id -un)}"
+  local uh=""
+  if command -v getent &>/dev/null; then
+    uh="$(getent passwd "$invoker" 2>/dev/null | cut -d: -f6)"
   fi
-  if [[ -f "$deploy" && -d "$clone/.git" ]]; then
-    log "Updating via your clone at $clone (git stays yours; the runtime"
-    log "  gets a code refresh - config, data and .venv are untouched)."
+  [[ -z "$uh" && -d "/home/$invoker" ]] && uh="/home/$invoker"
+  local clone="${uh:-$HOME}/meshtech-bot"
+  if [[ -f "$deploy" ]]; then
+    log "Updating: pulling into $clone (as $invoker), applying to $runtime."
     if "$deploy" --clone "$clone" --runtime "$runtime" --user "$SERVICE_USER" \
         --service "$SERVICE"; then
       log "Update complete: now running v$(version_line)."
     else
-      warn "deploy.sh failed - nothing was changed. Check the messages above."
+      warn "update failed - nothing was changed. Check the messages above."
     fi
     return 0
   fi
   if ! git -C "$runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    warn "No update path found: neither deploy.sh + ~/meshtech-bot clone, nor a"
-    warn "  git checkout at $runtime."
+    warn "No update path found: no deploy.sh and no git checkout at $runtime."
     return 1
   fi
   log "Updating the git checkout at $runtime in place ..."
@@ -258,13 +263,40 @@ ask_yes_no() {  # prompt, default(y|n)
   [[ "$raw" == "y" || "$raw" == "yes" ]]
 }
 
+# --- direct subcommands (no menu): manage.sh update|configure|restart|logs ----
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    update)
+      [[ "$(id -u)" -eq 0 ]] || { warn "update needs root - run:  sudo ./manage.sh update"; exit 1; }
+      do_update ;;
+    configure)
+      [[ "$(id -u)" -eq 0 ]] || { warn "configure needs root - run:  sudo ./manage.sh configure"; exit 1; }
+      do_configure ;;
+    restart)
+      [[ "$(id -u)" -eq 0 ]] || { warn "restart needs root - run:  sudo ./manage.sh restart"; exit 1; }
+      systemctl restart "$SERVICE.service" && log "Service restarted." ;;
+    logs)
+      journalctl -u "$SERVICE.service" -f --no-pager ;;
+    -h|--help)
+      echo "Usage: sudo ./manage.sh [update|configure|restart|logs]"
+      echo "  With no arguments, opens the interactive menu."
+      echo "    update    pull the latest code and apply it (the one update command)"
+      echo "    configure edit the live config interactively"
+      echo "    restart   restart the service"
+      echo "    logs      follow the live log (Ctrl-C to stop)" ;;
+    *)
+      warn "unknown subcommand: $1 (try: sudo ./manage.sh help)"; exit 2 ;;
+  esac
+  exit 0
+fi
+
 choose_option() {  # sets CHOICE; Esc/Cancel on the dialog means Quit
   if [[ -n "$WT" ]]; then
     CHOICE="$(whiptail --title " MeshTech-Bot control panel " \
       --ok-button Select --cancel-button Quit \
       --menu "status: $(status_line)   v$(version_line)" 0 0 0 \
         "1" "Configure the bot (repeater, channels, admins, hops)" \
-        "2" "Update the bot software (git pull + refresh)" \
+        "2" "Update the bot software (pull + apply, the one update command)" \
         "3" "Uninstall (asks to back up your data first)" \
         "4" "Restart the service" \
         "5" "View live logs (Ctrl-C stops watching)" \
