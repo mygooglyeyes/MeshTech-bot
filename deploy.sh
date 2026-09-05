@@ -15,6 +15,8 @@
 #  Usage:
 #      ./deploy.sh                  # from your home clone (asks sudo once)
 #      sudo ./deploy.sh             # or under sudo (pull still runs as you)
+#      ./deploy.sh --dry-run        # list what WOULD change in /opt (no sudo,
+#                                   #   no pull, nothing modified anywhere)
 #      deploy.sh --clone DIR --runtime DIR --no-restart
 # =============================================================================
 set -euo pipefail
@@ -25,6 +27,7 @@ SERVICE_USER="meshtech"
 SERVICE_GROUP="meshtech"
 SERVICE="meshtech-bot"
 DO_RESTART=1
+DRY_RUN=0
 APPLY_TARBALL=""
 
 log()  { printf '\033[1;32m[deploy]\033[0m %s\n' "$*"; }
@@ -38,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --user)      SERVICE_USER="$2"; SERVICE_GROUP="$2"; shift 2 ;;
     --service)   SERVICE="$2"; shift 2 ;;
     --no-restart) DO_RESTART=0; shift ;;
+    --dry-run|-n) DRY_RUN=1; shift ;;
     --apply)     APPLY_TARBALL="$2"; shift 2 ;;   # internal: sudo re-exec
     -h|--help)   sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)"; exit 2 ;;
@@ -109,7 +113,10 @@ fi
 #  so the home clone never accumulates root-owned files.
 # ==============================================================================
 INVOKER="${SUDO_USER:-$(id -un)}"
-INVOKER_HOME="$(getent passwd "$INVOKER" | cut -d: -f6)"
+INVOKER_HOME=""
+if command -v getent &>/dev/null; then
+  INVOKER_HOME="$(getent passwd "$INVOKER" 2>/dev/null | cut -d: -f6)"
+fi
 [[ "$CLONE" == "${HOME}/meshtech-bot" && -n "$INVOKER_HOME" ]] && CLONE="$INVOKER_HOME/meshtech-bot"
 
 if [[ ! -d "$CLONE/.git" ]]; then
@@ -129,9 +136,56 @@ if ! "${PULL[@]}" diff --quiet || ! "${PULL[@]}" diff --cached --quiet; then
   die "your clone has uncommitted changes - inspect them first:  cd $CLONE && git status"
 fi
 log "Pulling the latest code into $CLONE ..."
-"${PULL[@]}" pull --ff-only || die "git pull failed (offline? upstream moved?) - nothing changed"
-STAMP="$("${PULL[@]}" rev-parse HEAD)"
-log "Pulled: $STAMP"
+STAMP=""
+if "${PULL[@]}" pull --ff-only; then
+  STAMP="$("${PULL[@]}" rev-parse HEAD)"
+  log "Pulled: $STAMP"
+elif [[ "$DRY_RUN" -eq 1 ]]; then
+  warn "could not pull (offline? no upstream?) - comparing the clone's"
+  warn "  CURRENT state against the runtime instead."
+  STAMP="$("${PULL[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
+else
+  die "git pull failed (offline? upstream moved?) - nothing changed"
+fi
+
+# ------------------------------------------------------------------------------
+# Dry-run: compare the freshly pulled clone against the runtime and list what
+# WOULD change.  Read-only: no sudo, nothing staged, nothing applied.
+# ------------------------------------------------------------------------------
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo
+  log "DRY RUN - what would change in $RUNTIME (deploying $STAMP):"
+  if [[ ! -f "$RUNTIME/bot.py" ]]; then
+    warn "  no runtime found at $RUNTIME - a deploy would create it fresh"
+    exit 0
+  fi
+  STAGE="$(mktemp /tmp/meshtech-dryrun-XXXXXX.tar)"
+  trap 'rm -f "$STAGE"' EXIT
+  (cd "$CLONE" && tar cf "$STAGE" \
+      --exclude=./.git --exclude=./.freebuff \
+      --exclude=./config.yaml --exclude=./data \
+      --exclude=./.venv --exclude=./venv \
+      --exclude='./config.yaml.bak-*' \
+      --exclude=./.git-commit \
+      .)
+  # list files that differ (content or missing on either side)
+  new=0; changed=0
+  while IFS= read -r f; do
+    rel="${f#./}"
+    if [[ ! -e "$RUNTIME/$rel" ]]; then
+      echo "  new      $rel"; new=$((new+1))
+    elif ! cmp -s "$CLONE/$rel" "$RUNTIME/$rel"; then
+      echo "  changed  $rel"; changed=$((changed+1))
+    fi
+  done < <(cd "$CLONE" && tar tf "$STAGE" | grep -v '/$')
+  echo "  ------"
+  echo "  would add $new file(s), update $changed file(s)"
+  echo "  untouched: config.yaml, data/, .venv (and any extra files already in"
+  echo "  the runtime that the new code does not contain)"
+  echo
+  log "No changes were made. Run ./deploy.sh to apply."
+  exit 0
+fi
 
 # ==============================================================================
 #  Stage what the runtime needs (everything except its unique state)

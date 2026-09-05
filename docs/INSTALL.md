@@ -234,6 +234,9 @@ for your sudo password once): code refreshed, dependencies checked, config
 validated, service restarted. Your `config.yaml`, `data/` and `.venv` are
 never touched. `sudo ./manage.sh` → option 2 does the same thing.
 
+Not sure what an update will bring? `./deploy.sh --dry-run` lists exactly
+which files would change in `/opt` — without changing anything.
+
 To confirm the update landed, compare the version in the dashboard
 header (or the startup log) with the newest number in
 [`core/version.py`](../core/version.py) on GitHub — every commit bumps
