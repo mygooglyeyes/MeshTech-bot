@@ -30,6 +30,10 @@ class DmHandler(Handler):
         client = ctx.service.client
         bot_name = (getattr(client, "own_name", "") if client is not None
                     else "") or ctx.service.settings.bot.display_name
+        # Keep the DM text plain ASCII: the companion name can carry emoji
+        # (e.g. "LoganBot🤖"), and some mesh clients fail to render non-ASCII
+        # inside a DM. The mesh itself is fine with it - the console is not.
+        bot_name = "".join(ch for ch in (bot_name or "") if ord(ch) < 128)
         return HandlerResult(
             kind="dm_text",
             data=f"DM from {bot_name or 'me'} - reply here to talk directly.",

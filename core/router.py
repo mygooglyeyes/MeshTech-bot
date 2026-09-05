@@ -559,4 +559,7 @@ class Router:
                 self._last_answer[ctx.msg.sender_prefix] = now
             if force_dm and dm_target:
                 self._last_answer[dm_target] = now
-            log.info("OUT %s: %s", ctx.sender_display(), _log_line(text))
+            if force_dm:
+                log.info("OUT DM->%s: %s", dm_target, _log_line(text))
+            else:
+                log.info("OUT %s: %s", ctx.sender_display(), _log_line(text))
