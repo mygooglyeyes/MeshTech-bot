@@ -63,7 +63,7 @@ The settings that matter:
 4. `mesh.max_inbound_hops` — e.g. `3`: only answer messages that reached you within 3 hops.
 5. `mesh.channel_sender_name` — how much to trust the name embedded in channel
    text (`"Name: message"`): `trust` (default), `smart`, or `off`.
-6. `dm.admin_pubkey_prefixes` — your node's 12-character hex prefix, so you can use admin commands.
+6. `dm.admin_pubkey_prefixes` — one line per admin node, using each node's 12-character hex prefix.
 7. `bot.answer_unknown_senders` — default `false`: stay silent when the sender can't be identified.
 
 ## Set the dashboard password
