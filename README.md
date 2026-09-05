@@ -141,15 +141,6 @@ small Python handler. It's not something you need as a normal user — but
 the full walkthrough lives in **[docs/ADDING_FEATURES.md](docs/ADDING_FEATURES.md)**
 if you ever want it.
 
-## Tests
-
-No radio or network needed:
-
-```bash
-pip install -r requirements-dev.txt
-python -m pytest -q
-```
-
 ## Where things live
 
 - `core/` — the bot engine (config, radio client, routing, database, capture)
