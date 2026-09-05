@@ -68,9 +68,8 @@ The settings that matter:
 
 ## Set the dashboard password
 
-Do this **before** you open the dashboard — logging in is the first thing
-it asks for. On a native install, `install.sh` already asks you to choose
-a password. To set or change it later:
+On a native install, `install.sh` asks you to choose a password during
+setup. To set or change it later:
 
 ```bash
 sudo ./set-password.sh
