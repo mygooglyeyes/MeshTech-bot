@@ -66,13 +66,6 @@ The settings that matter:
 6. `dm.admin_pubkey_prefixes` — your node's 12-character hex prefix, so you can use admin commands.
 7. `bot.answer_unknown_senders` — default `false`: stay silent when the sender can't be identified.
 
-Check and run:
-
-```bash
-python bot.py --check     # prints a summary or clear errors
-python bot.py             # run (stop with Ctrl-C)
-```
-
 ## The dashboard
 
 With `web.enabled: true`, open `http://<bot-machine>:8081` in a browser.
