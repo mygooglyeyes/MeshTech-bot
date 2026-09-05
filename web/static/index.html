@@ -31,11 +31,6 @@
   </header>
 
   <main>
-    <section class="card" id="card-channels">
-      <h2>Channels <button class="btn small" id="btn-refresh-status">refresh</button></h2>
-      <div id="channel-list" class="channellist"><em>loading…</em></div>
-    </section>
-
     <section class="card collapsible" id="card-feed">
       <h2>Live activity
         <button class="btn small" id="btn-pause">pause</button>
@@ -44,8 +39,10 @@
       <div id="feed" class="feed"><em>waiting for traffic…</em></div>
     </section>
 
-    <section class="card" id="card-actions">
-      <h2>Actions &amp; Config</h2>
+    <section class="card" id="card-controls">
+      <h2>Channels &amp; Controls <button class="btn small" id="btn-refresh-status">refresh</button></h2>
+      <div id="channel-list" class="channellist"><em>loading…</em></div>
+      <div class="ctrl-sep"></div>
       <button class="btn" id="btn-mute">Mute bot</button>
       <button class="btn" id="btn-reload">Reload config</button>
       <button class="btn danger" id="btn-shutdown">Shutdown bot</button>
@@ -74,6 +71,17 @@
       <div id="msg-list"><em>loading…</em></div>
     </section>
 
+    <section class="card collapsible" id="card-packets">
+      <h2>Packets
+        <select id="pkt-layer">
+          <option value="decoded">decoded</option>
+          <option value="raw">raw</option>
+        </select>
+        <button class="btn small" id="btn-load-packets">load</button>
+      </h2>
+      <div id="pkt-list"><em>loading…</em></div>
+    </section>
+
     <section class="card collapsible" id="card-analysis">
       <h2>Packet analysis
         <select id="an-window">
@@ -87,18 +95,6 @@
         <em>loading…</em>
       </div>
     </section>
-
-    <section class="card collapsible" id="card-packets">
-      <h2>Packets
-        <select id="pkt-layer">
-          <option value="decoded">decoded</option>
-          <option value="raw">raw</option>
-        </select>
-        <button class="btn small" id="btn-load-packets">load</button>
-      </h2>
-      <div id="pkt-list"><em>loading…</em></div>
-    </section>
-
   </main>
 
   <div id="login-overlay" class="overlay hidden">
