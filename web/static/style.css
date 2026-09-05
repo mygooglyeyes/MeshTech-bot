@@ -35,18 +35,22 @@ header {
 h1 { font-size: 18px; margin: 0; }
 h2 { font-size: 14px; margin: 0 0 8px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
 
+/* Cards flow at their natural width: each box keeps its own size instead of
+   being stretched to match the box next to it. When two cards don't fit side
+   by side they wrap to the next line (never squeezed to equal width). */
 main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
   max-width: 1500px;
   margin: 0 auto;
 }
 
-@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-
 .card {
+  flex: 0 0 auto;   /* natural width; no grow, no shrink-to-match */
+  max-width: 100%;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;

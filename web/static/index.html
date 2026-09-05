@@ -45,11 +45,13 @@
     </section>
 
     <section class="card" id="card-actions">
-      <h2>Actions</h2>
+      <h2>Actions &amp; Config</h2>
       <button class="btn" id="btn-mute">Mute bot</button>
       <button class="btn" id="btn-reload">Reload config</button>
       <button class="btn danger" id="btn-shutdown">Shutdown bot</button>
       <span id="action-result" class="result"></span>
+      <button class="btn small" id="btn-config">view config</button>
+      <pre id="config-view" class="config hidden"></pre>
     </section>
 
     <section class="card collapsible" id="card-nodes">
@@ -97,10 +99,6 @@
       <div id="pkt-list"><em>loading…</em></div>
     </section>
 
-    <section class="card" id="card-config">
-      <h2>Configuration <button class="btn small" id="btn-config">view</button></h2>
-      <pre id="config-view" class="config hidden"></pre>
-    </section>
   </main>
 
   <div id="login-overlay" class="overlay hidden">
