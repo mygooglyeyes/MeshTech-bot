@@ -47,6 +47,7 @@ $("login-form").addEventListener("submit", async (e) => {
     localStorage.setItem(TOKEN_KEY, token);
     showLogin(false);
     refreshAll();
+    connectWs();   // open the live feed - missed on first login (token was empty at boot)
   } catch (err) {
     $("login-error").textContent = "Wrong password.";
   }
@@ -113,15 +114,28 @@ function handleFeedEvent(event) {
   }
 }
 
+let wsSeq = 0;
+
 function connectWs() {
   if (authRequired && !token) return;  // wait for login
+  wsSeq++;
+  const seq = wsSeq;
   if (ws) try { ws.close(); } catch (e) { /* ignore */ }
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") +
                      location.host + "/ws?token=" + encodeURIComponent(token));
   ws.onmessage = (event) => {
     try { handleFeedEvent(JSON.parse(event.data)); } catch (e) { /* ignore */ }
   };
-  ws.onclose = () => { setTimeout(connectWs, 3000); };
+  ws.onclose = (event) => {
+    if (seq !== wsSeq) return;  // superseded by a newer connection attempt
+    if (event && event.code === 4401) {  // token rejected - force a fresh login
+      token = "";
+      localStorage.removeItem(TOKEN_KEY);
+      showLogin(true);
+      return;
+    }
+    setTimeout(connectWs, 3000);
+  };
 }
 
 $("btn-pause").addEventListener("click", () => {
