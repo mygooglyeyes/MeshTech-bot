@@ -306,6 +306,16 @@ def test_hop_filter_and_listen_only(make_config):
     assert sent[0][0] == "channel"
 
 
+def test_status_is_dm_only(make_config):
+    # !status moved out of channels: it answers only in direct messages.
+    sent = asyncio.run(_run_router(make_config, [
+        _channel("Alice: !status", hops=0),     # channel -> silent
+        _dm("!status", sender="000011112222"),  # DM -> answered
+    ]))
+    assert len(sent) == 1
+    assert sent[0][0] == "dm"
+
+
 def test_unknown_hops_policy(make_config):
     # unknown hops + policy=ignore -> silent (even for a valid command)
     dropped = asyncio.run(_run_router(make_config, [
