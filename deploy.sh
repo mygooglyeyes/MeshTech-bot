@@ -60,7 +60,11 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   log "Applying new code to $RUNTIME ..."
   tar xf "$APPLY_TARBALL" -C "$RUNTIME"
   STAMP="$(tar xOf "$APPLY_TARBALL" ./.git-commit 2>/dev/null || true)"
-  [[ -n "$STAMP" ]] && printf '%s\n' "$STAMP" > "$RUNTIME/.git-commit"
+  # a deploy without a stamp means the staging half is broken - refuse to
+  # continue silently (this exact silence is what let a stale stamp persist)
+  [[ -n "$STAMP" ]] || die "staged tarball has no .git-commit stamp - refusing to deploy"
+  printf '%s\n' "$STAMP" > "$RUNTIME/.git-commit"
+  log "Applying code from $STAMP"
   rm -f "$APPLY_TARBALL"
 
   # mirror install.sh's permission scheme (code is data here, not a checkout
@@ -193,7 +197,7 @@ fi
 #  Stage what the runtime needs (everything except its unique state)
 # ==============================================================================
 STAGE="$(mktemp /tmp/meshtech-deploy-XXXXXX.tar)"
-trap 'rm -f "$STAGE"' EXIT
+trap 'rm -f "$STAGE"; rm -f "$CLONE/.git-commit"' EXIT
 (cd "$CLONE" && tar cf "$STAGE" \
     --exclude=./.git --exclude=./.freebuff \
     --exclude=./config.yaml --exclude=./data \
@@ -201,8 +205,10 @@ trap 'rm -f "$STAGE"' EXIT
     --exclude='./config.yaml.bak-*' \
     --exclude=./.git-commit \
     .)
-printf '%s\n' "$STAMP" | tar rf "$STAGE" -C "$CLONE" .git-commit 2>/dev/null \
-  || (cd "$CLONE" && printf '%s\n' "$STAMP" > .git-commit && tar rf "$STAGE" .git-commit)
+# bake the FRESH commit stamp into the tarball (an old leftover file in the
+# clone must never win - write it unconditionally, append, then clean up)
+# the member is added as './.git-commit' so phase 2's reader finds it
+(cd "$CLONE" && printf '%s\n' "$STAMP" > .git-commit && tar rf "$STAGE" ./.git-commit)
 chmod 644 "$STAGE"
 
 # ==============================================================================
