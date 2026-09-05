@@ -364,6 +364,10 @@ async function refreshNodes(filterText) {
         (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-");
       row.routeCell.textContent =
         (n.route_hops === null || n.route_hops === undefined ? "?" : n.route_hops);
+      // Never clobber text the user is currently typing into.
+      if (document.activeElement !== row.noteInput) {
+        row.noteInput.value = n.note || "";
+      }
     }
     return;
   }
@@ -372,7 +376,7 @@ async function refreshNodes(filterText) {
   wrap.innerHTML = "";
   const table = document.createElement("table");
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th></th><th>Name</th><th>Prefix</th><th>Seen</th><th>SNR</th><th>Route</th></tr>";
+  thead.innerHTML = "<tr><th></th><th>Name</th><th>Prefix</th><th>Seen</th><th>SNR</th><th>Route</th><th>Note</th></tr>";
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
   const nextRows = new Map();
@@ -387,6 +391,36 @@ async function refreshNodes(filterText) {
       "<td>" + ago(n.last_seen) + "</td>" +
       "<td>" + (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-") + "</td>" +
       "<td>" + (n.route_hops === null || n.route_hops === undefined ? "?" : n.route_hops) + "</td>";
+    // Inline note editor - saved on Enter/blur, never rebuilt (the periodic
+    // refresh patches its value in place so typing is not interrupted).
+    const tdNote = document.createElement("td");
+    tdNote.className = "node-note";
+    const noteInput = document.createElement("input");
+    noteInput.type = "text";
+    noteInput.maxLength = 120;
+    noteInput.placeholder = "note…";
+    noteInput.value = n.note || "";
+    noteInput.title = "Annotation for this station - auto-saved";
+    noteInput.addEventListener("click", (ev) => ev.stopPropagation());
+    // Debounced auto-save on every keystroke: the note is stored even if the
+    // user never presses Enter or moves focus away (e.g. hits refresh first).
+    let saveTimer = null;
+    const saveNote = () => {
+      const text = noteInput.value.trim();
+      api("/api/nodes/" + encodeURIComponent(n.prefix) + "/note", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: text }),
+      }).catch(() => { /* keep the text; it just wasn't saved */ });
+    };
+    const scheduleSave = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveNote, 800);
+    };
+    noteInput.addEventListener("input", scheduleSave);
+    noteInput.addEventListener("change", scheduleSave);
+    tdNote.appendChild(noteInput);
+    tr.appendChild(tdNote);
     // Snapshot the cell nodes BEFORE inserting the checkbox cell - tr.children
     // is a LIVE collection, so later index reads would shift after insertBefore.
     const cells = Array.from(tr.children);
@@ -413,10 +447,10 @@ async function refreshNodes(filterText) {
     tr.insertBefore(tdBlock, tr.firstChild);
     tr.addEventListener("click", () => showNodeDetail(n.prefix));
     tbody.appendChild(tr);
-    // [0]=checkbox cell [1]=name [2]=prefix [3]=seen [4]=snr [5]=route
+    // [0]=checkbox cell [1]=name [2]=prefix [3]=seen [4]=snr [5]=route [6]=note
     nextRows.set(n.prefix, {
       cb, nameCell: cells[0], seenCell: cells[2], snrCell: cells[3],
-      routeCell: cells[4],
+      routeCell: cells[4], noteInput,
     });
   });
   table.appendChild(tbody);
@@ -443,6 +477,7 @@ async function showNodeDetail(prefix) {
       "<dt>messages</dt><dd>" + (s.count || 0) + "</dd>" +
       "<dt>delay avg</dt><dd>" + fmtDelay(s.delay_avg) + "</dd>" +
       "<dt>delay min/max</dt><dd>" + fmtDelay(s.delay_min) + " / " + fmtDelay(s.delay_max) + "</dd>" +
+      (n.note ? "<dt>note</dt><dd>" + esc(n.note) + "</dd>" : "") +
       "</dl>";
     if (link.length) {
       html += "<h3>Link quality history</h3>";

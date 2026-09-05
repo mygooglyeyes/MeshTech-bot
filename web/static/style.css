@@ -108,6 +108,20 @@ table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
 td.node-block { width: 26px; padding-right: 0; }
+/* Per-node note editor: fixed-ish width, monospace, compact. */
+td.node-note { padding: 2px 6px; }
+td.node-note input {
+  width: 14ch;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 5px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+td.node-note input:focus { border-color: var(--accent); outline: none; }
+td.node-note input::placeholder { color: var(--muted); }
 td.node-block input[type="checkbox"] {
   accent-color: var(--accent);
   width: 15px;

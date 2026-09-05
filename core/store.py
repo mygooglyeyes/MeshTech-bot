@@ -110,6 +110,11 @@ _MIGRATIONS: List[tuple] = [
         # hash mode, size = mode + 1). NULL when the frame carries no path.
         "ALTER TABLE packets ADD COLUMN path_hash_size INTEGER",
     ]),
+    (5, [
+        # Free-text annotation for a station, edited from the dashboard node
+        # table ("note") - survives bot restarts like any other node data.
+        "ALTER TABLE nodes ADD COLUMN note TEXT",
+    ]),
 ]
 
 
@@ -315,6 +320,22 @@ class Store:
         if limit:
             sql += f" LIMIT {int(limit)}"
         return [dict(r) for r in self._conn.execute(sql).fetchall()]
+
+    def set_node_note(self, key_or_prefix: str, note: Optional[str]) -> bool:
+        """Attach a free-text annotation to a node (dashboard note field).
+
+        Empty/whitespace clears the note. Returns False when no node
+        matches the prefix/key/name.
+        """
+        node = self.get_node(key_or_prefix)
+        if node is None:
+            return False
+        note = (note or "").strip()[:200] or None
+        with self._conn:
+            self._conn.execute(
+                "UPDATE nodes SET note = ? WHERE pubkey = ?",
+                (note, node["pubkey"]))
+        return True
 
     def node_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]

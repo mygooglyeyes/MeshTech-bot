@@ -129,6 +129,24 @@ def test_link_history_merges_sources(tmp_path):
     store.close()
 
 
+def test_node_note_roundtrip(tmp_path):
+    store = _store(tmp_path)
+    key = "aabbccddeeff00112233445566778899"
+    store.upsert_node(key, name="Alice")
+    # save by prefix, fetch back through get_node / list_nodes
+    assert store.set_node_note("aabbccddeeff", "  test station  ") is True
+    assert store.get_node("aabbccddeeff")["note"] == "test station"
+    assert store.list_nodes()[0]["note"] == "test station"
+    # clearing: empty / whitespace removes the note
+    assert store.set_node_note("aabbccddeeff", "   ") is True
+    assert store.get_node("aabbccddeeff")["note"] is None
+    # unknown node -> False, and long notes are capped
+    assert store.set_node_note("000000000000", "x") is False
+    assert store.set_node_note("aabbccddeeff", "x" * 500) is True
+    assert len(store.get_node("aabbccddeeff")["note"]) == 200
+    store.close()
+
+
 def test_blocked_nodes_roundtrip(tmp_path):
     store = _store(tmp_path)
     # block by prefix; matching is case-insensitive, empty is ignored

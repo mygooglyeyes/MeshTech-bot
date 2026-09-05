@@ -157,6 +157,13 @@ def build_app(service) -> FastAPI:
         service.feed.publish("notice", {"text": f"Unblocked node {prefix}"})
         return {"ok": True, "blocked": False, "prefix": prefix}
 
+    @app.put("/api/nodes/{key}/note", dependencies=[Depends(require_auth)])
+    async def set_node_note(key: str, payload: Dict[str, Any]):
+        note = str(payload.get("note", "")).strip()[:200]
+        if not store.set_node_note(key, note):
+            return json_error("Node not found", 404)
+        return {"ok": True, "prefix": key, "note": note}
+
     @app.get("/api/messages", dependencies=[Depends(require_auth)])
     async def messages(channel: Optional[str] = None, kind: Optional[str] = None,
                        limit: int = 100):
