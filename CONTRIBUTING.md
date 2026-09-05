@@ -11,7 +11,7 @@ Open an issue on GitHub. Say:
 2. **What happened** — paste the error text or the bot log lines.
 3. **What you expected** — one sentence is fine.
 4. **Your setup** — Linux or Docker, and the bot version (shown in the
-   dashboard header and in the startup log, e.g. `v0.0.003`).
+   dashboard header and in the startup log, e.g. `v0.0.005`).
 
 Include the config section that matters (a password or key is never
 needed — leave those out).
@@ -29,7 +29,12 @@ section in `config.yaml` — no code required.
 2. **Keep the change small** — one fix or feature per pull request.
 3. **Add or update a test** if you changed behavior (tests live in
    `tests/`, run with `python -m pytest`).
-4. **Open a pull request** describing what changed and why.
+4. **Bump the version** — open `core/version.py` and raise the number by
+   one (for example `0.0.005` becomes `0.0.006`). Every commit gets its
+   own version number, like a counter: it makes it obvious which changes
+   a running bot has. Git tags (`v0.0.004` and so on) are reserved for
+   milestone releases and are not needed for ordinary commits.
+5. **Open a pull request** describing what changed and why.
 
 ## Things to know
 

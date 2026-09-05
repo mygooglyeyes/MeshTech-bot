@@ -113,11 +113,16 @@ Return `None` to stay silent for a particular message.
 | `require_prefix = True` | needs the `!` (e.g. `!weather`) |
 | `priority` | lower number answers first if two handlers match |
 
-### Step 6 — save and reload
+### Step 6 — save, bump the version, reload
 
-Save the file, then restart the bot (`sudo systemctl restart
-meshtech-bot`) or send `!reload` from an admin node. The bot picks up the
-new handler — no other steps needed.
+Save the file, then open `core/version.py` and raise the version number
+by one (for example `0.0.005` becomes `0.0.006`). Every commit carries
+its own version number — see "Proposing a change" in `CONTRIBUTING.md`.
+
+Then restart the bot (`sudo systemctl restart meshtech-bot`) or send
+`!reload` from an admin node. The bot picks up the new handler — no
+other steps needed. The new number appears in the dashboard header and
+the startup log.
 
 ### Rules of thumb
 

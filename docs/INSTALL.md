@@ -215,6 +215,11 @@ sudo git pull
 sudo ./install.sh        # safe to rerun — your config and data are kept
 ```
 
+To confirm the update landed, compare the version in the dashboard
+header (or the startup log) with the newest number in
+[`core/version.py`](../core/version.py) on GitHub — every commit bumps
+it by one, like a counter.
+
 With Docker, the update is `sudo git pull` and then `docker compose up -d --build`.
 
 ---
