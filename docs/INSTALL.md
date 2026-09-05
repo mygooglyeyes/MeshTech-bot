@@ -188,11 +188,11 @@ journalctl -u meshtech-bot -n 20
 | # | Do this | Expected |
 |---|---|---|
 | 1 | Send `!help` on a configured channel | The bot lists its commands |
-| 2 | Send `!status` | A short status line |
+| 2 | Send `!path` on the channel | The bot shows the path your message took to it |
 | 3 | DM the bot `!status` (try `!status x`) | A reply; `x` gives more detail |
 | 4 | DM `!nodes` | A list of nodes the bot knows — your own 12-hex prefix is in here |
 | 5 | DM `!diag` | Works once your prefix is in `dm.admin_pubkey_prefixes` (step A1) |
-| 6 | Send `!status` from a node more than `mesh.max_inbound_hops` away | No reply — that is correct |
+| 6 | Send `!path` from a node more than `mesh.max_inbound_hops` away | No reply — that is correct |
 | 7 | Restart the repeater | The bot disconnects, then reconnects by itself |
 | 8 | Reboot the bot machine | The bot is running again without you logging in |
 | 9 | Open the dashboard at `http://<bot-machine>:8081` and log in | Tables fill with live data |

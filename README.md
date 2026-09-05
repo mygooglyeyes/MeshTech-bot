@@ -92,7 +92,7 @@ packet capture views, and reload/shutdown buttons. Blocks survive restarts.
 | Command | Who | What it does |
 |---|---|---|
 | `!help` | anyone | List commands |
-| `!status` / `!status x` | anyone | Bot health, channels, counters |
+| `!status` / `!status x` | DM | Bot health, channels, counters |
 | `!2byte` | anyone | Share of nodes using 2-byte path hashes (bar chart) |
 | `!nodes` / `!nodes x` | DM | Known nodes from the database |
 | `!path` / `!pathx` / `!path <node>` | anyone | The path your message took to the bot, or the route to another node |

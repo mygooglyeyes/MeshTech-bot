@@ -12,7 +12,7 @@ class StatusHandler(Handler):
     name = "status"
     keywords = ["status"]
     description = "Bot status and channel health"
-    scope = "both"
+    scope = "dm"
     access = "public"
     priority = 95
 
