@@ -59,7 +59,11 @@ if [[ -n "$APPLY_TARBALL" ]]; then
 
   log "Applying new code to $RUNTIME ..."
   tar xf "$APPLY_TARBALL" -C "$RUNTIME"
-  STAMP="$(tar xOf "$APPLY_TARBALL" ./.git-commit 2>/dev/null || true)"
+  # accept both member spellings ('./.git-commit' or '.git-commit' - tar
+  # stores whatever name it was given, and versions of this script differ)
+  STAMP="$(tar xOf "$APPLY_TARBALL" ./.git-commit 2>/dev/null \
+    || tar xOf "$APPLY_TARBALL" .git-commit 2>/dev/null \
+    || true)"
   # a deploy without a stamp means the staging half is broken - refuse to
   # continue silently (this exact silence is what let a stale stamp persist)
   [[ -n "$STAMP" ]] || die "staged tarball has no .git-commit stamp - refusing to deploy"
