@@ -1,0 +1,22 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+
+# never ship local config or runtime data into the image
+config.yaml
+data/*
+!data/.gitkeep
+
+# workspace metadata
+.freebuff
+project-id
+*.log
+
+# docs of the container image are mounted, not copied
+docs
+deploy
+install.sh

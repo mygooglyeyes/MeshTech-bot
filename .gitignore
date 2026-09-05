@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration - each install copies config.example.yaml -> config.yaml
+config.yaml
+
+# Runtime data (database, logs)
+data/*
+!data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# This workspace's private metadata (not part of the project)
+.freebuff/
+project-id
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

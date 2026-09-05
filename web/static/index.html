@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeshTech-Bot</title>
+  <!-- IBM Plex Mono: legible monospace console font with strongly
+       differentiated glyphs (l/1/I, 0/O) - easier to read for dyslexia.
+       Falls back to system monospace if offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>MeshTech-Bot</h1>
+    <div id="status-chips" class="chips">
+      <span class="chip" id="chip-conn">connecting…</span>
+      <span class="chip" id="chip-uptime">-</span>
+      <span class="chip" id="chip-nodes">nodes: -</span>
+      <span class="chip" id="chip-msgs">msgs: -</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="card-channels">
+      <h2>Channels <button class="btn small" id="btn-refresh-status">refresh</button></h2>
+      <div id="channel-list" class="channellist"><em>loading…</em></div>
+    </section>
+
+    <section class="card collapsible" id="card-feed">
+      <h2>Live activity
+        <button class="btn small" id="btn-pause">pause</button>
+        <button class="btn small" id="btn-clear-feed">clear</button>
+      </h2>
+      <div id="feed" class="feed"><em>waiting for traffic…</em></div>
+    </section>
+
+    <section class="card" id="card-actions">
+      <h2>Actions</h2>
+      <button class="btn" id="btn-mute">Mute bot</button>
+      <button class="btn" id="btn-reload">Reload config</button>
+      <button class="btn danger" id="btn-shutdown">Shutdown bot</button>
+      <span id="action-result" class="result"></span>
+    </section>
+
+    <section class="card collapsible" id="card-nodes">
+      <h2>Nodes</h2>
+      <input id="node-filter" type="search" placeholder="filter by name or prefix…">
+      <div id="node-list"><em>loading…</em></div>
+      <div id="node-detail" class="detail hidden"></div>
+    </section>
+
+    <section class="card collapsible" id="card-messages">
+      <h2>Messages
+        <select id="msg-channel"></select>
+        <select id="msg-kind">
+          <option value="">all kinds</option>
+          <option value="channel">channel</option>
+          <option value="dm">DM</option>
+        </select>
+        <button class="btn small" id="btn-load-msgs">load</button>
+      </h2>
+      <div id="msg-list"><em>loading…</em></div>
+    </section>
+
+    <section class="card collapsible" id="card-analysis">
+      <h2>Packet analysis
+        <select id="an-window">
+          <option value="1" selected>last hour</option>
+          <option value="6">last 6 hours</option>
+          <option value="24">last 24 hours</option>
+          <option value="168">last 7 days</option>
+        </select>
+      </h2>
+      <div id="an-grid" class="an-grid">
+        <em>loading…</em>
+      </div>
+    </section>
+
+    <section class="card collapsible" id="card-packets">
+      <h2>Packets
+        <select id="pkt-layer">
+          <option value="decoded">decoded</option>
+          <option value="raw">raw</option>
+        </select>
+        <button class="btn small" id="btn-load-packets">load</button>
+      </h2>
+      <div id="pkt-list"><em>loading…</em></div>
+    </section>
+
+    <section class="card" id="card-config">
+      <h2>Configuration <button class="btn small" id="btn-config">view</button></h2>
+      <pre id="config-view" class="config hidden"></pre>
+    </section>
+  </main>
+
+  <div id="login-overlay" class="overlay hidden">
+    <form class="loginbox" id="login-form">
+      <h2>Dashboard password</h2>
+      <input type="password" id="login-password" placeholder="password" autofocus>
+      <button class="btn" type="submit">Unlock</button>
+      <span id="login-error" class="error-text"></span>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

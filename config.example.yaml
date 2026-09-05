@@ -1,0 +1,142 @@
+# ============================================================
+#  MeshTech-Bot - configuration
+#
+#  This is the EXAMPLE config you copy on install:
+#      cp config.example.yaml config.yaml
+#  Edit the values below (marked "<--"), then run:
+#      python bot.py --check
+#  to make sure everything is valid before starting the bot.
+# ============================================================
+
+# --- Connection to your openHop Repeater --------------------
+connection:
+  host: "192.168.1.50"      # <-- LAN IP of the machine running openHop Repeater
+  port: 5000                # <-- companion identity port on the repeater. Matches the
+                            #     "tcp_port" set under companions in openHop's own
+                            #     config (/etc/openhop_repeater/config.yaml).
+  reconnect: true           # keep trying if the connection drops
+  reconnect_min_seconds: 3  # wait at least this long between attempts
+  reconnect_max_seconds: 60 # ...and at most this long (backoff grows over time)
+
+# --- Bot behaviour -------------------------------------------
+bot:
+  advertise_on_start: true  # send a flood advert at startup so other nodes can
+                            # find the bot in their contact list and DM it
+  # When the bot cannot identify who sent a message, stay silent.
+  #   false (default) = don't answer unknown senders (recommended)
+  #   true            = answer anyway - only for meshes where sender
+  #                     identity is never available (e.g. name-free gateways)
+  answer_unknown_senders: false
+
+# --- Hop limits (how far away a message may be before the bot answers) ----
+# MeshCore reports how many repeater hops an incoming message travelled.
+# max_inbound_hops: ignore messages that arrived via MORE hops than this.
+#                   0 = no limit (answer everything the radio hears).
+mesh:
+  max_inbound_hops: 3
+  unknown_hops: "ignore"    # what to do when hop count can't be read:
+                            #   "ignore" = play safe, don't answer
+                            #   "respond" = answer anyway
+  # MeshCore embeds the sender's display name in every channel message
+  # ("Name: message"). How much to trust that embedded name:
+  #   "trust" = always strip it (protocol default - commands arrive as
+  #             "Name: !help" and still work)
+  #   "smart" = strip it only when the whole text wouldn't already match,
+  #             so a message like "hello: anyone around?" keeps "hello"
+  #   "off"   = never strip (for gateways that relay messages WITHOUT the
+  #             embedded name - commands then arrive bare, e.g. "!help")
+  channel_sender_name: "trust"
+  # NOTE on reply range: channel replies are flooded by repeaters, so also cap
+  # propagation on the repeater itself: set max_flood_hops in openHop's own
+  # config (/etc/openhop_repeater/config.yaml) - e.g. 3 - and restart the
+  # openHop service. See docs/INSTALL.md "Limit how far replies travel".
+
+# --- Channels the bot listens on -------------------------------------------
+# Names must match channels that exist on your mesh. The bot checks the
+# repeater's channel table and (where possible) adds missing ones.
+# A channel with reply: false is "listen-only" - traffic is logged to the
+# database and dashboard, but the bot never answers there.
+channels:
+  - name: "#bot"            # <-- main Q&A channel
+    reply: true
+  - name: "#test"           # <-- second channel (log only example: reply: false)
+    reply: false
+
+# --- Direct messages ---------------------------------------------------------
+dm:
+  enabled: true
+  # Nodes allowed to run control commands (reload, shutdown, full stats).
+  # Use the first 12 hex characters of the node's public key. To find keys,
+  # DM the bot "!nodes" once it has been running, or check the web dashboard.
+  admin_pubkey_prefixes:
+    - "a1b2c3d4e5f6"        # <-- replace with YOUR node's prefix
+  # Everyone else can still use the public commands (help, status, nodes).
+
+# --- Reply detail levels -------------------------------------------------------
+# Users can add a modifier word to a command to change how much detail they get:
+#   !nodes          -> brief summary (recent nodes)
+#   !nodes full     -> extended list with all columns
+# Channel answers default to "brief" to save radio airtime; DM answers default
+# to "full" because a direct message only costs the recipient one packet.
+verbosity:
+  aliases_brief: ["brief", "short", "simple", "list", "summary"]
+  aliases_full:  ["full", "extended", "detail", "long", "verbose"]
+  channel_default: brief
+  dm_default: full
+
+# --- Database (node names, message history, paths/stats) ---------------------
+storage:
+  db_path: "data/bot.db"
+  contact_refresh_minutes: 30   # how often to refresh the node table from adverts
+  # --- Packet capture (for later traffic analysis) ---
+  # Every decoded companion frame (channel msgs, DMs, adverts, paths, command
+  # responses...) is stored with frame type, hops, SNR, sender and timing.
+  capture_packets: true
+  # Also store the raw wire bytes of each frame (bulkier; useful for packet
+  # size/timing analysis of the companion link itself).
+  packet_raw_hex: false
+  # Append-only JSONL analysis file - one JSON object per line, easy to load
+  # in pandas later:  pd.read_json('data/packets.jsonl', lines=True)
+  # Empty string ("") disables the file (database capture still works).
+  packet_jsonl: "data/packets.jsonl"
+  packet_max_rows: 200000        # keep the last N rows in the database
+
+# --- Simple canned answers (no code needed) ------------------------------------
+# Whenever one of these keywords appears in a message, the bot replies with the
+# matching text. If several texts are listed, one is chosen at random.
+#
+# EMPTY by default: this bot is built for testing, not chat, so the bot stays
+# silent on plain words. Add your own test triggers here when you need them:
+#
+# replies:
+#   - keywords: ["ping", "test"]
+#     text:
+#       - "pong - mesh path OK"
+#
+# (Leave the section as an empty list if you want NO plain-word replies.)
+replies: []
+
+# --- Limits (keep the mesh happy) ------------------------------------------------
+limits:
+  min_interval_seconds: 3    # minimum gap between any two bot replies
+  per_sender_seconds: 30     # ignore repeat requests from the same node
+  max_reply_length: 133      # MeshCore text limit per message
+  max_chunks: 6              # max messages one reply may be split into
+
+# --- Web management dashboard -----------------------------------------------------
+# Browser UI at  http://<this machine>:8081
+web:
+  enabled: true
+  host: "127.0.0.1"          # 127.0.0.1 = this machine only (recommended).
+                             # Use 0.0.0.0 ONLY if you know your firewall blocks
+                             # outside access, then visit from another device.
+  port: 8081
+  password: "change-me"      # <-- set a real password
+
+# --- Logging ----------------------------------------------------------------------
+# With the systemd service, leave file empty and watch logs with:
+#   journalctl -u meshtech-bot -f
+logging:
+  level: INFO                # DEBUG, INFO, WARNING, ERROR
+  file: ""                   # e.g. "data/bot.log" - empty = console only
+  timezone: local            # local | utc | IANA name such as "Europe/London"

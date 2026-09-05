@@ -1,0 +1,23 @@
+# MeshTech-Bot systemd unit (template - install.sh fills in the {PLACEHOLDERS}).
+# Installed to /etc/systemd/system/meshtech-bot.service by ./install.sh.
+[Unit]
+Description=MeshTech-Bot - MeshCore answer bot (openHop companion client)
+Documentation=file://{INSTALL_DIR}/docs/INSTALL.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The bot runs as its own unprivileged account, never as root.
+User={USER}
+Group={GROUP}
+WorkingDirectory={INSTALL_DIR}
+ExecStart={PYTHON} bot.py
+Restart=on-failure
+RestartSec=5
+# Small hardening without breaking the install:
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

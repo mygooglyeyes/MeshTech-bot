@@ -1,0 +1,25 @@
+# MeshTech-Bot via Docker Compose.
+#
+# One-time setup (see docs/INSTALL.md "Docker install"):
+#   cp config.example.yaml config.yaml      # then edit config.yaml
+#   mkdir -p data && sudo chown 1001:1001 data
+#
+# Run:
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# network_mode: host is used because the bot must reach your openHop
+# Repeater on your LAN and it is simplest to let the container share the
+# host network (the dashboard then binds 127.0.0.1:8081 on the host).
+# If your repeater is on a routable address, you can drop host mode and
+# publish ports instead.
+services:
+  meshtech-bot:
+    build: .
+    image: meshtech-bot:latest
+    container_name: meshtech-bot
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data

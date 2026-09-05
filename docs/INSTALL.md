@@ -1,0 +1,312 @@
+# Installing MeshTech-Bot
+
+Simple, step-by-step instructions for running the bot on a Linux machine
+(Debian / Ubuntu / Raspberry Pi OS) or in Docker. The bot connects over TCP
+to the **companion endpoint** of an openHop Repeater on your network.
+
+> **A note for the very first setup:** every option below ends with the bot
+> running as a service that survives reboots — you do not need to start it
+> by hand again. Re-running the installer later is how you update.
+
+---
+
+## 0. What you need
+
+- A **Linux machine** (Debian/Ubuntu/Raspberry Pi OS) or any machine with
+  Docker — Raspberry Pi 3 or newer is plenty.
+- Your **openHop Repeater** reachable over your network, with a **companion
+  identity enabled** (see step 1).
+- One mesh radio/node so you can test the bot afterwards (and know your
+  node's public-key prefix to become the admin).
+
+---
+
+## 1. Prepare the openHop Repeater (one time, on the repeater)
+
+On the machine running openHop, its config usually lives at
+`/etc/openhop_repeater/config.yaml`. Give the bot its own companion
+identity (an openHop companion exposes a plain TCP port for clients):
+
+```yaml
+mesh:
+  companions:
+    - name: "BotCompanion"
+      identity_key: "<a fresh companion identity key hex>"
+      settings:
+        node_name: "meshtech-bot"
+        tcp_port: 5000
+```
+
+Then restart the repeater:
+
+```bash
+sudo systemctl restart openhop-repeater
+```
+
+**Notes**
+
+- One TCP client may connect per companion — the bot is that one client.
+- Port `5000` above is an example; whatever `tcp_port` you choose must match
+  `connection.port` in the bot's `config.yaml`.
+- If the bot machine and the repeater are the same box, the dashboard and
+  bot can still run — they are separate ports.
+
+---
+
+## 2. Get the code from GitHub
+
+The project is published as a git repository. On your Linux machine, if you
+have **git and an SSH key** set up (recommended):
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv   # python3-venv not needed for Docker
+git clone git@github.com:YOUR-USERNAME/MeshTech-Bot.git /opt/meshtech-bot
+cd /opt/meshtech-bot
+```
+
+If you prefer HTTPS over SSH (no key setup), use:
+
+```bash
+git clone https://github.com/YOUR-USERNAME/MeshTech-Bot.git /opt/meshtech-bot
+```
+
+*First time with git on this machine? Generate a key once:*
+
+```bash
+ssh-keygen -t ed25519
+cat ~/.ssh/id_ed25519.pub      # add this to GitHub -> Settings -> SSH keys
+```
+
+The folder `/opt/meshtech-bot` is where the bot will live — that is the
+**install folder**. You may clone anywhere you like, but the examples use
+`/opt/meshtech-bot`.
+
+> **Already have a config.yaml or data/ in the folder from testing?** They
+> are git-ignored and stay local — cloning fresh simply skips them.
+
+Now choose **one** install path:
+
+- [Option A — Native Linux + systemd (recommended)](#option-a--native-linux--systemd-recommended)
+- [Option B — Native Linux, no virtual environment](#option-b--native-linux-without-a-virtual-environment)
+- [Option C — Docker](#option-c--docker)
+
+---
+
+## Option A — Native Linux + systemd (recommended)
+
+The installer creates a dedicated **`meshtech`** service account, installs
+the Python packages into a private environment inside the folder, copies
+`config.example.yaml` to `config.yaml`, fixes all file/group permissions so
+only the `meshtech` account can touch the data, and registers a systemd
+service that starts the bot at every boot and restarts it if it crashes.
+
+**Step A1 — run the installer**
+
+```bash
+cd /opt/meshtech-bot
+sudo ./install.sh
+```
+
+**Step A2 — edit your config**
+
+```bash
+sudo nano /opt/meshtech-bot/config.yaml
+```
+
+Set at least:
+
+| Setting | What goes there |
+|---|---|
+| `connection.host` | LAN IP of the openHop Repeater machine |
+| `connection.port` | the companion `tcp_port` from openHop's config (e.g. 5000) |
+| `channels` | the `#channel` names to listen on; `reply: false` = log only |
+| `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
+| `web.password` | a real password for the dashboard |
+
+The bot watches this file — save it and the bot reloads automatically.
+Check it first with:
+
+```bash
+sudo -u meshtech /opt/meshtech-bot/.venv/bin/python bot.py --check
+```
+
+**Step A3 — verify it is running**
+
+```bash
+systemctl status meshtech-bot          # active (running)?
+journalctl -u meshtech-bot -f          # live logs (Ctrl-C to stop watching)
+curl http://127.0.0.1:8081/api/login   # dashboard answering? (expect 200)
+```
+
+The service is **enabled at boot** already. Usual commands:
+
+```bash
+sudo systemctl restart meshtech-bot    # after editing install options
+sudo systemctl stop meshtech-bot
+sudo systemctl start meshtech-bot
+```
+
+**Permissions — what the installer did**
+
+- Account: `meshtech` (system user, cannot log in, never runs as root).
+- Ownership: the whole install folder + `data/` belong to
+  `meshtech:meshtech`. Config is `640` (readable only by the bot and root).
+- The bot writes its SQLite database, JSONL capture and exports under
+  `<install>/data/`.
+- Everything runs from `WorkingDirectory=<install folder>`, so relative
+  paths in `config.yaml` just work.
+
+---
+
+## Option B — Native Linux without a virtual environment
+
+Same as Option A, but the Python packages are installed with the **system
+Python** instead of a private `.venv`. Choose this on an appliance box you
+fully control where a shared Python is acceptable.
+
+```bash
+cd /opt/meshtech-bot
+sudo apt update && sudo apt install -y python3 python3-pip
+sudo ./install.sh --no-venv
+```
+
+Notes for this mode:
+
+- The installer falls back to `pip install --break-system-packages` on
+  Debian 12 / Ubuntu 23+ (these refuse global pip installs by default).
+  That is fine on a dedicated bot box, but if you also develop on the same
+  machine, prefer Option A so system packages stay untouched.
+- The service runs `/usr/bin/python3 bot.py` — everything else (config,
+  permissions, boot start) is identical to Option A.
+- You can switch between the two modes any time: rerun the installer with
+  the other flag; data in `data/` is unaffected.
+
+---
+
+## Option C — Docker
+
+Run the bot in a container. Best if you already use Docker, want an
+immutable install, or the machine runs something other than Debian.
+
+**Step C1 — install Docker**
+
+On a Raspberry Pi or Debian/Ubuntu box:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# log out and back in so the group takes effect
+```
+
+**Step C2 — prepare config and data**
+
+```bash
+cd /opt/meshtech-bot            # your clone
+cp config.example.yaml config.yaml
+sudo nano config.yaml           # set host/port/channels/admin/dashboard password
+mkdir -p data
+sudo chown 1001:1001 data       # container runs as uid 1001 (meshtech)
+```
+
+**Step C3 — build and start**
+
+```bash
+docker compose up -d --build
+docker compose logs -f          # watch logs (Ctrl-C stops watching)
+```
+
+The compose file uses `network_mode: host`, so the bot reaches your
+repeater on the LAN directly and the dashboard listens on `127.0.0.1:8081`
+of the host. The container restarts on boot via `restart: unless-stopped`.
+
+Useful commands:
+
+```bash
+docker compose down             # stop the container
+docker compose up -d --build    # rebuild + restart after a git pull
+docker compose logs --tail 100 meshtech-bot
+```
+
+**Updating the container after `git pull`:** run `docker compose up -d --build`
+again — your `config.yaml` and `data/` are mounted from the host and
+survive.
+
+---
+
+## 3. First-run check (all options)
+
+1. Watch the logs: `journalctl -u meshtech-bot -f` (native) or
+   `docker compose logs -f` (Docker).
+2. Wait for the line `Startup complete: N channel(s), advert sent`.
+3. Open the dashboard: `http://<this-machine>:8081` and log in with
+   `web.password`.
+4. From your radio: DM the bot **`!status`** (should answer) and, on a
+   configured channel, send **`!help`**. If your node is not yet in
+   `admin_pubkey_prefixes`, DM **`!nodes`** to find its 12-hex prefix, then
+   add it to the config to unlock admin commands.
+
+---
+
+## Updating the bot
+
+```bash
+cd /opt/meshtech-bot
+git pull
+sudo ./install.sh        # re-runs dependency install + permissions (safe)
+```
+
+The `meshtech` account, your `config.yaml` and your `data/` are all kept.
+For Docker: `git pull` then `docker compose up -d --build`.
+
+---
+
+## Backups
+
+Everything worth keeping lives in one folder:
+
+```bash
+sudo tar czf meshtech-backup-$(date +%F).tar.gz /opt/meshtech-bot/config.yaml /opt/meshtech-bot/data
+```
+
+Restore = unpack into a fresh install before starting the service.
+
+---
+
+## Uninstalling
+
+```bash
+cd /opt/meshtech-bot
+sudo ./install.sh --uninstall     # stops service, removes account (data kept)
+sudo rm -rf /opt/meshtech-bot     # delete the files too, once you are sure
+# Docker instead:
+docker compose down && docker rmi meshtech-bot:latest
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Logs show `Connection refused` / retrying | The companion port is not open: confirm openHop runs, has a companion with `tcp_port`, and was restarted. `telnet <repeater-ip> <port>` from the bot machine should connect. |
+| `only one client` / second bot cannot connect | One TCP client per companion — stop the old bot (`systemctl stop meshtech-bot`) before starting another. |
+| `permission denied` writing `data/…` | Ownership fix: `sudo chown -R meshtech:meshtech /opt/meshtech-bot` (install.sh does this too). |
+| Dashboard loads but says `not connected` | Bot is up but the repeater link is down — see first row. |
+| `python3 -m venv` fails | Install the venv module: `sudo apt install python3-venv`. |
+| `externally-managed-environment` with `--no-venv` | That is expected on Debian 12+/Ubuntu 23+; the installer handles it with `--break-system-packages`. Prefer Option A if unsure. |
+| Want the dashboard from another device | Set `web.host: "0.0.0.0"` AND a strong `web.password` (or use a reverse proxy for HTTPS). |
+| Bot answers far-away traffic | Raise/lower `mesh.max_inbound_hops`, and cap floods on the repeater (`max_flood_hops`) — see README. |
+
+---
+
+## Reference: files you may care about
+
+| Path | Purpose |
+|---|---|
+| `config.yaml` | your settings (created from `config.example.yaml`) |
+| `data/bot.db` | SQLite: nodes, messages, routes, overrides, packet capture |
+| `data/packets.jsonl` | append-only packet log for offline analysis |
+| `data/exports/` | CSV exports from `scripts/export_packets.py` |
+| `/etc/systemd/system/meshtech-bot.service` | the native service unit |
+| `journalctl -u meshtech-bot` | native logs (systemd captures stdout) |
