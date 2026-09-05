@@ -173,6 +173,22 @@ def test_expand_glued_x():
     assert expand_glued_x(["x"], True, handlers) == ["x"]                    # bare !x untouched
 
 
+def test_companion_name_extraction():
+    from core.client import _companion_name
+
+    class PropStyle:      # meshcore exposes self_info as a @property dict
+        self_info = {"name": "loganbot"}
+
+    class MethodStyle:    # tolerate a method-style API
+        def self_info(self):
+            return {"name": "loganbot"}
+
+    assert _companion_name(PropStyle()) == "loganbot"
+    assert _companion_name(MethodStyle()) == "loganbot"
+    assert _companion_name(type("E", (), {"self_info": {"name": " "}})()) == ""
+    assert _companion_name(None) == ""
+
+
 def test_bot_display_name_priority():
     from handlers.meshinfo import bot_display_name
     from core.config import BotCfg

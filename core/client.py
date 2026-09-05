@@ -90,7 +90,7 @@ class RadioClient:
         log.info("Connected to %s:%s", cfg.host, cfg.port)
 
         # openHop names its companion (node_name) - use that as our own name.
-        self.own_name = str((mc.self_info() or {}).get("name") or "").strip(" \x00")
+        self.own_name = _companion_name(mc)
         if self.own_name:
             log.info("Companion node name: %s", self.own_name)
 
@@ -531,6 +531,22 @@ def _hops_of(payload: dict) -> Optional[int]:
     if 0 <= number <= 64:
         return number
     return None
+
+
+def _companion_name(mc) -> str:
+    """Companion's own node name from the meshcore self_info object.
+
+    meshcore exposes it as a ``@property`` returning a dict (``mc.self_info``);
+    tolerate a method-style API too, and never raise on a hiccup - the name
+    is only for display.
+    """
+    try:
+        info = getattr(mc, "self_info", {})
+        if callable(info):
+            info = info()
+        return str((info or {}).get("name") or "").strip(" \x00")
+    except Exception:
+        return ""
 
 
 def _num(value) -> Optional[float]:
