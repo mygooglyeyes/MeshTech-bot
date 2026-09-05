@@ -831,11 +831,75 @@ $("btn-shutdown").addEventListener("click", async () => {
   $("action-result").textContent = "shutting down…";
 });
 
+// Show the config as a flat settings list (one line per setting) instead of
+// a raw JSON dump: sections become dotted paths (connection.host), list
+// entries are indexed (channels[0].name), and values are aligned in columns.
+function fmtCfgVal(v) {
+  if (v === null || v === undefined) return "(none)";
+  if (typeof v === "string") return '"' + v + '"';
+  return String(v);
+}
+
+// Friendlier label for the channel "reply" flag - it means "does the bot
+// answer on this channel", i.e. the channel is enabled for replies.
+function cfgLabel(k) {
+  return k === "reply" ? "Enabled" : k;
+}
+
+function flattenConfig(obj, prefix, out) {
+  for (const [k, v] of Object.entries(obj)) {
+    const path = prefix ? prefix + "." + k : k;
+    if (Array.isArray(v)) {
+      if (v.length === 0) {
+        out.push([path, "(none)"]);
+      } else if (v.every((x) => x !== null && typeof x === "object")) {
+        v.forEach((item, i) => {
+          const itemPath = path + "[" + i + "]";
+          if (typeof item.name === "string") {
+            // Named entries (channels...) collapse to one line:
+            //   channels[0] = "#bot"   Enabled: true
+            const rest = Object.entries(item).filter(([k]) => k !== "name");
+            const inline = rest.map(([k, val]) => cfgLabel(k) + ": " + fmtCfgVal(val)).join("  ");
+            out.push([itemPath, fmtCfgVal(item.name) + (inline ? "   " + inline : "")]);
+          } else {
+            flattenConfig(item, itemPath, out);
+          }
+        });
+      } else {
+        out.push([path, v.map(fmtCfgVal).join(", ")]);
+      }
+    } else if (v !== null && typeof v === "object") {
+      flattenConfig(v, path, out);
+    } else {
+      out.push([path, fmtCfgVal(v)]);
+    }
+  }
+  return out;
+}
+
 $("btn-config").addEventListener("click", async () => {
   const view = $("config-view");
   if (!view.classList.contains("hidden")) { view.classList.add("hidden"); return; }
   const data = await api("/api/config");
-  view.textContent = JSON.stringify(data.config, null, 2);
+  const cfg = data.config || {};
+  const conn = cfg.connection || {};
+  const chans = Array.isArray(cfg.channels) ? cfg.channels : [];
+  const admins = Array.isArray((cfg.dm || {}).admin_pubkey_prefixes)
+    ? cfg.dm.admin_pubkey_prefixes : [];
+
+  // Short human-readable summary above the full settings list.
+  const summary = [];
+  summary.push("Companion:".padEnd(11) + "  " +
+    (conn.host ? conn.host + (conn.port ? ":" + conn.port : "") : "(not set)"));
+  summary.push("Channels:".padEnd(11) + "  " + chans.length +
+    (chans.length ? "  (" + chans.map((c) => c.name).filter(Boolean).join(", ") + ")" : ""));
+  summary.push("Admins:".padEnd(11) + "  " +
+    (admins.length ? admins.length : "0 (none set)"));
+
+  const pairs = flattenConfig(cfg, "", []);
+  const pad = pairs.length ? Math.max(...pairs.map((p) => p[0].length)) + 2 : 0;
+  view.textContent = summary.join("\n") + "\n" + "-".repeat(44) + "\n" +
+    pairs.map((p) => p[0].padEnd(pad) + "= " + p[1]).join("\n");
   if (data.warnings && data.warnings.length) {
     view.textContent += "\n\nWarnings:\n" + data.warnings.join("\n");
   }
