@@ -59,7 +59,7 @@ The settings that matter:
 
 1. `connection.host` — the IP of your openHop Repeater machine.
 2. `connection.port` — the companion `tcp_port` from the repeater's config (5000 by default).
-3. `channels` — the `#channel` names to listen on. `reply: false` = log only.
+3. `channels` — the `#channel` names to listen on.
 4. `mesh.max_inbound_hops` — e.g. `3`: only answer messages that reached you within 3 hops.
 5. `mesh.channel_sender_name` — how much to trust the name embedded in channel
    text (`"Name: message"`): `trust` (default), `smart`, or `off`.
