@@ -160,5 +160,9 @@ if you ever want it.
 
 ## License
 
-MIT. MeshCore is by its authors; this project is independent of the
+MIT — see [LICENSE](LICENSE). Attribution for the third-party
+libraries and fonts this project uses is in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+MeshCore is by its authors; this project is independent of the
 MeshCore and openHop projects.
