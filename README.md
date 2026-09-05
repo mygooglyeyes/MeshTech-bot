@@ -154,9 +154,9 @@ if you ever want it.
   are named from DMs, adverts, and contacts.
 - Propagation delay uses sender-provided timestamps, so treat numbers as
   trends rather than exact values.
-- The dashboard binds to `127.0.0.1` by default. To reach it from another
-  device, set `web.host` to your LAN IP, use a real password, and consider
-  a reverse proxy for HTTPS.
+- The dashboard binds to `127.0.0.1` by default — local access only. To
+  reach it from other machines, set `web.host: "0.0.0.0"` so any local
+  address can reach it, and use a real dashboard password.
 
 ## License
 

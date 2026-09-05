@@ -127,8 +127,8 @@ limits:
 web:
   enabled: true
   host: "127.0.0.1"          # 127.0.0.1 = this machine only (recommended).
-                             # Use 0.0.0.0 ONLY if your firewall blocks
-                             # outside access, then visit from another device.
+                             # To reach the dashboard from other machines,
+                             # use "0.0.0.0" and set a real password.
   port: 8081
   # The dashboard password lives in its OWN file (first line = password),
   # NOT in this config - so a leaked config.yaml can't unlock the dashboard.
