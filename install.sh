@@ -194,6 +194,40 @@ fi
 log "Marking $INSTALL_DIR as a trusted git directory (no 'dubious ownership' errors)"
 git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
 
+# --- operator access (browse the install without sudo) -------------------------------------
+# The install folder is owned by the service account (mode 750), so the user
+# who ran the installer cannot even 'cd' into it. Adding them to the service
+# group lets them browse code/logs/config while writes still need sudo - and
+# the dashboard password file (mode 600) stays out of their reach.
+INVOKING_USER="${SUDO_USER:-}"
+if [[ -n "$INVOKING_USER" && "$INVOKING_USER" != "root" ]] \
+   && id "$INVOKING_USER" &>/dev/null; then
+  if id -nG "$INVOKING_USER" | grep -qw "$SERVICE_GROUP"; then
+    log "Operator '$INVOKING_USER' is already in the '$SERVICE_GROUP' group."
+  elif [[ -t 0 ]]; then
+    echo
+    log "Browser access: add user '$INVOKING_USER' to the '$SERVICE_GROUP' group so you"
+    log "  can browse $INSTALL_DIR (code, logs, config) without sudo."
+    read -r -p "  Add $INVOKING_USER to the $SERVICE_GROUP group? [Y/n]: " reply
+    case "$reply" in
+      n|N|no|NO)
+        log "Skipped. You can add it anytime with:"
+        log "    sudo usermod -aG $SERVICE_GROUP $INVOKING_USER"
+        ;;
+      *)
+        if usermod -aG "$SERVICE_GROUP" "$INVOKING_USER" 2>/dev/null; then
+          log "Added. Log out and back in (start a new SSH session) for it to apply."
+        else
+          warn "Could not add '$INVOKING_USER' to '$SERVICE_GROUP' - browse access stays closed."
+        fi
+        ;;
+    esac
+  else
+    log "Non-interactive run: to browse the install without sudo, run later:"
+    log "    sudo usermod -aG $SERVICE_GROUP $INVOKING_USER"
+  fi
+fi
+
 # --- validate before installing the service -----------------------------------------------
 log "Validating config ..."
 if ! sudo -u "$SERVICE_USER" "$PYTHON" bot.py --check; then

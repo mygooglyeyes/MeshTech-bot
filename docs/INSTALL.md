@@ -82,7 +82,11 @@ sudo ./install.sh
 ```
 
 The installer asks you to **choose a dashboard password** (type it twice).
-That is the only password you need to make up.
+That is the only password you need to make up. The installer also offers
+to add your user to the `meshtech` group — say yes and you can browse the
+install folder (code, logs, config) without `sudo`; log out and back in
+for it to apply. Writes still need `sudo`, and the dashboard password
+file stays private to the bot account either way.
 
 Skipped step A1? The installer creates `config.yaml` anyway. Just edit it
 afterwards — the bot picks up the file on its own.
@@ -272,7 +276,7 @@ unprivileged user that can only write inside its `data/` folder.
 |---|---|
 | Logs show `Connection refused`, keeps retrying | The companion port isn't open. Check openHop has a companion with `tcp_port`, and that you restarted it. |
 | A second bot can't connect | One client per companion. Stop the old bot first. |
-| `Permission denied` when entering the install folder | Use `sudo` — the folder belongs to the `meshtech` account. |
+| `Permission denied` when entering the install folder | The folder belongs to the `meshtech` account. Browse access: `sudo usermod -aG meshtech $USER`, then log out and back in. Writes (like updates) still need `sudo`. |
 | `dubious ownership` on `git pull` | `sudo git config --global --add safe.directory /opt/meshtech-bot` |
 | Dashboard loads but says `not connected` | The repeater link is down — see the first row. |
 | `python3 -m venv` fails | `sudo apt install python3-venv` |
