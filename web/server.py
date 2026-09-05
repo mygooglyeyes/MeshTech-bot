@@ -210,20 +210,35 @@ def build_app(service) -> FastAPI:
         await websocket.accept()
         # The bearer token is sent as the first frame - never in the URL -
         # so it cannot leak into browser history, access logs or proxies.
+        # The frame also carries the client's catch-up position (feed
+        # generation + last sequence seen), so a reconnect is not answered
+        # by re-pasting history the client already has on screen.
         authenticated = False
+        last_seq = 0
+        last_inst = None
         try:
             first = await asyncio.wait_for(websocket.receive_json(),
                                            timeout=_WS_AUTH_TIMEOUT)
-            token = str((first or {}).get("token", "")) if isinstance(first, dict) else ""
-            authenticated = auth.check(token)
+            if isinstance(first, dict):
+                token = str(first.get("token", ""))
+                authenticated = auth.check(token)
+                try:
+                    last_seq = max(0, int(first.get("last_seq", 0) or 0))
+                except (TypeError, ValueError):
+                    last_seq = 0
+                last_inst = first.get("inst")
         except Exception:
             authenticated = False
         if not authenticated:
             await websocket.close(code=4401)
             return
-        queue = await service.feed.subscribe()
+        feed = service.feed
+        # Subscribe before reading history so an event published in between
+        # is caught by the queue rather than missed; the rare replay/live
+        # overlap is harmless - the page drops duplicate sequences.
+        queue = await feed.subscribe()
         try:
-            for event in service.feed.history(limit=30):
+            for event in feed.history_after(last_inst, last_seq, limit=30):
                 await websocket.send_json(event)
             while True:
                 event = await queue.get()
@@ -231,7 +246,7 @@ def build_app(service) -> FastAPI:
         except Exception:
             pass
         finally:
-            service.feed.unsubscribe(queue)
+            feed.unsubscribe(queue)
 
     # ------------------------------------------------------------- static page
 

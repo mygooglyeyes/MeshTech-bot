@@ -81,7 +81,25 @@ function appendFeed(html) { // html is a DOM node
   if (!feedPaused) feed.scrollTop = feed.scrollHeight;
 }
 
+// Catch-up bookkeeping for the live feed.  Every event carries a process
+// generation id ("inst") and a monotonic sequence ("seq").  On reconnect
+// the page tells the server what it has already rendered, so history is
+// not re-pasted over rows that are still on screen.  The seq also drops
+// the rare replay/live duplicate that a reconnect race can produce.
+let feedInst = null;    // generation we have been rendering
+let lastFeedSeq = 0;    // highest sequence rendered from that generation
+
 function handleFeedEvent(event) {
+  const hasSeq = typeof event.seq === "number" && event.seq > 0;
+  if (hasSeq && event.inst !== undefined && event.inst !== null) {
+    if (feedInst !== event.inst) {
+      // Bot restarted (sequences restart at 1) - the old baseline is stale.
+      feedInst = event.inst;
+      lastFeedSeq = 0;
+    }
+    if (lastFeedSeq > 0 && event.seq <= lastFeedSeq) return;  // already shown
+    if (event.seq > lastFeedSeq) lastFeedSeq = event.seq;
+  }
   const p = event.payload || {};
   const t = new Date((event.ts || 0) * 1000);
   const ts = t.toTimeString().slice(0, 8);
@@ -124,9 +142,15 @@ function connectWs() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") +
                      location.host + "/ws");
   // The token travels as the first frame, never in the URL - so it cannot
-  // end up in browser history, access logs or proxy logs. The server
-  // closes with 4401 if the token is missing/invalid.
-  ws.onopen = () => { try { ws.send(JSON.stringify({ token })); } catch (e) { /* ignore */ } };
+  // end up in browser history, access logs or proxy logs. The frame also
+  // carries our catch-up position so the server only replays what we have
+  // not already rendered (no more duplicated history walls on reconnect).
+  // The server closes with 4401 if the token is missing/invalid.
+  ws.onopen = () => {
+    try {
+      ws.send(JSON.stringify({ token, inst: feedInst, last_seq: lastFeedSeq }));
+    } catch (e) { /* ignore */ }
+  };
   ws.onmessage = (event) => {
     try { handleFeedEvent(JSON.parse(event.data)); } catch (e) { /* ignore */ }
   };
