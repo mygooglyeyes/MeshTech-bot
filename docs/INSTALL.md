@@ -55,32 +55,34 @@ sudo systemctl restart openhop-repeater
 
 ## 2. Get the code from GitHub
 
-The project is published as a git repository. On your Linux machine, if you
-have **git and an SSH key** set up (recommended):
+The project lives at **https://github.com/mygooglyeyes/MeshTech-Bot**. The
+examples below install it into `/opt/meshtech-bot` — a **system-owned**
+folder — so the clone (and later updates) need `sudo`:
 
 ```bash
 sudo apt update
 sudo apt install -y git python3 python3-venv   # python3-venv not needed for Docker
-git clone git@github.com:YOUR-USERNAME/MeshTech-Bot.git /opt/meshtech-bot
+
+sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot
 cd /opt/meshtech-bot
 ```
 
-If you prefer HTTPS over SSH (no key setup), use:
+Notes:
 
-```bash
-git clone https://github.com/YOUR-USERNAME/MeshTech-Bot.git /opt/meshtech-bot
-```
-
-*First time with git on this machine? Generate a key once:*
-
-```bash
-ssh-keygen -t ed25519
-cat ~/.ssh/id_ed25519.pub      # add this to GitHub -> Settings -> SSH keys
-```
+- **HTTPS, not SSH, is used on purpose.** With `sudo`, git runs as the root
+  account, which has no SSH keys of its own — an SSH clone would fail, while
+  HTTPS needs nothing extra.
+- **Private repo?** If the repo is set to *Private* (as published), the
+  clone will ask for your GitHub **username** and a **personal access
+  token** — *not* your GitHub password. Create one at GitHub → *Settings* →
+  *Developer settings* → *Personal access tokens* → *Generate new token*
+  (classic) and tick the `repo` scope. If you later make the repo *Public*,
+  the prompt disappears.
+- Cloned your own fork instead? Swap the URL above for your fork's.
 
 The folder `/opt/meshtech-bot` is where the bot will live — that is the
-**install folder**. You may clone anywhere you like, but the examples use
-`/opt/meshtech-bot`.
+**install folder**. You may clone anywhere you like, but only `/opt` paths
+need the `sudo`.
 
 > **Already have a config.yaml or data/ in the folder from testing?** They
 > are git-ignored and stay local — cloning fresh simply skips them.
@@ -101,35 +103,41 @@ the Python packages into a private environment inside the folder, copies
 only the `meshtech` account can touch the data, and registers a systemd
 service that starts the bot at every boot and restarts it if it crashes.
 
-**Step A1 — run the installer**
+**Step A1 — create and edit your config**
+
+`config.yaml` is **not** shipped in the GitHub repo (it would leak your
+passwords and keys) — you make it from the example template:
+
+```bash
+cd /opt/meshtech-bot
+sudo cp config.example.yaml config.yaml
+sudo nano config.yaml
+```
+
+Save with `Ctrl+O`, exit with `Ctrl+X`. Set at least:
+
+| Setting | What goes there |
+|---|---|
+| `connection.host` | LAN IP of the openHop Repeater machine |
+| `connection.port` | the companion `tcp_port` from openHop's config (the example says 5000 — use whatever YOUR repeater actually uses) |
+| `channels` | the `#channel` names to listen on; `reply: false` = log only |
+| `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
+| `web.password` | a real password for the dashboard |
+
+**Step A2 — run the installer**
 
 ```bash
 cd /opt/meshtech-bot
 sudo ./install.sh
 ```
 
-**Step A2 — edit your config**
+The installer creates the `meshtech` account, installs the Python
+dependencies, checks your config, and starts the service at boot.
 
-```bash
-sudo nano /opt/meshtech-bot/config.yaml
-```
-
-Set at least:
-
-| Setting | What goes there |
-|---|---|
-| `connection.host` | LAN IP of the openHop Repeater machine |
-| `connection.port` | the companion `tcp_port` from openHop's config (e.g. 5000) |
-| `channels` | the `#channel` names to listen on; `reply: false` = log only |
-| `dm.admin_pubkey_prefixes` | YOUR node's 12-hex prefix (run `!nodes` later, or see the dashboard) |
-| `web.password` | a real password for the dashboard |
-
-The bot watches this file — save it and the bot reloads automatically.
-Check it first with:
-
-```bash
-sudo -u meshtech /opt/meshtech-bot/.venv/bin/python bot.py --check
-```
+> Skipped Step A1? The installer still creates `config.yaml` from the
+> example automatically — but with placeholder values. Run
+> `sudo nano config.yaml`, set the table above, and save: the bot reloads
+> the file on its own.
 
 **Step A3 — verify it is running**
 
@@ -224,11 +232,11 @@ Useful commands:
 
 ```bash
 docker compose down             # stop the container
-docker compose up -d --build    # rebuild + restart after a git pull
+docker compose up -d --build    # rebuild + restart after a sudo git pull
 docker compose logs --tail 100 meshtech-bot
 ```
 
-**Updating the container after `git pull`:** run `docker compose up -d --build`
+**Updating the container after `sudo git pull`:** run `docker compose up -d --build`
 again — your `config.yaml` and `data/` are mounted from the host and
 survive.
 
@@ -252,12 +260,12 @@ survive.
 
 ```bash
 cd /opt/meshtech-bot
-git pull
+sudo git pull            # needs sudo: the folder is owned by the system
 sudo ./install.sh        # re-runs dependency install + permissions (safe)
 ```
 
 The `meshtech` account, your `config.yaml` and your `data/` are all kept.
-For Docker: `git pull` then `docker compose up -d --build`.
+For Docker: `sudo git pull` then `docker compose up -d --build`.
 
 ---
 

@@ -51,9 +51,11 @@ Pick one way to run it — full step-by-step instructions for each live in
 **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 1. **Native Linux service (recommended)** — Debian/Ubuntu/Raspberry Pi OS.
-   Clone, run `sudo ./install.sh` once, edit `config.yaml`: the bot gets
-   its own `meshtech` account, correct file permissions, and a systemd
-   service that starts at boot and restarts on crashes.
+   `sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot`
+   (`sudo` because `/opt` is system-owned), then `cd /opt/meshtech-bot`, run
+   `sudo ./install.sh` once and edit `config.yaml`: the bot gets its own
+   `meshtech` account, correct file permissions, and a systemd service that
+   starts at boot and restarts on crashes.
 2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
    `docker compose up -d --build`. Config and data stay on the host.
 3. **Local development / quick test** (this machine):
