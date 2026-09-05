@@ -22,8 +22,7 @@ repeater is the bot's mesh identity.
 ## Requirements
 
 - Python 3.10+
-- An openHop Repeater with a **companion identity** enabled — see step 2 of
-  [docs/INSTALL.md](docs/INSTALL.md) for the one-time repeater setup.
+- A working openHop Repeater with a **dedicated bot companion** already set up on it.
 
 ## Install
 

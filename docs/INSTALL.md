@@ -12,45 +12,13 @@ when the machine boots — you won't need to run it by hand.
 ## 1. What you need
 
 - A Linux machine (a Raspberry Pi 3 or newer is plenty), or any machine with Docker.
-- Your openHop Repeater reachable over the network, with a **companion identity** enabled (step 2).
+- A working openHop Repeater with a **dedicated bot companion** already set
+  up on it (its `tcp_port` is what the bot connects to).
 - A mesh radio so you can test the bot (and find your node's prefix, which makes you the admin).
 
 ---
 
-## 2. Set up the openHop Repeater (one time, on the repeater)
-
-On the repeater machine, edit `/etc/openhop_repeater/config.yaml` and give
-the bot its own companion identity:
-
-```yaml
-mesh:
-  companions:
-    - name: "BotCompanion"
-      identity_key: "<a fresh companion identity key hex>"
-      settings:
-        node_name: "meshtech-bot"
-        tcp_port: 5000
-```
-
-Then restart the repeater:
-
-```bash
-sudo systemctl restart openhop-repeater
-```
-
-A few things to know:
-
-- Only **one** TCP client can connect per companion — the bot is that client.
-- Port `5000` is just an example. Whatever `tcp_port` you use must match
-  `connection.port` in the bot's `config.yaml`.
-- The bot and the repeater can run on the same machine.
-- Also consider setting `max_flood_hops` (e.g. 3) in the same repeater
-  config — it bounds how far channel floods, including the bot's replies,
-  spread across the mesh.
-
----
-
-## 3. Download the code
+## 2. Download the code
 
 ```bash
 sudo apt update
@@ -206,7 +174,7 @@ docker compose up -d --build         # rebuild and restart
 
 ---
 
-## 4. Test that it works
+## 3. Test that it works
 
 **On the bot machine first:**
 

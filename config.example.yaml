@@ -43,8 +43,6 @@ mesh:
   #   "smart" = strip it only when the rest of the text wouldn't already match
   #   "off"   = never strip (for gateways that relay messages WITHOUT names)
   channel_sender_name: "trust"
-  # Channel replies are flooded by repeaters, so also cap propagation on the
-  # repeater itself (max_flood_hops in openHop's config). See docs/INSTALL.md.
 
 # --- Channels the bot listens on -------------------------------
 # Names must match channels on your mesh. The bot checks the repeater's
