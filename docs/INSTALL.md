@@ -126,10 +126,11 @@ sudo systemctl stop meshtech-bot
 sudo systemctl start meshtech-bot
 ```
 
-Tip: you do not have to remember any of those. `sudo ./manage.sh` (in the
-install folder) opens a plain-text control panel that can configure the
-bot, update it, restart it, show live logs, and uninstall it — all over
-a plain SSH session.
+Tip: you do not have to remember any of those. `sudo /opt/meshtech-bot/manage.sh`
+opens a plain-text control panel that can configure the bot, update it,
+restart it, show live logs, and uninstall it — all over a plain SSH
+session. (Running `sudo ./manage.sh` from your `~/meshtech-bot` clone
+works too — it always manages the runtime, never the clone.)
 
 ---
 

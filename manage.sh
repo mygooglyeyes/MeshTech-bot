@@ -4,8 +4,10 @@
 #
 #  One command for day-to-day bot management:
 #
-#      cd /opt/meshtech-bot
-#      sudo ./manage.sh
+#      sudo /opt/meshtech-bot/manage.sh
+#
+#  You can also run this panel from your ~/meshtech-bot clone - it always
+#  manages the RUNTIME (/opt/meshtech-bot), never the clone itself.
 #
 #  Plain ASCII boxes only, so it renders the same over any SSH client.
 #  If whiptail is installed (most Debian/Ubuntu/Raspberry Pi systems) and a
@@ -18,12 +20,16 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE="meshtech-bot"
 SERVICE_USER="meshtech"
 
-# The installation this panel manages: its own folder when that is a git
-# checkout of the bot, otherwise the standard install location (so a copy
-# of the panel - e.g. a /tmp trial - updates the real installation).
+# The RUNTIME this panel manages - the folder where the bot actually runs
+# (its own folder when that is the runtime, otherwise the standard install
+# location).  In the two-location layout the panel may live in the user's
+# git clone (~/meshtech-bot); a clone is NOT the runtime - it has .git and
+# its config/data are not the live ones.  The runtime is wherever bot.py
+# sits without a .git next to it (older direct installs kept .git in /opt;
+# they are handled too).
 INSTALL_ROOT="$DIR"
-if ! git -C "$DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  if git -C /opt/meshtech-bot rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if [[ -d "$DIR/.git" || ! -f "$DIR/bot.py" ]]; then
+  if [[ -f /opt/meshtech-bot/bot.py ]]; then
     INSTALL_ROOT=/opt/meshtech-bot
   fi
 fi
@@ -109,42 +115,48 @@ show_header() {
 
 # --- 1) configure -------------------------------------------------------------
 do_configure() {
-  if [[ ! -f "$DIR/config.yaml" ]]; then
-    # Where the starting config comes from, in order of preference:
-    #   a trial copy of the panel (e.g. in /tmp) starts from the INSTALLED
-    #   config, so the editor shows the real running values (host, port,
-    #   channels); a fresh repo checkout uses its own example.
+  # Option 1 edits the RUNTIME's config - never the clone's (the clone has
+  # no live config; seeding one there would be misleading).  When the
+  # runtime has no config yet, the example is the starting point.
+  if [[ ! -f "$INSTALL_ROOT/bot.py" ]]; then
+    warn "No bot installation found (looked at $DIR and /opt/meshtech-bot)."
+    warn "Install first:  cd ~/meshtech-bot && sudo ./install.sh"
+    return 1
+  fi
+  if [[ "$DIR" != "$INSTALL_ROOT" ]]; then
+    # panel running from a clone/trial copy - say plainly what will change
+    if ! confirm "Edit the LIVE config at $INSTALL_ROOT/config.yaml?" y; then
+      return 0
+    fi
+  fi
+  if [[ ! -f "$INSTALL_ROOT/config.yaml" ]]; then
     local source=""
-    if [[ -f "$INSTALL_ROOT/config.yaml" ]]; then
-      source="$INSTALL_ROOT/config.yaml"
-      warn "No config.yaml here yet - starting from the installed one."
+    if [[ -f "$INSTALL_ROOT/config.example.yaml" ]]; then
+      source="$INSTALL_ROOT/config.example.yaml"
+      warn "No config.yaml yet - copying the example first."
     elif [[ -f "$DIR/config.example.yaml" ]]; then
       source="$DIR/config.example.yaml"
-      warn "No config.yaml yet - copying the example first."
-    elif [[ -f "$INSTALL_ROOT/config.example.yaml" ]]; then
-      source="$INSTALL_ROOT/config.example.yaml"
-      warn "No config.yaml yet - copying the installed example."
-    fi
-    if [[ -z "$source" ]]; then
+      warn "No config.yaml yet - copying the example from this folder."
+    else
       warn "No config.yaml or config.example.yaml found - nothing to edit."
       return 1
     fi
-    cp "$source" "$DIR/config.yaml"
+    cp "$source" "$INSTALL_ROOT/config.yaml"
   fi
   # The service account owns config.yaml (mode 640); run the editor as root
   # here (sudo manage.sh) so saving always works, then hand the file back.
   # A copy of the panel running outside the repo (a /tmp trial) borrows the
   # installed editor if its own is missing. "|| rc=$?" keeps an aborted
   # editor from killing the whole menu (set -e).
-  local editor="$DIR/scripts/configure_bot.py"
-  if [[ ! -f "$editor" && -f /opt/meshtech-bot/scripts/configure_bot.py ]]; then
-    editor=/opt/meshtech-bot/scripts/configure_bot.py
+  local editor="$INSTALL_ROOT/scripts/configure_bot.py"
+  if [[ ! -f "$editor" && -f "$DIR/scripts/configure_bot.py" ]]; then
+    editor="$DIR/scripts/configure_bot.py"
   fi
   local rc=0
-  "$PY" "$editor" "$DIR/config.yaml" || rc=$?
+  "$PY" "$editor" "$INSTALL_ROOT/config.yaml" || rc=$?
   if [[ $rc -eq 0 ]]; then
-    chown "$SERVICE_USER":"$SERVICE_USER" "$DIR/config.yaml" 2>/dev/null || true
-    chmod 640 "$DIR/config.yaml"
+    chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_ROOT/config.yaml" 2>/dev/null || true
+    chmod 640 "$INSTALL_ROOT/config.yaml"
     echo
     if confirm "  Restart the service now to apply immediately?" y; then
       systemctl restart "$SERVICE.service" && log "Service restarted."
