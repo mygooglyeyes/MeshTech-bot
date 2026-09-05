@@ -66,11 +66,24 @@ The settings that matter:
 6. `dm.admin_pubkey_prefixes` — your node's 12-character hex prefix, so you can use admin commands.
 7. `bot.answer_unknown_senders` — default `false`: stay silent when the sender can't be identified.
 
+## Set the dashboard password
+
+Do this **before** you open the dashboard — logging in is the first thing
+it asks for. On a native install, `install.sh` already asks you to choose
+a password. To set or change it later:
+
+```bash
+sudo ./set-password.sh
+```
+
+The password lives in its own file (not in `config.yaml`), so a leaked
+config can't unlock the dashboard. An alternative is the
+`MESHTECH_DASHBOARD_PASSWORD` environment variable.
+
 ## The dashboard
 
-With `web.enabled: true`, open `http://<bot-machine>:8081` in a browser.
-Set the password once with `sudo ./set-password.sh` (it lives in its own
-secrets file, never in `config.yaml`). The dashboard shows live activity,
+With `web.enabled: true`, open `http://<bot-machine>:8081` in a browser
+and enter the password you set. The dashboard shows live activity,
 per-channel mute toggles, the node table with drill-down and per-node
 **block checkboxes** (ignore everything from a node), a message browser,
 packet capture views, and reload/shutdown buttons. Blocks survive restarts.
