@@ -114,6 +114,11 @@ sudo systemctl stop meshtech-bot
 sudo systemctl start meshtech-bot
 ```
 
+Tip: you do not have to remember any of those. `sudo ./manage.sh` (in the
+install folder) opens a plain-text control panel that can configure the
+bot, update it, restart it, show live logs, and uninstall it — all over
+a plain SSH session.
+
 ---
 
 ## Option B — Native install, no virtual environment
@@ -280,3 +285,5 @@ unprivileged user that can only write inside its `data/` folder.
 | `data/exports/` | CSV exports made by `scripts/export_packets.py` |
 | `data/.dashboard_password` | Your dashboard password (first line of the file) |
 | `set-password.sh` | Set or change the dashboard password |
+| `manage.sh` | The control panel: configure, update, uninstall, restart, logs |
+| `scripts/configure_bot.py` | The interactive config editor (menu option 1) |

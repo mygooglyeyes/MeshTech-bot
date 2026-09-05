@@ -29,7 +29,7 @@ _SHORT_LEN = 7
 
 # Human-friendly release number.  Bump this on each tagged release; the
 # exact source of any running build is still pinned by the commit stamp.
-__version__ = "0.0.003"
+__version__ = "0.0.004"
 
 
 def _short(sha: str) -> str:

@@ -148,7 +148,8 @@ find "$INSTALL_DIR" -type d -exec chmod 750 {} \;
 find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
 # the bot's Python + helper scripts still need to be executable
 chmod 755 "$INSTALL_DIR/bot.py" "$INSTALL_DIR/install.sh" \
-         "$INSTALL_DIR/set-password.sh" 2>/dev/null || true
+         "$INSTALL_DIR/set-password.sh" "$INSTALL_DIR/manage.sh" \
+         "$INSTALL_DIR/scripts/configure_bot.py" 2>/dev/null || true
 if [[ -d .venv ]]; then
   find .venv -type d -exec chmod 755 {} \;
   find .venv -type f -name 'python*' -exec chmod 755 {} \; 2>/dev/null || true
@@ -225,7 +226,9 @@ echo "  Config :  $INSTALL_DIR/config.yaml"
 echo "  Data   :  $INSTALL_DIR/data/  (owned by $SERVICE_USER)"
 echo
 echo "  Next steps:"
-echo "    1. Edit $INSTALL_DIR/config.yaml (host, port, channels, admin prefix)."
+echo "    1. Set your settings (host, port, channels, admin prefix):"
+echo "       sudo ./manage.sh   -> option 1  (interactive, no file editing)"
+echo "       ...or edit config.yaml by hand."
 echo "    2. Set the dashboard password (if you skipped the installer's question):"
 echo "       sudo $INSTALL_DIR/set-password.sh"
 echo "       (config edits auto-reload; the dashboard password needs a restart)."
