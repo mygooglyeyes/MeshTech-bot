@@ -55,7 +55,7 @@ sudo systemctl restart openhop-repeater
 
 ## 2. Get the code from GitHub
 
-The project lives at **https://github.com/mygooglyeyes/MeshTech-Bot**. The
+The project lives at **https://github.com/mygooglyeyes/MeshTech-bot**. The
 examples below install it into `/opt/meshtech-bot` — a **system-owned**
 folder — so the clone (and later updates) need `sudo`:
 
@@ -63,7 +63,7 @@ folder — so the clone (and later updates) need `sudo`:
 sudo apt update
 sudo apt install -y git python3 python3-venv   # python3-venv not needed for Docker
 
-sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot
+sudo git clone https://github.com/mygooglyeyes/MeshTech-bot.git /opt/meshtech-bot
 cd /opt/meshtech-bot
 ```
 

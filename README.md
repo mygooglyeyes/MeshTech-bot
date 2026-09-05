@@ -51,7 +51,7 @@ Pick one way to run it — full step-by-step instructions for each live in
 **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 1. **Native Linux service (recommended)** — Debian/Ubuntu/Raspberry Pi OS.
-   `sudo git clone https://github.com/mygooglyeyes/MeshTech-Bot.git /opt/meshtech-bot`
+   `sudo git clone https://github.com/mygooglyeyes/MeshTech-bot.git /opt/meshtech-bot`
    (`sudo` because `/opt` is system-owned), then `cd /opt/meshtech-bot`, run
    `sudo ./install.sh` once (it will ask for a dashboard password) and edit
    `config.yaml`: the bot gets its own `meshtech` account, correct file
@@ -63,7 +63,7 @@ Pick one way to run it — full step-by-step instructions for each live in
 3. **Local development / quick test** (this machine):
 
    ```bash
-   git clone <your fork or clone URL> && cd MeshTech-Bot
+   git clone https://github.com/mygooglyeyes/MeshTech-bot.git && cd MeshTech-bot
    python -m venv .venv            # Windows: python -m venv .venv ; .venv\Scripts\activate
    source .venv/bin/activate       # Linux/macOS
    pip install -r requirements.txt
@@ -283,20 +283,6 @@ The test suite needs no radio or network:
 pip install -r requirements-dev.txt
 python -m pytest -q
 ```
-
-## First-run validation (M0 spike)
-
-Before trusting live behaviour, prove the link assumptions on your own
-hardware:
-
-```bash
-python scripts/spike_connect.py --host <repeater-ip> --port 5000 --seconds 30
-```
-
-Send a channel message to one of the bot's channels from a second radio
-while it listens. It prints the raw received-message fields — look for
-`hops` / `path_len` to confirm hop filtering will work. It also lists the
-companion channel table and tests whether the client may add channels.
 
 ## Notes & limitations
 
