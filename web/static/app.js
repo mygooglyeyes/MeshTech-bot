@@ -47,7 +47,8 @@ $("login-form").addEventListener("submit", async (e) => {
     localStorage.setItem(TOKEN_KEY, token);
     showLogin(false);
     refreshAll();
-    connectWs();   // open the live feed - missed on first login (token was empty at boot)
+    startPolling();  // timers are skipped at boot when login is required
+    connectWs();     // open the live feed - missed on first login (token was empty at boot)
   } catch (err) {
     $("login-error").textContent = "Wrong password.";
   }
@@ -832,11 +833,15 @@ async function refreshAll() {
   } catch (e) { /* auth or network handled elsewhere */ }
 }
 
-async function boot() {
-  const ok = await ensureAuth();
-  if (!ok) return;
-  connectWs();
-  refreshAll();
+// Periodic refreshes keep the dashboard live (uptime chip, messages, node
+// cells, packets, analysis). Registered exactly once - from boot() when the
+// page loads with a valid token, AND from the login handler, because boot()
+// returns early when the password screen is shown first. Without the login
+// call the page loaded once and then froze (uptime never advanced).
+let pollingStarted = false;
+function startPolling() {
+  if (pollingStarted) return;
+  pollingStarted = true;
   setInterval(() => { refreshStatus().catch(() => {}); }, 3000);
   setInterval(() => { refreshMessages().catch(() => {}); }, 15000);
   // Keep block checkboxes / node cells current (e.g. blocks from another
@@ -844,6 +849,14 @@ async function boot() {
   setInterval(() => { refreshNodes($("node-filter").value).catch(() => {}); }, 30000);
   setInterval(() => { refreshPackets().catch(() => {}); }, 30000);
   setInterval(() => { refreshAnalysis().catch(() => {}); }, 30000);
+}
+
+async function boot() {
+  const ok = await ensureAuth();
+  if (!ok) return;
+  connectWs();
+  refreshAll();
+  startPolling();
 }
 
 setupCollapsibleSections();
