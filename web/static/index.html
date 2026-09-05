@@ -26,6 +26,7 @@
       <span class="chip" id="chip-version" title="">version: -</span>
       <span class="chip" id="chip-nodes">nodes: -</span>
       <span class="chip" id="chip-msgs">msgs: -</span>
+      <button class="btn small" id="btn-about" title="Version, license, and third-party attributions">about</button>
     </div>
   </header>
 
@@ -109,6 +110,20 @@
       <button class="btn" type="submit">Unlock</button>
       <span id="login-error" class="error-text"></span>
     </form>
+  </div>
+
+  <div id="about-overlay" class="overlay hidden">
+    <div class="aboutbox" role="dialog" aria-label="About MeshTech-Bot">
+      <h2>About MeshTech-Bot</h2>
+      <div id="about-version" class="about-version">loading…</div>
+      <div id="about-commit-link" class="about-commit hidden"></div>
+      <div class="about-actions">
+        <button class="btn small" id="btn-about-license">License (MIT)</button>
+        <button class="btn small" id="btn-about-notices">Third-party notices</button>
+      </div>
+      <pre id="about-text" class="about-text"></pre>
+      <button class="btn" id="btn-about-close">Close</button>
+    </div>
   </div>
 
   <script src="/app.js"></script>

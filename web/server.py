@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .auth import Auth, LoginThrottle
 
@@ -267,6 +267,32 @@ def build_app(service) -> FastAPI:
     async def style_css():
         return FileResponse(_STATIC_DIR / "style.css", media_type="text/css",
                             headers=_NO_CACHE)
+
+    # ------------------------------------------------------------- legal files
+
+    # The About dialog shows the project's license and third-party
+    # attributions. Only these two hardcoded names are ever served (no
+    # user input reaches the path), and each file is capped in size.
+    _LEGAL_FILES = {
+        "license": ("LICENSE", "text/plain; charset=utf-8"),
+        "notices": ("THIRD_PARTY_NOTICES.md", "text/plain; charset=utf-8"),
+    }
+    _LEGAL_MAX_BYTES = 256 * 1024
+
+    @app.get("/api/legal/{name}", dependencies=[Depends(require_auth)])
+    async def legal(name: str):
+        entry = _LEGAL_FILES.get(name)
+        if entry is None:
+            return json_error("Not found", 404)
+        filename, media_type = entry
+        path = _STATIC_DIR.parent.parent / filename
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return json_error(f"{filename} not installed with the bot", 404)
+        if len(data) > _LEGAL_MAX_BYTES:
+            data = data[:_LEGAL_MAX_BYTES]
+        return Response(content=data, media_type=media_type, headers=_NO_CACHE)
 
     return app
 

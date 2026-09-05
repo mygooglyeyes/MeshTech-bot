@@ -136,6 +136,7 @@ pre.config { background: #0b0f15; border: 1px solid var(--border); border-radius
   cursor: pointer;
   margin-right: 6px;
 }
+.btn.active { border-color: var(--ok); color: var(--ok); }
 .btn:hover { border-color: var(--accent); }
 .btn.small { padding: 2px 8px; font-size: 12px; }
 .btn.danger:hover { border-color: var(--bad); color: var(--bad); }
@@ -165,6 +166,34 @@ input, select {
   border-radius: 10px; padding: 20px; width: 300px; text-align: center;
 }
 .loginbox input { width: 100%; margin: 10px 0; text-align: center; }
+
+/* About dialog: version summary up top, license / notices in a scrollable
+   pre below. Reuses the overlay, so it stacks above the page like login. */
+.aboutbox {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px;
+  width: min(760px, 92vw); max-height: 85vh;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.aboutbox h2 { margin: 0; }
+.about-version {
+  font-size: 13px; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; background: var(--panel2);
+  white-space: pre-wrap;
+}
+.about-commit { font-size: 13px; }
+.about-commit a { color: var(--accent); text-decoration: underline; }
+.about-commit a:hover { text-decoration: none; }
+.about-actions { display: flex; gap: 6px; }
+.about-text {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px; margin: 0;
+  font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+  word-break: break-word;
+}
+.aboutbox .btn { align-self: flex-start; }
 
 .muted-note { color: var(--warn); font-weight: 600; }
 em { color: var(--muted); }

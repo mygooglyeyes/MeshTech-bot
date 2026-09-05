@@ -24,12 +24,88 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+// Same as api(), but for endpoints that return plain text (license, notices).
+async function apiText(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(path, Object.assign({}, options, { headers }));
+  if (res.status === 401) {
+    showLogin(true);
+    throw new Error("unauthorized");
+  }
+  if (!res.ok) throw new Error(await res.text());
+  return res.text();
+}
+
 // ------------------------------------------------------------------ login
 
 function showLogin(show) {
   $("login-overlay").classList.toggle("hidden", !show);
   if (show) setTimeout(() => $("login-password").focus(), 50);
 }
+
+// ------------------------------------------------------------------ about
+
+let aboutTab = "license";
+
+// Canonical upstream repo - the "view this commit" link points here. GitHub
+// resolves the short commit SHA the stamp carries (needs the commit to be
+// pushed); for unknown/empty stamps the link is hidden.
+const GITHUB_REPO = "https://github.com/mygooglyeyes/MeshTech-bot";
+
+function openAbout() {
+  const v = (lastStatus && lastStatus.version) || {};
+  const vText = v.version ? "v" + v.version : "(unknown version)";
+  const cText = v.commit ? (v.branch ? v.branch + "@" + v.commit : v.commit) : "commit: -";
+  $("about-version").textContent =
+    "MeshTech-Bot " + vText + "\n" +
+    cText + "  ·  source: " + (v.source || "?");
+  // Link to the exact commit on GitHub (short SHAs resolve there). Hidden
+  // when no commit is known (e.g. a build with no git source).
+  const linkWrap = $("about-commit-link");
+  linkWrap.replaceChildren();
+  if (v.commit) {
+    const a = document.createElement("a");
+    a.href = GITHUB_REPO + "/commit/" + v.commit;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = "View this commit on GitHub";
+    linkWrap.appendChild(a);
+    linkWrap.classList.remove("hidden");
+  } else {
+    linkWrap.classList.add("hidden");
+  }
+  $("about-overlay").classList.remove("hidden");
+  loadAboutTab(aboutTab);
+}
+
+async function loadAboutTab(tab) {
+  aboutTab = tab;
+  const name = tab === "notices" ? "Third-party notices" : "License (MIT)";
+  $("btn-about-license").classList.toggle("active", tab === "license");
+  $("btn-about-notices").classList.toggle("active", tab === "notices");
+  const pre = $("about-text");
+  pre.textContent = "loading…";
+  try {
+    pre.textContent = await apiText("/api/legal/" + (tab === "notices" ? "notices" : "license"));
+  } catch (e) {
+    pre.textContent = "Could not load " + name + ".\n\n" + e.message;
+  }
+}
+
+$("btn-about").addEventListener("click", openAbout);
+$("btn-about-close").addEventListener("click", () => $("about-overlay").classList.add("hidden"));
+$("btn-about-license").addEventListener("click", () => loadAboutTab("license"));
+$("btn-about-notices").addEventListener("click", () => loadAboutTab("notices"));
+// Click on the dark backdrop (outside the box) closes the dialog.
+$("about-overlay").addEventListener("click", (e) => {
+  if (e.target === $("about-overlay")) $("about-overlay").classList.add("hidden");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("about-overlay").classList.contains("hidden")) {
+    $("about-overlay").classList.add("hidden");
+  }
+});
 
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
