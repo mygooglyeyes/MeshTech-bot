@@ -182,6 +182,33 @@ def test_sanitized_snapshot_masks_password(settings):
     assert "capture_packets" in snapshot["storage"]
 
 
+def test_config_snapshot_shows_effective_bot_name(settings):
+    """The dashboard shows the name the bot actually answers as, not just the
+    fallback key - the raw bot.display_name confused operators (it only fires
+    when the companion's name can't be learned)."""
+    from core.service import BotService
+    from core.store import Store
+    from core.feed import FeedHub
+    import tempfile, os
+
+    db = os.path.join(tempfile.mkdtemp(), "bot.db")
+    store = Store(db)
+    service = BotService(settings, store, FeedHub())
+
+    # companion name learned -> that wins, source says companion
+    service.client = type("C", (), {"own_name": "LoganBot"})()
+    snap = service.config_snapshot()
+    assert snap["bot"]["bot_name_effective"] == "LoganBot"
+    assert snap["bot"]["bot_name_source"] == "companion"
+
+    # not connected -> effective is explicit, source names the fallback
+    service.client = None
+    snap = service.config_snapshot()
+    assert snap["bot"]["bot_name_effective"] == "(not connected)"
+    assert snap["bot"]["bot_name_source"] == "config fallback"
+    store.close() if hasattr(store, "close") else None
+
+
 def test_invalid_yaml_gives_friendly_error(tmp_path):
     bad = tmp_path / "config.yaml"
     bad.write_text("connection: [unclosed\n", encoding="utf-8")

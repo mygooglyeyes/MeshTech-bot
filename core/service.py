@@ -127,4 +127,13 @@ class BotService:
         }
 
     def config_snapshot(self) -> Dict:
-        return sanitized_snapshot(self.settings)
+        snap = sanitized_snapshot(self.settings)
+        # show what the bot actually answers as: the live companion name when
+        # the bot learned it, with the configured fallback noted as what it is
+        own = (getattr(self.client, "own_name", "") or "").strip(" \x00")
+        snap["bot"]["bot_name_effective"] = own or "(not connected)"
+        snap["bot"]["bot_name_source"] = (
+            "companion" if own
+            else ("config fallback" if self.settings.bot.display_name
+                  else "default 'me'"))
+        return snap
