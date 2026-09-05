@@ -127,56 +127,19 @@ CSV plus hourly, frame-type, hops, SNR, and sender summaries.
 
 ## Adding features
 
-Two ways:
+For most people, the **no-code** route is enough — add a reply for a
+keyword in `config.yaml`:
 
-1. **No code** — add an entry to the `replies:` list in `config.yaml`:
+```yaml
+replies:
+  - keywords: ["call", "frequency"]
+    text: "Weekly net: Sundays 20:00 local on #net."
+```
 
-   ```yaml
-   replies:
-     - keywords: ["call", "frequency"]
-       text: "Weekly net: Sundays 20:00 local on #net."
-   ```
-
-2. **Python** — a handler is a small file that defines one feature the
-   bot can do. Start from the template:
-
-   ```bash
-   cp handlers/_template.py handlers/weather.py
-   ```
-
-   Open `handlers/weather.py`. The file contains a **class** — in plain
-   words, a named block that bundles the feature's settings and behavior
-   together. It looks like this:
-
-   ```python
-   class ExampleTemplateHandler(Handler):   # <- rename me!
-       name = "weather"                    # unique id for this handler
-       description = "Short description shown by !help"
-       keywords = ["weather"]              # what users type: !weather
-       scope = "both"                      # "both" | "channel" | "dm"
-       access = "public"                   # "public" | "admin"
-   ```
-
-   Change three things, and they must all match:
-
-   - **The file name** — you already renamed it (`weather.py`).
-   - **The class name** — the first line: change `ExampleTemplateHandler`
-     to `WeatherHandler`. (Handlers are found automatically from the
-     file, but keeping file name and class name in sync avoids confusion.)
-   - **The `keywords` list** — this is what users actually type. With
-     `keywords = ["weather"]`, a channel message `!weather` triggers the
-     feature.
-
-   Then fill in the `handle()` method — the part between `async def
-   handle(self, ctx):` and `return HandlerResult(...)` — with what the
-   feature should do. The comments inside the template show what `ctx`
-   gives you (the user's command, extra words, the database, etc.).
-   Return the reply with `return HandlerResult(kind="text", data=...)`.
-
-   Save the file, then restart the bot or send `!reload` from an admin
-   node. No other wiring needed — the bot finds the new handler by
-   itself. `scope = "dm"` makes a feature DM-only; `access = "admin"`
-   restricts it to allowlisted nodes.
+If you want a brand-new command (like `!weather`), that means writing a
+small Python handler. It's not something you need as a normal user — but
+the full walkthrough lives in **[docs/ADDING_FEATURES.md](docs/ADDING_FEATURES.md)**
+if you ever want it.
 
 ## Tests
 
