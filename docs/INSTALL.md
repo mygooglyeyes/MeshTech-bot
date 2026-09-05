@@ -242,17 +242,43 @@ survive.
 
 ---
 
-## 3. First-run check (all options)
+## 3. End-to-end verification (first run)
 
-1. Watch the logs: `journalctl -u meshtech-bot -f` (native) or
-   `docker compose logs -f` (Docker).
-2. Wait for the line `Startup complete: N channel(s), advert sent`.
-3. Open the dashboard: `http://<this-machine>:8081` and log in with
-   `web.password`.
-4. From your radio: DM the bot **`!status`** (should answer) and, on a
-   configured channel, send **`!help`**. If your node is not yet in
-   `admin_pubkey_prefixes`, DM **`!nodes`** to find its 12-hex prefix, then
-   add it to the config to unlock admin commands.
+Work through this in order — it proves every layer, from the service down
+through the radio link to the captured data.
+
+**Server-side first** (on the bot machine):
+
+```bash
+systemctl status meshtech-bot        # active (running)?
+journalctl -u meshtech-bot -n 20     # "Startup complete: N channel(s)" present?
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/api/login   # 200?
+```
+
+**Then from your radio** (the openHop app on your phone or the radio itself):
+
+| # | Do this | Expected result | What it proves |
+|---|---|---|---|
+| 1 | Send `!help` on a configured channel | The bot replies with the command list | Channel path + replies work |
+| 2 | Send `!status` on the channel | A short status line | Config + database are sane |
+| 3 | DM the bot `!status` | A longer, more detailed reply | Direct-message path works |
+| 4 | DM `!nodes` | A list of nodes the bot knows | Advert/contact discovery works — find your own 12-hex prefix here |
+| 5 | DM `!2byte` | A one-line bar, e.g. `2-byte path nodes: [▓▓▒▒…] 38% (10/26 of registered nodes)` | Packet capture + data handlers work |
+| 6 | Add your prefix from step 4 to `dm.admin_pubkey_prefixes`, then DM `!diag` | A diagnostics summary | Admin access works |
+| 7 | From a node **farther than** `mesh.max_inbound_hops` away, send `!status` | No reply — the log shows `[skip] hops N > limit 3` | Hop limiting works |
+| 8 | Send a plain word like `hello` on the channel | Silence | The bot is not chatty (`replies: []` by default) |
+| 9 | On the repeater host: `sudo systemctl restart openhop-repeater` | The bot logs a `Disconnected` event, then reconnects on its own | Auto-reconnect works |
+| 10 | On the bot machine: `sudo reboot`, then after boot run `systemctl status meshtech-bot` | Active without you logging in | Starts at every boot |
+| 11 | Open `http://<bot-machine>:8081` and log in | Nodes and Packets tables populate with live data | Dashboard + capture work |
+
+**Pass criteria:** rows 1–5 and 9–11 green means the install is healthy. Row 6
+is the only one that needs a config edit first (your node's prefix). Rows 7–8
+are just as important — they verify the bot stays *quiet* when it should,
+which is the whole point of a testing bot.
+
+**Pacing:** the bot rate-limits replies (3 s between any two, 30 s per sender)
+so wait a few seconds between tests. Do rows 1–6 from close range — anything
+arriving over more hops than the limit is intentionally ignored.
 
 ---
 
