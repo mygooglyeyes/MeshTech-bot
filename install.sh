@@ -153,6 +153,14 @@ if [[ -d .venv ]]; then
   find .venv -type f \( -name '*.so' -o -perm -u+x \) -exec chmod 755 {} \; 2>/dev/null || true
 fi
 
+# --- git safe.directory (avoids the 'dubious ownership' error) -----------------------------
+# The chown above hands the folder to $SERVICE_USER, so a later 'sudo git pull'
+# runs as root against a repository it no longer owns - modern git refuses
+# that with 'dubious ownership'. Trust the install folder explicitly so
+# updates work out of the box. Old git versions simply ignore the key.
+log "Marking $INSTALL_DIR as a trusted git directory (no 'dubious ownership' errors)"
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
 # --- validate before installing the service -----------------------------------------------
 log "Validating config ..."
 if ! sudo -u "$SERVICE_USER" "$PYTHON" bot.py --check; then

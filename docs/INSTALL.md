@@ -326,6 +326,7 @@ docker compose down && docker rmi meshtech-bot:latest
 | Logs show `Connection refused` / retrying | The companion port is not open: confirm openHop runs, has a companion with `tcp_port`, and was restarted. `telnet <repeater-ip> <port>` from the bot machine should connect. |
 | `only one client` / second bot cannot connect | One TCP client per companion — stop the old bot (`systemctl stop meshtech-bot`) before starting another. |
 | `permission denied` writing `data/…` | Ownership fix: `sudo chown -R meshtech:meshtech /opt/meshtech-bot` (install.sh does this too). |
+| `dubious ownership` on `sudo git pull` | The installer already adds the safe-directory exception; if you still see it (e.g. after re-cloning): `sudo git config --global --add safe.directory /opt/meshtech-bot`. |
 | Dashboard loads but says `not connected` | Bot is up but the repeater link is down — see first row. |
 | `python3 -m venv` fails | Install the venv module: `sudo apt install python3-venv`. |
 | `externally-managed-environment` with `--no-venv` | That is expected on Debian 12+/Ubuntu 23+; the installer handles it with `--break-system-packages`. Prefer Option A if unsure. |
