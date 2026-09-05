@@ -176,6 +176,10 @@ def test_sanitized_snapshot_masks_password(settings):
     snapshot = sanitized_snapshot(settings)
     assert snapshot["web"]["password"] == "set"
     assert "secret" not in str(snapshot)
+    # Capture flags are exposed so the dashboard can show whether raw
+    # packet capture is actually running.
+    assert "packet_raw_hex" in snapshot["storage"]
+    assert "capture_packets" in snapshot["storage"]
 
 
 def test_invalid_yaml_gives_friendly_error(tmp_path):

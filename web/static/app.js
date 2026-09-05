@@ -744,6 +744,18 @@ async function refreshPackets() {
     " · raw " + (byLayer.raw || 0);
   wrap.appendChild(caption);
 
+  // When "raw" is selected but raw capture is disabled in the config, the
+  // list can never fill up - say so instead of looking broken.
+  if (layer === "raw" && data.raw_capture === false) {
+    const warn = document.createElement("div");
+    warn.className = "muted-note";
+    warn.style.fontSize = "11px";
+    warn.style.fontWeight = "400";
+    warn.textContent = "raw capture is OFF - set storage.packet_raw_hex: true " +
+      "in config.yaml, then restart the bot";
+    wrap.appendChild(warn);
+  }
+
   // Raw link profile: packet size + inter-frame timing of the companion link
   try {
     const prof = (await api("/api/packets/profile")).profile;

@@ -175,11 +175,13 @@ def build_app(service) -> FastAPI:
     async def packets(layer: Optional[str] = None, limit: int = 50):
         capture = service.capture
         if capture is None:
-            return {"packets": [], "total": 0, "stats": {}}
+            return {"packets": [], "total": 0, "stats": {}, "raw_capture": False}
         layer = layer if layer in ("decoded", "raw") else None
         rows = capture.recent(layer=layer, limit=max(1, min(limit, 500)))
         return {"packets": rows, "total": capture.stats()["total"],
-                "stats": capture.stats()}
+                "stats": capture.stats(),
+                "raw_capture": (service.settings.storage.packet_raw_hex
+                                 and capture.enabled)}
 
     @app.get("/api/packets/profile", dependencies=[Depends(require_auth)])
     async def packets_profile():
