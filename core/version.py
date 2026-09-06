@@ -32,7 +32,7 @@ _SHORT_LEN = 7
 # release candidate, and the dashboard chip + startup log make it obvious
 # which build a box is running).  The exact source of any running build is
 # still pinned by the commit stamp.
-__version__ = "0.0.033"
+__version__ = "0.0.034"
 
 
 def _short(sha: str) -> str:

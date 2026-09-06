@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.034 - 2026-09-06
+- Added: logout button in the dashboard header (left of the connection
+  chip) - revokes this browser's session and returns to the login
+  screen; the bot itself is untouched.
+- Added: the openHop companion's name now shows next to MeshTech-Bot in
+  the title bar ("MeshTech-Bot · LoganBot🤖").
+- Added: text-size − / + buttons under the main bar; the choice is
+  remembered per browser and rescales the whole console.
+- Changed: the dashboard's two columns are now independent - opening or
+  collapsing a card on one side no longer moves or resizes cards on the
+  other side.
+
 ## 0.0.033 - 2026-09-06
 - Fixed: station observations were silently unreachable (wrong API
   endpoint), so `!wx` always fell back to the forecast-derived line. The

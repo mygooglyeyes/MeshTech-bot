@@ -208,8 +208,12 @@ class BotService:
                 "port": self.settings.connection.port,
                 "channels_seen": self.client.channel_names() if self.client else {},
             }
+        companion = ""
+        if self.client is not None:
+            companion = (getattr(self.client, "own_name", "") or "").strip(" \x00")
         return {
             "bot_name": "meshtech-bot",
+            "companion_name": companion,
             "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),
             "config_file": self.settings.config_path,

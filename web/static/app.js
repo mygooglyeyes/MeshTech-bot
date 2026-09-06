@@ -8,6 +8,22 @@ let feedPaused = false;
 let ws = null;
 let lastStatus = null;
 
+// Font-size control: one root font-size scale (percent), persisted.
+// All dashboard text is sized against rem, so a single root change
+// rescales every card uniformly.
+const FONT_SCALE_KEY = "mcb_font_scale";
+let fontScale = parseInt(localStorage.getItem(FONT_SCALE_KEY), 10);
+if (!Number.isFinite(fontScale)) fontScale = 100;
+
+function applyFontScale() {
+  document.documentElement.style.fontSize = fontScale + "%";
+}
+function changeFontScale(delta) {
+  fontScale = Math.min(160, Math.max(70, fontScale + delta));
+  localStorage.setItem(FONT_SCALE_KEY, String(fontScale));
+  applyFontScale();
+}
+
 const $ = (id) => document.getElementById(id);
 
 // ------------------------------------------------------------------ fetch helper
@@ -121,6 +137,7 @@ $("login-form").addEventListener("submit", async (e) => {
     const data = await res.json();
     token = data.token || "";
     localStorage.setItem(TOKEN_KEY, token);
+    loggedOut = false;
     showLogin(false);
     refreshAll();
     startPolling();  // timers are skipped at boot when login is required
@@ -129,6 +146,24 @@ $("login-form").addEventListener("submit", async (e) => {
     $("login-error").textContent = "Wrong password.";
   }
 });
+
+// Logout: revoke this browser's token server-side, drop it locally, and
+// go back to the login screen. The flag keeps the live-feed socket from
+// silently reconnecting with no credentials. Only this session ends -
+// the bot itself is untouched.
+$("btn-logout").addEventListener("click", async () => {
+  try { await api("/api/logout", { method: "POST" }); } catch (e) { /* best effort */ }
+  loggedOut = true;
+  token = "";
+  localStorage.removeItem(TOKEN_KEY);
+  if (ws) try { ws.close(); } catch (e) { /* ignore */ }
+  ws = null;
+  showLogin(true);
+});
+
+// Text size (the - / + buttons under the main bar).
+$("btn-font-smaller").addEventListener("click", () => changeFontScale(-10));
+$("btn-font-larger").addEventListener("click", () => changeFontScale(10));
 
 async function ensureAuth() {
   try {
@@ -210,8 +245,10 @@ function handleFeedEvent(event) {
 }
 
 let wsSeq = 0;
+let loggedOut = false;
 
 function connectWs() {
+  if (loggedOut) return;               // user logged out - stay offline
   if (authRequired && !token) return;  // wait for login
   wsSeq++;
   const seq = wsSeq;
@@ -270,6 +307,13 @@ async function refreshStatus() {
   $("chip-uptime").textContent = "up " + fmtUptime(st.uptime_seconds);
   // Build stamp: release version + the git commit it runs (v0.0.1).
   // Hover shows the full detail (version, branch, commit, source).
+  // The openHop companion we talk through, next to the bot's name in
+  // the title bar ("MeshTech-Bot · LoganBot🤖").
+  const comp = (st.companion_name || "").trim();
+  const compEl = $("title-companion");
+  compEl.textContent = comp ? "· " + comp : "";
+  compEl.title = comp ? "openHop companion: " + comp : "";
+
   const v = st.version || {};
   const vChip = $("chip-version");
   const vText = v.version ? "v" + v.version : "";
@@ -1293,4 +1337,5 @@ async function boot() {
 }
 
 setupCollapsibleSections();
+applyFontScale();
 boot();

@@ -45,6 +45,12 @@ class Auth:
         self._tokens[token] = time.time() + TOKEN_TTL_SECONDS
         return token
 
+    def revoke(self, token: str) -> None:
+        """Forget one token (dashboard logout). Unknown tokens are ignored,
+        so revoking is idempotent."""
+        if token:
+            self._tokens.pop(token, None)
+
     def bearer_token(self, authorization: str) -> str:
         if authorization and authorization.lower().startswith("bearer "):
             return authorization[len("bearer "):].strip()

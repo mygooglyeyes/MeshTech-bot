@@ -70,6 +70,13 @@ def build_app(service) -> FastAPI:
     async def login_state():
         return {"auth_required": auth.required()}
 
+    @app.post("/api/logout", dependencies=[Depends(require_auth)])
+    async def logout(request: Request):
+        """Revoke the caller's dashboard token. Requires a valid token,
+        so it cannot be used to disrupt another session."""
+        auth.revoke(auth.bearer_token(request.headers.get("authorization", "")))
+        return {"ok": True}
+
     @app.post("/api/login")
     async def login(payload: Dict[str, Any], request: Request):
         # Brute-force protection: after a handful of failures from one IP,
