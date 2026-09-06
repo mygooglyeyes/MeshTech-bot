@@ -18,6 +18,9 @@ repeater is the bot's mesh identity.
 - Keeps a SQLite database of nodes, messages, routes, and packet captures
 - Gives short replies by default; add `x` for the extended version (`!nodes x`)
 - Shows everything on a live web dashboard
+- Every change ships with its own version number and a plain-language
+  entry in **[CHANGELOG.md](CHANGELOG.md)** — the dashboard header shows
+  exactly which build your bot is running
 
 ## Requirements
 

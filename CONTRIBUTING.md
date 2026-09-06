@@ -34,11 +34,14 @@ section in `config.yaml` — no code required.
 3. **Check your change by hand** — run the bot once with your change
    and confirm your feature answers the way it should (and that
    nothing else broke).
-4. **Bump the version** — open `core/version.py` and raise the number by
-   one (for example `0.0.005` becomes `0.0.006`). Every commit gets its
-   own version number, like a counter: it makes it obvious which changes
-   a running bot has. Git tags (`v0.0.004` and so on) are reserved for
-   milestone releases and are not needed for ordinary commits.
+4. **Bump the version and log the fix** — open `core/version.py` and
+   raise the number by one (for example `0.0.005` becomes `0.0.006`).
+   Every commit gets its own version number, like a counter: it makes
+   it obvious which changes a running bot has. Then add one plain-
+   language line at the top of `CHANGELOG.md` describing what your
+   change does, under that new version. Git tags (`v0.0.004` and so
+   on) are reserved for milestone releases and are not needed for
+   ordinary commits.
 5. **Open a pull request** targeting the `DEV` branch (not `main`),
    describing what changed and why.
 

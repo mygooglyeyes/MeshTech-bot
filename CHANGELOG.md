@@ -1,0 +1,123 @@
+# Changelog
+
+Every change gets its own version number - the version doubles as a
+commit counter, so you can always tell exactly which build a bot is
+running (dashboard header chip and startup log). This file records what
+each change does, in plain language, newest first. Milestone tags
+(`v0.0.004`, `v0.0.006`, `v0.0.012`, `v0.0.016`, ...) mark releases
+worth highlighting; ordinary commits just move the counter.
+
+Going forward: every commit that bumps the version adds its line here.
+
+## 0.0.022 - 2026-09-06
+- Added: this changelog. Full history backfilled below; from now on
+  every version bump records its fix here.
+- Docs: the contributing guide now says a change = version bump + one
+  changelog line.
+
+## 0.0.021 - 2026-09-06
+- Changed: `packets.jsonl` now rotates to `packets.jsonl.old` when it
+  passes a size cap (default 64 MB, `storage.packet_jsonl_max_bytes`),
+  so the analysis file can never grow forever. (The database was
+  already row-capped; this was the one unbounded file.)
+
+## 0.0.020 - 2026-09-06
+- Docs: the contributing guide documents the branch model - development
+  happens on `DEV`, `main` is the stable branch users install from.
+
+## 0.0.019 - 2026-09-06
+- Changed: the test suite and dev-only requirements were removed from
+  the repository (kept on each developer's machine, recoverable from
+  git history). A fresh clone now contains only end-user files.
+
+## 0.0.018 - 2026-09-06
+- Fixed: the bot no longer captures companion bookkeeping frames
+  (`NEXT_CONTACT` contact-list dumps, `CONTACT`, `NO_MORE_MSGS`,
+  `CURRENT_TIME`) - they made up ~88% of stored packets while carrying
+  no mesh traffic, evicting real history from the packet database.
+- Added: `scripts/purge_frames.py` - one command to back up the
+  database and delete bookkeeping rows recorded by older versions
+  (`--dry-run` supported).
+
+## 0.0.017 - 2026-09-05
+- Fixed: the dashboard config view shows the bot's effective name and
+  where it came from (companion / config fallback), instead of the
+  misleading raw `display_name` key.
+
+## 0.0.016 - 2026-09-05
+- Fixed: deploys accept both spellings of the version stamp inside the
+  update package, so an update started on an older version can't be
+  refused mid-transition (and can't deploy half-blind either).
+
+## 0.0.015 - 2026-09-05
+- Fixed: deploys bake a fresh version stamp correctly - the dashboard
+  version chip had been frozen at an old build - and abort loudly if a
+  package arrives without one.
+
+## 0.0.014 - 2026-09-05
+- Changed: the documented update command is `sudo ./manage.sh update`,
+  run from your home clone - and it prefers the clone's own freshest
+  update script.
+
+## 0.0.013 - 2026-09-05
+- Changed: `sudo ./manage.sh update` works from anywhere - it finds
+  (or creates) your home clone automatically. Docs now lead with the
+  single command instead of deploy.sh.
+
+## 0.0.012 - 2026-09-05
+- Fixed: update validation runs from the runtime directory. The old
+  false warnings ("dashboard has NO password", throwaway database
+  checks) during deploys are gone.
+
+## 0.0.011 - 2026-09-05
+- Added: `./deploy.sh --dry-run` previews exactly which files would
+  change in /opt before anything is applied. No sudo, no mutation.
+
+## 0.0.010 - 2026-09-05
+- Fixed: `manage.sh` always manages the /opt runtime, never your
+  clone - safe to start the panel from the home clone or elsewhere.
+
+## 0.0.009 - 2026-09-05
+- Changed: two-location layout adopted. Git happens in your home clone
+  (`~/meshtech-bot`); `deploy.sh` applies updates to /opt. Your config,
+  data, and .venv are never touched by git. Validation gates a bad
+  update before the restart; old code keeps running on failure.
+- Fixed: deploy.sh executable bit.
+
+## 0.0.006 - 0.0.008 - 2026-09-05
+- Added: the installer offers to add your user to the `meshtech` group
+  so you can browse /opt/meshtech-bot without sudo.
+- Docs: the every-commit version bump convention documented in the
+  contributor guide and update docs.
+
+## 0.0.005 - 2026-09-05
+- Docs: version-bump-per-commit convention recorded (the version
+  number doubles as a commit counter).
+
+## 0.0.004 (milestone tag) - 2026-09-05
+- Added: `manage.sh` - an SSH-friendly ASCII control panel: configure
+  the bot interactively (connection, channels, keyword replies,
+  admins), update, uninstall, restart.
+
+## 0.0.003 - 2026-09-05
+- Changed: version format switched to zero-padded `0.0.0NN` so the
+  counter sorts and reads cleanly.
+
+## 0.0.001 - 0.0.002 (first-day builds) - 2026-09-04/05
+- Added: `!path` / `!pathx` relay-chain reports mined from RF logs;
+  `!dm` command; runtime raw-capture toggle with CSV download;
+  per-node notes in the node table; About dialog (license, notices,
+  commit link); `set-password.sh` helper; per-channel reply cadence;
+  MIT license and third-party notices; end-to-end verification
+  checklist for fresh installs.
+- Fixed: dashboard uptime chip polling after login; live feed
+  re-pasting history on WebSocket reconnect; `!status` moved to
+  DM-only; connect crash on `self_info`; executable bits for
+  bot.py/set-password.sh.
+- Security: login throttle, WebSocket first-frame token handshake,
+  Content-Security-Policy, CSV-injection-safe exports, dashboard
+  password moved out of config.yaml into a root-only file, systemd
+  service hardening.
+- Docs: plain-language rewrite of README and install guide; config
+  view shown as a flat settings list; fixed two-column dashboard
+  layout.
