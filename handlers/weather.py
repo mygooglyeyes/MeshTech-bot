@@ -158,6 +158,18 @@ def observation_age_seconds(props: Dict[str, Any],
     return max(0.0, (ref - ts).total_seconds())
 
 
+def station_ids(features: List[Dict[str, Any]]) -> List[str]:
+    """Station identifiers from an NWS station-list payload, nearest
+    first (the API sorts by distance); blanks dropped."""
+    ids = []
+    for feature in features or []:
+        sid = ((feature.get("properties") or {}).get("stationIdentifier")
+               or "").strip()
+        if sid:
+            ids.append(sid)
+    return ids
+
+
 def format_forecast(place: str,
                     outlook: List[Tuple[str, str]]) -> str:
     """The mesh text for the daily push: place + one line per day."""
@@ -328,19 +340,26 @@ class WeatherModule(ModuleSpec):
     async def _observation(http, lat, lon) -> Optional[Tuple[str, str]]:
         """Nearest reporting station's latest reading -> (station, line).
 
-        Tries the closest few stations; returns None when none has
+        Chain (all NWS, verified against the live API): gridpoint ->
+        observationStations list (nearest first) -> each station's latest
+        observation. Tries the closest few; returns None when none has
         reported within the freshness window (caller falls back to the
         forecast block)."""
-        async with http.get(
-                f"https://api.weather.gov/stations?point={lat},{lon}",
-                headers={"User-Agent": "meshtech-bot/0.1"}) as r:
+        async with http.get(f"https://api.weather.gov/points/{lat},{lon}",
+                            headers={"User-Agent": "meshtech-bot/0.1"}) as r:
+            if r.status != 200:
+                raise RuntimeError(f"NWS points HTTP {r.status}")
+            points = await r.json(content_type=None)
+        stations_url = ((points.get("properties") or {})
+                        .get("observationStations") or "").strip()
+        if not stations_url:
+            raise RuntimeError("NWS has no station list for this point")
+        async with http.get(stations_url,
+                            headers={"User-Agent": "meshtech-bot/0.1"}) as r:
             if r.status != 200:
                 raise RuntimeError(f"NWS stations HTTP {r.status}")
             stations = await r.json(content_type=None)
-        ids = [((f.get("properties") or {}).get("stationId") or "")
-               for f in (stations.get("features") or [])]
-        ids = [s for s in ids if s][:3]
-        for station in ids:
+        for station in station_ids(stations.get("features"))[:3]:
             async with http.get(
                     f"https://api.weather.gov/stations/{station}/observations/latest",
                     headers={"User-Agent": "meshtech-bot/0.1"}) as r:

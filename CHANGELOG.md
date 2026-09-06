@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.033 - 2026-09-06
+- Fixed: station observations were silently unreachable (wrong API
+  endpoint), so `!wx` always fell back to the forecast-derived line. The
+  station list now comes from the gridpoint's observationStations link,
+  the correct identifier field is read, and the fix was verified against
+  the live API before release - `!wx 94945` now reports
+  "(obs KDVO): 55F wind 5mph Clear".
+
 ## 0.0.032 - 2026-09-06
 - Changed: `!wx` now reports measured conditions when possible. The bot
   reads the nearest reporting weather station's latest observation (NWS,
