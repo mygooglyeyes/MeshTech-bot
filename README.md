@@ -26,6 +26,11 @@ repeater is the bot's mesh identity.
 
 - Python 3.10+
 - A working openHop Repeater with a **dedicated bot companion** already set up on it.
+- **Companion order matters:** create your everyday-use companion
+  **first**, and the bot's companion **second**. The repeater's web
+  console attaches to the first companion, and a companion serves one
+  client at a time — if the bot's companion is first, the console takes
+  it and the bot can't connect.
 
 ## Install
 

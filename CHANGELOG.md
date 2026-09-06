@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.026 - 2026-09-06
+- Docs: companion creation order is now a stated requirement - create
+  the everyday-use companion FIRST and the bot's companion second, and
+  the repeater web console will leave the bot's companion free (it
+  attaches to the first one). The troubleshooting table also gained a
+  row for the connect-loop symptom this causes.
+
 ## 0.0.025 - 2026-09-06
 - Changed: the startup clock-sync is no longer logged as a warning when
   the companion declines it (error 6, illegal argument). Firmware that

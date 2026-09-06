@@ -14,6 +14,11 @@ when the machine boots — you won't need to run it by hand.
 - A Linux machine (a Raspberry Pi 3 or newer is plenty), or any machine with Docker.
 - A working openHop Repeater with a **dedicated bot companion** already set
   up on it (its `tcp_port` is what the bot connects to).
+- **Companion order matters:** create your everyday-use companion
+  **first**, and the bot's companion **second**. The repeater's web
+  console attaches to the first companion, and a companion serves one
+  client at a time — if the bot's companion is first, the console takes
+  it and the bot can't connect (the bot's log will say so plainly).
 - A mesh radio so you can test the bot (and find your node's prefix, which makes you the admin).
 
 ---
@@ -298,6 +303,7 @@ unprivileged user that can only write inside its `data/` folder.
 |---|---|
 | Logs show `Connection refused`, keeps retrying | The companion port isn't open. Check openHop has a companion with `tcp_port`, and that you restarted it. |
 | A second bot can't connect | One client per companion. Stop the old bot first. |
+| The bot connects, then gets dropped over and over (connect loop) | Another client is holding the companion — usually the repeater's web console auto-connects to the **first-created** companion at startup. Fix: create/use a companion the console doesn't want (everyday companion first, bot companion second), or stop the console auto-connect. The bot logs a plain-language hint when this happens. |
 | `Permission denied` when entering the install folder | The folder belongs to the `meshtech` account. Browse access: `sudo usermod -aG meshtech $USER`, then log out and back in. Writes (like updates) still need `sudo`. |
 | `dubious ownership` on `git pull` | Happens only on old direct installs where git ran as root in `/opt`. The home-clone layout avoids it entirely. Fix: `sudo git config --global --add safe.directory /opt/meshtech-bot` |
 | Dashboard loads but says `not connected` | The repeater link is down — see the first row. |
