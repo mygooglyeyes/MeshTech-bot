@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .auth import Auth, LoginThrottle
+from core.version import version_stamp
 
 log = logging.getLogger("meshtech-bot.web")
 
@@ -369,7 +370,16 @@ def build_app(service) -> FastAPI:
 
     @app.get("/")
     async def index():
-        return FileResponse(_STATIC_DIR / "index.html", headers=_NO_CACHE)
+        # Cache-busting: rewrite the two asset URLs to carry the running
+        # version + commit ("app.js?v=0.0.030-6f344c9"). Any new deploy
+        # produces new URLs, so browsers re-fetch without a hard refresh.
+        # The page itself stays no-store, so the stamp is always current.
+        stamp = version_stamp()
+        tag = f"{stamp.get('version', 'dev')}-{stamp.get('commit', 'unknown')}"
+        html = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        html = html.replace('href="/style.css"', f'href="/style.css?v={tag}"')
+        html = html.replace('src="/app.js"', f'src="/app.js?v={tag}"')
+        return HTMLResponse(html, headers=_NO_CACHE)
 
     @app.get("/app.js")
     async def app_js():

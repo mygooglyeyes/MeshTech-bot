@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.031 - 2026-09-06
+- Added: automatic cache-busting for the dashboard. The page loads its
+  app.js and style.css with the running version in the URL, so every
+  deploy is picked up by browsers on the next normal refresh - no more
+  Ctrl+F5 after updating the bot.
+
 ## 0.0.030 - 2026-09-06
 - Changed: the weather "Forecast time" setting is now a 12-hour picker -
   an hour box, a minute box (both with sample text), and a stacked AM/PM
