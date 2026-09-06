@@ -102,12 +102,13 @@ class QuakeModule(WeatherModule):
         {"key": "radius_km", "label": "Radius (km)", "type": "number",
          "default": "500", "help": "How far from the zip to look"},
         {"key": "min_mag", "label": "Minimum magnitude", "type": "number",
-         "default": "3", "help": "Smallest quake to list or push (decimals ok, e.g. 2.5)"},
+         "default": "2.5", "help": "Smallest quake to list or push (decimals ok, e.g. 2.5)"},
         {"key": "push_channels", "label": "Push channels", "type": "channels",
          "default": "", "help": "Comma-separated channels for new quakes, "
          "e.g. #novato, #alert (leave empty for no push)"},
         {"key": "check_minutes", "label": "Check every (minutes)", "type": "number",
-         "default": "10", "help": "How often to look for new quakes when pushing is on"},
+         "default": "10", "help": "How often to look for new quakes when pushing is on. "
+         "Leave blank for the default of 10 minutes."},
     ]
 
     def __init__(self) -> None:

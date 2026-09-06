@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.049 - 2026-09-06
+
+Optional settings with a built-in default now show **"leave blank for
+default of X"** inside their input box (as placeholder text) instead of
+being pre-filled - so the fallback is visible exactly when the box is
+empty, and a blank Apply is always safe. Applies to radius, minimum
+magnitude and check interval on the module cards. Quake's minimum
+magnitude default corrected to 2.5 (the help text already said 2.5).
+
 ## 0.0.048 - 2026-09-06
 
 Every module setting's help text now shows **visibly under its field** in

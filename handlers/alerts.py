@@ -97,7 +97,8 @@ class AlertsModule(WeatherModule):
          "default": "", "help": "Comma-separated channels for new alerts, "
          "e.g. #novato, #alert (leave empty for no push)"},
         {"key": "check_minutes", "label": "Check every (minutes)", "type": "number",
-         "default": "5", "help": "How often to look for new alerts when pushing is on"},
+         "default": "5", "help": "How often to look for new alerts when pushing is on. "
+         "Leave blank for the default of 5 minutes."},
         {"key": "min_severity", "label": "Push severity", "type": "choice",
          "default": "Severe", "choices": ["Severe", "Moderate", "Minor"],
          "help": "Lowest severity worth pushing (Severe = fewer posts)"},

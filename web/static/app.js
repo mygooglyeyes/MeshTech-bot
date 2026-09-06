@@ -1293,8 +1293,19 @@ async function refreshModules() {
         } else {
           input = document.createElement("input");
           input.type = f.type === "number" ? "number" : "text";
-          input.value = (mod.values || {})[f.key];
-          if (input.value === undefined || input.value === null) input.value = f.default || "";
+          // Compute the raw value first: assigning undefined to .value
+          // directly would render the literal text "undefined".
+          const raw = (mod.values || {})[f.key];
+          input.value = (raw === undefined || raw === null) ? "" : raw;
+        }
+        // Optional-with-a-default fields carry their fallback IN the box:
+        // "leave blank for default of 500". Only visible while empty - which
+        // is exactly when the message matters (pre-filling buried it).
+        const fieldDefault = f.default;
+        if ((f.type === "text" || f.type === "number") &&
+            fieldDefault !== undefined && fieldDefault !== null &&
+            String(fieldDefault) !== "") {
+          input.placeholder = "leave blank for default of " + fieldDefault;
         }
         inputs[f.key] = input;
         row.append(label, input);
