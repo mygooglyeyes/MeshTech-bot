@@ -104,8 +104,12 @@ storage:
 # Modules card (or by hand here). Each module keeps its own settings.
 # Modules that are not listed are simply off. Unknown settings keys are
 # preserved, so it is safe to edit while a newer version runs.
+#
+# Channel settings (#bot, #novato...) work WITH or WITHOUT the leading
+# '#' - "#novato" and "novato" are the same channel.
 # ---------------------------------------------------------------------------
 modules:
+  #
   # Weather: `!wx [zip]` (or `!weather [zip]`) on the mesh; optional
   # daily forecast post to a channel at a set local time.
   weather:
@@ -113,9 +117,9 @@ modules:
     # zip: "84321"          # default zip for !wx (US)
     # channel: "#bot"       # where the daily forecast posts (off until set)
     # post_time: "07:00"    # local HH:MM for the daily forecast post
-  # alerts:               # (stage 2) NWS active alerts incl. wildfire
+  # alerts:               # NWS active alerts: !alerts [zip]
   #   enabled: false
-  # quake:                # (stage 2) USGS earthquakes
+  # quake:                # USGS earthquakes: !quake [zip]
   #   enabled: false
 
 # --- Simple canned answers (no code needed) ----------------------

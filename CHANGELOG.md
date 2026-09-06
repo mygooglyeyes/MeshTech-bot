@@ -9,6 +9,22 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.047 - 2026-09-06
+
+Module cards fixed up after first real use:
+
+- **Quake apply works** - numbers with decimals (min magnitude 2.5) were
+  rejected by the console's validation, and the failure was shown nowhere;
+  now decimals are accepted and every module card shows save errors right
+  next to its Apply button.
+- **`!quake` without a zip** uses the quake card's default zip, falling
+  back to the weather module's zip when the quake card has none.
+- **Quake lines show the time** - each quake carries its local clock time
+  (24-hour): `M3.1 ... (475km) - 14:32 - 4h ago`.
+- **`#` convention documented** - the modules config section and every
+  channel field on the console now say that `novato` and `#novato` are
+  the same channel.
+
 ## 0.0.046 - 2026-09-06
 - Changed: alert and quake pushes can go to several channels - the
   module card's "Push channels" takes a comma-separated list

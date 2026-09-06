@@ -1256,8 +1256,13 @@ async function refreshModules() {
         const row = document.createElement("label");
         row.className = "module-field";
         const label = document.createElement("span");
+        let help = f.help || "";
+        if (f.type === "channel" || f.type === "channels") {
+          help += (help ? " " : "") +
+            "The # is optional - 'novato' and '#novato' are the same channel.";
+        }
         label.textContent = f.label || f.key;
-        label.title = f.help || "";
+        label.title = help;
         let input;
         if (f.type === "time12") {
           input = makeTime12((mod.values || {})[f.key] || f.default || "");
@@ -1270,6 +1275,12 @@ async function refreshModules() {
           const raw = (mod.values || {})[f.key];
           input.value = Array.isArray(raw) ? raw.join(", ")
             : (raw === undefined || raw === null ? (f.default || "") : raw);
+        } else if (f.type === "channel") {
+          input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "#bot";
+          input.value = (mod.values || {})[f.key];
+          if (input.value === undefined || input.value === null) input.value = f.default || "";
         } else if (f.type === "choice") {
           input = document.createElement("select");
           (f.choices || []).forEach((c) => {
@@ -1292,12 +1303,17 @@ async function refreshModules() {
       const apply = document.createElement("button");
       apply.className = "btn small";
       apply.textContent = "apply";
+      // Errors show right here in the card - a failed apply must never
+      // look like the button did nothing.
+      const err = document.createElement("div");
+      err.className = "module-error";
       apply.addEventListener("click", async () => {
         const settings = {};
         Object.entries(inputs).forEach(([k, input]) => { settings[k] = input.value; });
         // Apply saves the settings AND switches the module on in the
         // same save - one config write, one reload, module left running.
         apply.disabled = true;
+        err.textContent = "";
         try {
           const res = await api("/api/modules/" + mod.name, {
             method: "POST",
@@ -1305,12 +1321,15 @@ async function refreshModules() {
             body: JSON.stringify({ enabled: true, settings }),
           });
           showActionResult(res.message || res.detail || "saved");
+        } catch (e) {
+          err.textContent = String(e.message || e).replace(/^[^:]*:\d*\/\d* - /, "");
         } finally {
           apply.disabled = false;
         }
         refreshModules();
       });
       form.appendChild(apply);
+      form.appendChild(err);
       body.appendChild(form);
     }
 

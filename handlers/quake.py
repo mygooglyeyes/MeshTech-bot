@@ -48,7 +48,8 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def format_quake_line(props: Dict[str, Any], coords: List[float],
                       lat: float, lon: float,
                       now: Optional[float] = None) -> Optional[str]:
-    """One compact line: 'M3.7 place - 2h ago' (distance when useful)."""
+    """One compact line: 'M3.7 place - 14:32 - 2h ago' (distance when
+    useful; local clock time of the quake, 24-hour)."""
     mag = props.get("mag")
     place = (props.get("place") or "").strip()
     ts = (props.get("time") or 0) / 1000.0     # USGS uses milliseconds
@@ -59,6 +60,8 @@ def format_quake_line(props: Dict[str, Any], coords: List[float],
         dist = haversine_km(lat, lon, coords[1], coords[0])
         if dist > 40:                          # nearby quakes don't need it
             line += f" ({round(dist)}km)"
+    if ts > 0:
+        line += f" - {time.strftime('%H:%M', time.localtime(ts))}"
     if now:
         line += f" - {rel_time(ts, now)}"
     return line
@@ -115,8 +118,13 @@ class QuakeModule(WeatherModule):
     # ---------------------------------------------------------------- mesh
 
     async def handle(self, ctx) -> Optional[HandlerResult]:
-        zip_code = ((ctx.args[0] if ctx.args else "") or "").strip() or \
-            str(self.setting("zip", "") or "")
+        zip_code = ((ctx.args[0] if ctx.args else "") or "").strip()
+        if not zip_code:
+            # No zip given: the module's own setting, else the weather
+            # module's (set the default zip once, both modules benefit).
+            zip_code = str(self.setting("zip", "") or "")
+            if not zip_code:
+                zip_code = await self._weather_zip()
         if not zip_code:
             return HandlerResult(kind="text",
                                  data="Quake: no zip. Try  !quake 84321")
@@ -173,6 +181,16 @@ class QuakeModule(WeatherModule):
         if len(coords) >= 2:
             return coords[1], coords[0]
         return 0.0, 0.0
+
+    async def _weather_zip(self) -> str:
+        """The weather module's zip, when that card has one set."""
+        for handler in getattr(self.service, "registry", None) or []:
+            if getattr(handler, "name", "") == "weather":
+                try:
+                    return str(handler.setting("zip", "") or "")
+                except Exception:
+                    return ""
+        return ""
 
     # ---------------------------------------------------------------- push
 

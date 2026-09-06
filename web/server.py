@@ -285,9 +285,12 @@ def build_app(service) -> FastAPI:
                 continue
             if ftype == "number":
                 try:
-                    values[key] = int(str(value))
+                    # Decimals allowed (e.g. quake min magnitude 2.5); whole
+                    # numbers are stored as ints so old configs read back clean.
+                    num = float(str(value))
+                    values[key] = int(num) if num == int(num) else num
                 except (TypeError, ValueError):
-                    problems.append(f"{field_def.get('label', key)} must be a whole number")
+                    problems.append(f"{field_def.get('label', key)} must be a number")
             elif ftype == "choice":
                 choices = field_def.get("choices") or []
                 if choices and str(value) not in choices:
