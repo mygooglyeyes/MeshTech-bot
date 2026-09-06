@@ -963,6 +963,23 @@ $("btn-reload").addEventListener("click", async () => {
   refreshStatus();
 });
 
+$("btn-boost").addEventListener("click", async () => {
+  // Raise the total airtime budget (+30/h +150/d per use, ceiling 90/h
+  // and 2200/d). The reply text carries the new caps; the budget chip
+  // updates via refreshStatus.
+  try {
+    const r = await api("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "boost" }),
+    });
+    $("action-result").textContent = (r && r.message) || "boosted";
+  } catch (e) {
+    $("action-result").textContent = String(e.message || e);
+  }
+  refreshStatus();
+});
+
 $("btn-shutdown").addEventListener("click", async () => {
   if (!confirm("Really shut down the bot?")) return;
   await api("/api/actions", {

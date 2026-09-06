@@ -3,6 +3,9 @@
     !diag [x]        - database + traffic summary
     !reload          - re-read config.yaml and refresh handlers
     !shutdown        - stop the bot gracefully
+    !up              - raise the airtime budget (boost), e.g. before an
+                       event: +30/hour +150/day per use, at most 90/hour
+                       and 2200/day. Boosts age out after 24 hours.
 
 Access is enforced by the router (access="admin") plus the allowlist in
 config.yaml (dm.admin_pubkey_prefixes).
@@ -19,8 +22,8 @@ from .base import Handler
 
 class AdminHandler(Handler):
     name = "admin"
-    keywords = ["diag", "reload", "shutdown"]
-    description = "Bot administration (diag/reload/shutdown)"
+    keywords = ["diag", "reload", "shutdown", "up"]
+    description = "Bot administration (diag/reload/shutdown/up)"
     scope = "dm"
     access = "admin"
     priority = 50
@@ -31,6 +34,20 @@ class AdminHandler(Handler):
             return await self._diag(ctx)
         if command == "reload":
             return HandlerResult(kind="text", data=ctx.service.reload())
+        if command == "up":
+            result = ctx.service.boost_budget()
+            if not result.get("ok"):
+                return HandlerResult(kind="text", data=result["message"])
+            lines = [f"Budget up: {result['hour_cap']:.0f}/h, "
+                     f"{result['day_cap']:.0f}/d "
+                     f"({result['boosts']} boost(es) in 24h)"]
+            if result["hour_maxed"] and result["day_maxed"]:
+                lines.append("Both caps maxed - no room left.")
+            elif result["hour_maxed"]:
+                lines.append("Hourly cap maxed (90).")
+            elif result["day_maxed"]:
+                lines.append("Daily cap maxed (2200).")
+            return HandlerResult(kind="text", data="\n".join(lines))
         if command == "shutdown":
             asyncio.get_event_loop().call_later(1.5, ctx.service.request_shutdown,
                                                 "admin DM command")

@@ -43,9 +43,12 @@ class BotService:
         # _push_times holds every transmission (reply or push) for the total
         # windows; _person_times holds per-requester answer times for the
         # per-person windows; _last_push_at backs the total minimum gap.
+        # _boost_times records admin budget boosts (trailing 24 h) - each
+        # adds +30/h and +150/d to the TOTAL caps, ceiling 90/h and 2200/d.
         self._push_times: List[float] = []
         self._last_push_at: float = 0.0
         self._person_times: Dict[str, List[float]] = {}
+        self._boost_times: List[float] = []
 
     # ------------------------------------------------------------------ basics
 
@@ -155,6 +158,52 @@ class BotService:
 
     # ---------------------------------------------------------------- budget
 
+    # ---------------------------------------------------------------- budget
+
+    # Budget boost (admin button / !up): each use within the trailing 24 h
+    # adds to the TOTAL caps, up to these hard ceilings.
+    BOOST_STEP_HOUR = 30.0
+    BOOST_STEP_DAY = 150.0
+    BOOST_MAX_HOUR = 90.0
+    BOOST_MAX_DAY = 2200.0
+
+    def _budget_caps(self) -> tuple:
+        """Effective total caps (gap, per-hour, per-day) with admin boosts
+        applied. Boosts older than 24 h stop counting."""
+        budget = self.settings.modules.get("pushbudget")
+        now = time.time()
+        self._boost_times = [t for t in self._boost_times
+                             if t > now - 86400.0]
+        boosts = len(self._boost_times)
+        hour_cap = min(self.BOOST_MAX_HOUR,
+                       self._push_number(budget, "max_per_hour", 30.0)
+                       + boosts * self.BOOST_STEP_HOUR)
+        day_cap = min(self.BOOST_MAX_DAY,
+                      self._push_number(budget, "max_per_day", 250.0)
+                      + boosts * self.BOOST_STEP_DAY)
+        return (self._push_number(budget, "gap_seconds", 30.0),
+                hour_cap, day_cap)
+
+    def boost_budget(self) -> Dict:
+        """One admin boost: +30/h and +150/d on the total budget, capped at
+        90/h and 2200/d. In-memory only - a restart returns to base caps
+        (an acceptable trade: boosts are an operator escape hatch for a
+        busy day, not a permanent configuration change)."""
+        if not self.settings.modules.get("pushbudget").enabled:
+            return {"ok": False, "message": "Budget card is off - nothing to boost."}
+        now = time.time()
+        self._boost_times.append(now)
+        _gap, hour_cap, day_cap = self._budget_caps()
+        boosts = len(self._boost_times)
+        self.feed.publish("notice", {
+            "text": f"Budget boosted (+{self.BOOST_STEP_HOUR:.0f}/h "
+                    f"+{self.BOOST_STEP_DAY:.0f}/d): now {hour_cap:.0f}/h, "
+                    f"{day_cap:.0f}/d ({boosts} boost(s) active)"})
+        return {"ok": True, "hour_cap": hour_cap, "day_cap": day_cap,
+                "boosts": boosts,
+                "hour_maxed": hour_cap >= self.BOOST_MAX_HOUR,
+                "day_maxed": day_cap >= self.BOOST_MAX_DAY}
+
     def budget_check(self, kind: str, channel: str, sender: str, text: str,
                      exempt: bool = False, record: bool = True) -> bool:
         """TOTAL airtime budget: every transmission the bot makes - replies
@@ -179,9 +228,9 @@ class BotService:
         if exempt or not budget.enabled:
             return True
         now = time.time()
-        gap = self._push_number(budget, "gap_seconds", 30.0)
-        per_hour = self._push_number(budget, "max_per_hour", 30.0)
-        per_day = self._push_number(budget, "max_per_day", 250.0)
+        # Boosted caps: admin boosts (button / !up) raise the hourly and
+        # daily allowances above the card's base values.
+        gap, per_hour, per_day = self._budget_caps()
         recent = [t for t in self._push_times if t > now - 86400.0]
         self._push_times = recent
         in_hour = sum(1 for t in recent if t > now - 3600.0)
@@ -374,14 +423,16 @@ class BotService:
             if len(recent) > top_day:
                 top_person, top_day = ident, len(recent)
                 top_hour = sum(1 for t in recent if t > now - 3600.0)
+        gap, hour_cap, day_cap = self._budget_caps()
         return {
             "on": bool(budget.enabled),
-            # total layer (replies + pushes combined)
+            # total layer (replies + pushes combined), boosts included
             "total_hour": total_hour,
-            "total_hour_cap": self._push_number(budget, "max_per_hour", 30.0),
+            "total_hour_cap": hour_cap,
             "total_day": len(total_day),
-            "total_day_cap": self._push_number(budget, "max_per_day", 250.0),
-            "gap": self._push_number(budget, "gap_seconds", 30.0),
+            "total_day_cap": day_cap,
+            "gap": gap,
+            "boosts": len(self._boost_times),
             # per-person layer (busiest requester)
             "top_person": top_person,
             "top_hour": top_hour,

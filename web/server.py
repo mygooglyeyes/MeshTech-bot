@@ -336,6 +336,14 @@ def build_app(service) -> FastAPI:
         action = str(payload.get("action", ""))
         if action == "reload":
             return {"ok": True, "message": service.reload()}
+        if action == "boost":
+            result = service.boost_budget()
+            if not result.get("ok"):
+                return json_error(result["message"])
+            return {"ok": True, "message":
+                    f"Budget boosted: now {result['hour_cap']:.0f}/h, "
+                    f"{result['day_cap']:.0f}/d "
+                    f"({result['boosts']} boost(s) in 24h)"}
         if action == "shutdown":
             asyncio.get_event_loop().call_later(1.0, service.request_shutdown,
                                                 "web dashboard")

@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.054 - 2026-09-06
+
+Admin **budget boost**, two ways to fire it - a **Budget up** button in
+the console's Channels & Controls card and **!up** in an admin DM. Each
+use adds +30/hour and +150/day to the total budget, with hard ceilings
+of 90/hour and 2200/day (so the hourly cap maxes after 2 uses, the daily
+after 13). Boosts are rolling-24-hour: each ages out a day after it was
+made, easing the budget back to base (30/h, 250/d). Boosts are in-memory
+- a restart returns to base caps. The budget chip's caps update
+immediately; every boost is noted in the activity feed; !up appears in
+the admin hint of !helpx. The 30-second minimum gap still applies.
+
 ## 0.0.053 - 2026-09-06
 
 New dashboard chip: **budget usage at a glance**. The header now shows
