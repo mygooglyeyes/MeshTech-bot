@@ -91,6 +91,10 @@ storage:
   # Append-only JSONL analysis file (one JSON object per line, easy to load
   # in pandas). Empty string ("") disables the file.
   packet_jsonl: "data/packets.jsonl"
+  # When packets.jsonl grows past this many bytes it is moved aside as
+  # packets.jsonl.old and a fresh file starts (so the folder never holds
+  # more than roughly two copies). 0 = grow forever (not recommended).
+  packet_jsonl_max_bytes: 67108864   # 64 MB
   packet_max_rows: 200000        # keep the last N rows in the database
 
 # --- Simple canned answers (no code needed) ----------------------

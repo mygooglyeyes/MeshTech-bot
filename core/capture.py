@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -154,16 +155,16 @@ class PacketCapture:
         if not path:
             return
         if self._jsonl_path != path:
-            self._close_jsonl()
-            try:
-                Path(path).parent.mkdir(parents=True, exist_ok=True)
-                self._jsonl_handle = open(path, "a", encoding="utf-8")
-                self._jsonl_path = path
-            except Exception as exc:
-                log.debug("packet jsonl open failed (%s): %s", path, exc)
-                self._jsonl_handle = None
-                return
+            self._open_jsonl(path)
+        if self._jsonl_handle is None:
+            return
         try:
+            # Rotation: when the active file passes the size cap, move it
+            # aside as ``<name>.old`` (replacing any previous one) and start
+            # a fresh file. Keeps the folder bounded at ~2x the cap.
+            max_bytes = self._cfg().packet_jsonl_max_bytes
+            if max_bytes and self._jsonl_handle.tell() >= max_bytes:
+                self._rotate_jsonl(path)
             line = {"id": row_id, "ts": row["ts"], "layer": row["layer"],
                     "direction": row["direction"], "frame_type": row["frame_type"],
                     "sender": row["sender"], "hops": row["hops"], "snr": row["snr"],
@@ -174,6 +175,25 @@ class PacketCapture:
             self._jsonl_handle.flush()
         except Exception as exc:
             log.debug("packet jsonl write failed: %s", exc)
+
+    def _open_jsonl(self, path: str) -> None:
+        self._close_jsonl()
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            self._jsonl_handle = open(path, "a", encoding="utf-8")
+            self._jsonl_path = path
+        except Exception as exc:
+            log.debug("packet jsonl open failed (%s): %s", path, exc)
+            self._jsonl_handle = None
+
+    def _rotate_jsonl(self, path: str) -> None:
+        self._close_jsonl()
+        try:
+            os.replace(path, path + ".old")   # clobbers the previous .old
+            log.info("packet jsonl rotated: %s -> %s.old", path, path)
+        except Exception as exc:
+            log.debug("packet jsonl rotate failed (%s): %s", path, exc)
+        self._open_jsonl(path)
 
     def _close_jsonl(self) -> None:
         if self._jsonl_handle is not None:

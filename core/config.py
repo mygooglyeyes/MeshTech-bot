@@ -101,6 +101,7 @@ class StorageCfg:
     capture_packets: bool = True
     packet_raw_hex: bool = False   # also log the raw wire bytes of each frame
     packet_jsonl: str = "data/packets.jsonl"  # append-only analysis file; "" = off
+    packet_jsonl_max_bytes: int = 67108864  # rotate packets.jsonl at this size (bytes); 0 = never rotate
     packet_max_rows: int = 200000  # keep the last N rows in the database
 
 
@@ -331,6 +332,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         capture_packets=capture_packets,
         packet_raw_hex=raw_hex,
         packet_jsonl=_text(store_raw, "packet_jsonl", "data/packets.jsonl", errors, "storage.packet_jsonl"),
+        packet_jsonl_max_bytes=max(0, _int(store_raw, "packet_jsonl_max_bytes", 67108864, errors, "storage.packet_jsonl_max_bytes")),
         packet_max_rows=max(1000, _int(store_raw, "packet_max_rows", 200000, errors, "storage.packet_max_rows")),
     )
 
