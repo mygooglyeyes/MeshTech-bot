@@ -45,10 +45,12 @@ class BotService:
         # per-person windows; _last_push_at backs the total minimum gap.
         # _boost_times records admin budget boosts (trailing 24 h) - each
         # adds +30/h and +150/d to the TOTAL caps, ceiling 90/h and 2200/d.
+        # Persisted in the store (key 'budget_boosts') so boosts survive a
+        # restart; expiry is the timestamp + 24 h, enforced on read.
         self._push_times: List[float] = []
         self._last_push_at: float = 0.0
         self._person_times: Dict[str, List[float]] = {}
-        self._boost_times: List[float] = []
+        self._boost_times: List[float] = self.store.get_boost_times()
 
     # ------------------------------------------------------------------ basics
 
@@ -169,11 +171,10 @@ class BotService:
 
     def _budget_caps(self) -> tuple:
         """Effective total caps (gap, per-hour, per-day) with admin boosts
-        applied. Boosts older than 24 h stop counting."""
+        applied. Boosts older than 24 h stop counting (the store prunes
+        them on read)."""
         budget = self.settings.modules.get("pushbudget")
-        now = time.time()
-        self._boost_times = [t for t in self._boost_times
-                             if t > now - 86400.0]
+        self._boost_times = self.store.get_boost_times()
         boosts = len(self._boost_times)
         hour_cap = min(self.BOOST_MAX_HOUR,
                        self._push_number(budget, "max_per_hour", 30.0)
@@ -186,21 +187,27 @@ class BotService:
 
     def boost_budget(self) -> Dict:
         """One admin boost: +30/h and +150/d on the total budget, capped at
-        90/h and 2200/d. In-memory only - a restart returns to base caps
-        (an acceptable trade: boosts are an operator escape hatch for a
-        busy day, not a permanent configuration change)."""
+        90/h and 2200/d. Persisted with a clear expiry: each boost lives
+        24 hours from its timestamp, so a restart does not lose it and the
+        budget eases back to base as boosts age out."""
         if not self.settings.modules.get("pushbudget").enabled:
             return {"ok": False, "message": "Budget card is off - nothing to boost."}
-        now = time.time()
-        self._boost_times.append(now)
+        times = self.store.get_boost_times()
+        times.append(time.time())
+        self.store.set_boost_times(times)
+        self._boost_times = times
         _gap, hour_cap, day_cap = self._budget_caps()
-        boosts = len(self._boost_times)
+        boosts = len(times)
+        newest = max(times)
+        expires = time.strftime("%H:%M", time.localtime(newest + 86400.0))
         self.feed.publish("notice", {
             "text": f"Budget boosted (+{self.BOOST_STEP_HOUR:.0f}/h "
                     f"+{self.BOOST_STEP_DAY:.0f}/d): now {hour_cap:.0f}/h, "
-                    f"{day_cap:.0f}/d ({boosts} boost(s) active)"})
+                    f"{day_cap:.0f}/d ({boosts} boost(s) active, oldest "
+                    f"expires {expires})"})
         return {"ok": True, "hour_cap": hour_cap, "day_cap": day_cap,
                 "boosts": boosts,
+                "next_expiry": newest + 86400.0,
                 "hour_maxed": hour_cap >= self.BOOST_MAX_HOUR,
                 "day_maxed": day_cap >= self.BOOST_MAX_DAY}
 
@@ -433,6 +440,8 @@ class BotService:
             "total_day_cap": day_cap,
             "gap": gap,
             "boosts": len(self._boost_times),
+            "next_expiry": (max(self._boost_times) + 86400.0
+                            if self._boost_times else None),
             # per-person layer (busiest requester)
             "top_person": top_person,
             "top_hour": top_hour,

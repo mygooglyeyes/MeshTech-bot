@@ -13,6 +13,7 @@ config.yaml (dm.admin_pubkey_prefixes).
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import List, Optional
 
 from core.format import fmt_table, rel_time
@@ -38,9 +39,12 @@ class AdminHandler(Handler):
             result = ctx.service.boost_budget()
             if not result.get("ok"):
                 return HandlerResult(kind="text", data=result["message"])
+            expires = time.strftime("%H:%M", time.localtime(
+                result["next_expiry"]))
             lines = [f"Budget up: {result['hour_cap']:.0f}/h, "
                      f"{result['day_cap']:.0f}/d "
-                     f"({result['boosts']} boost(es) in 24h)"]
+                     f"({result['boosts']} boost(es) in 24h, oldest ends "
+                     f"{expires})"]
             if result["hour_maxed"] and result["day_maxed"]:
                 lines.append("Both caps maxed - no room left.")
             elif result["hour_maxed"]:

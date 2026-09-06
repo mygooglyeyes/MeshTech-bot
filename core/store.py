@@ -10,6 +10,7 @@ Everything the bot remembers lives in one small database file:
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -604,6 +605,35 @@ class Store:
                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     (key, value),
                 )
+
+    # ------------------------------------------------------- budget boosts
+
+    _BOOST_KEY = "budget_boosts"
+    _BOOST_TTL = 86400.0          # a boost lives 24 hours from its timestamp
+
+    def get_boost_times(self) -> List[float]:
+        """Active admin budget boosts (timestamps), oldest first. Entries
+        older than 24 h are expired: dropped on read (and from storage when
+        any were found)."""
+        raw = self.get_override(self._BOOST_KEY)
+        if not raw:
+            return []
+        try:
+            times = [float(t) for t in json.loads(raw)]
+        except (ValueError, TypeError):
+            return []
+        cutoff = time.time() - self._BOOST_TTL
+        live = [t for t in times if t > cutoff]
+        if len(live) != len(times):
+            self.set_boost_times(live)      # store the pruned list
+        return live
+
+    def set_boost_times(self, times: List[float]) -> None:
+        """Persist the active boost timestamps (expired ones dropped)."""
+        cutoff = time.time() - self._BOOST_TTL
+        live = sorted(t for t in times if t > cutoff)
+        self.set_override(self._BOOST_KEY,
+                          json.dumps(live) if live else None)
 
     def channel_reply_override(self, channel_name: str) -> Optional[bool]:
         raw = self.get_override(f"channel_reply:{channel_name}")

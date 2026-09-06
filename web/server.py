@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -340,10 +341,13 @@ def build_app(service) -> FastAPI:
             result = service.boost_budget()
             if not result.get("ok"):
                 return json_error(result["message"])
+            expires = time.strftime("%H:%M", time.localtime(
+                result["next_expiry"]))
             return {"ok": True, "message":
                     f"Budget boosted: now {result['hour_cap']:.0f}/h, "
                     f"{result['day_cap']:.0f}/d "
-                    f"({result['boosts']} boost(s) in 24h)"}
+                    f"({result['boosts']} boost(s), oldest expires "
+                    f"{expires})"}
         if action == "shutdown":
             asyncio.get_event_loop().call_later(1.0, service.request_shutdown,
                                                 "web dashboard")

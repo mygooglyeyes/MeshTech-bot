@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.055 - 2026-09-06
+
+Budget boosts now **survive a restart**. Each boost is stored in the
+bot's database (overrides table, key `budget_boosts`) with a clear
+expiry: 24 hours from its timestamp, enforced on every read, so the
+budget eases back to base as boosts age out even across reboots. The
+`!up` reply and the console button both show when the oldest boost
+expires, and the budget chip's hover lists active boosts and their
+expiry time.
+
 ## 0.0.054 - 2026-09-06
 
 Admin **budget boost**, two ways to fire it - a **Budget up** button in

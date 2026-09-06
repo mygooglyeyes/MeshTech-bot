@@ -331,7 +331,9 @@ async function refreshStatus() {
     bChip.title = "Airtime budget (last hour / day):\n" +
       "transmissions: " + (b.total_hour || 0) + " of " + hCap + " per hour, " +
       (b.total_day || 0) + " of " + dCap + " per day\n" + who +
-      "min gap between transmissions: " + (b.gap || 0) + "s";
+      "min gap between transmissions: " + (b.gap || 0) + "s" +
+      (b.boosts ? "\nboosts active: " + b.boosts + " (oldest expires " +
+        new Date(b.next_expiry * 1000).toLocaleTimeString() + ")" : "");
   }
   // Build stamp: release version + the git commit it runs (v0.0.1).
   // Hover shows the full detail (version, branch, commit, source).
