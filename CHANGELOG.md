@@ -9,6 +9,10 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.037 - 2026-09-06
+- Moved: the Modules card now sits on the right side, directly under
+  Channels & Controls, so module settings live with the other controls.
+
 ## 0.0.036 - 2026-09-06
 - Removed: the dead "refresh" button in Channels & Controls. It had no
   handler - status already auto-refreshes every few seconds, so the
