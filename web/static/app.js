@@ -1089,6 +1089,55 @@ async function refreshAll() {
 
 // The module menu: every ModuleSpec the bot knows, with its declared
 // settings fields. Toggles save immediately; field edits save on Apply.
+// A 12-hour time editor: hour + minute boxes (sample text as the
+// placeholder) and a stacked AM/PM square. Exposes .value as the 24-hour
+// "HH:MM" string that gets saved ("" when untouched). Pure UI helper.
+function makeTime12(initial) {
+  const wrap = document.createElement("span");
+  wrap.className = "time12";
+  const h = document.createElement("input");
+  h.type = "text"; h.inputMode = "numeric"; h.maxLength = 2; h.placeholder = "h";
+  const m = document.createElement("input");
+  m.type = "text"; m.inputMode = "numeric"; m.maxLength = 2; m.placeholder = "mm";
+  const ap = document.createElement("button");
+  ap.type = "button"; ap.className = "ampm"; ap.title = "AM or PM";
+  const am = document.createElement("span"); am.textContent = "AM";
+  const pm = document.createElement("span"); pm.textContent = "PM";
+  ap.append(am, pm);
+  const state = { h: "", m: "", ap: "AM" };
+  const mt = /^(\d{1,2}):(\d{2})$/.exec((initial || "").trim());
+  if (mt) {
+    const H = parseInt(mt[1], 10);
+    state.ap = H < 12 ? "AM" : "PM";
+    state.h = String(H % 12 === 0 ? 12 : H % 12);
+    state.m = mt[2];
+  }
+  const paint = () => {
+    h.value = state.h; m.value = state.m;
+    am.classList.toggle("sel", state.ap === "AM");
+    pm.classList.toggle("sel", state.ap === "PM");
+  };
+  h.addEventListener("input", () => { state.h = h.value.replace(/\D/g, "").slice(0, 2); paint(); });
+  m.addEventListener("input", () => { state.m = m.value.replace(/\D/g, "").slice(0, 2); paint(); });
+  ap.addEventListener("click", () => { state.ap = state.ap === "AM" ? "PM" : "AM"; paint(); });
+  paint();
+  Object.defineProperty(wrap, "value", {
+    get() {
+      const hh = state.h.trim(), mm = state.m.trim().replace(/\D/g, "");
+      if (!hh && !mm) return "";                  // untouched -> keep old value
+      const mm2 = mm.length === 1 ? "0" + mm : mm;
+      const n = parseInt(hh, 10);
+      if (!/^\d{1,2}$/.test(hh) || !/^\d{2}$/.test(mm2) || n < 1 || n > 12) {
+        return ":";                               // deliberately invalid -> server explains
+      }
+      const H = state.ap === "PM" ? (n % 12) + 12 : n % 12;
+      return H + ":" + mm2;
+    },
+  });
+  wrap.append(h, document.createTextNode(":"), m, ap);
+  return wrap;
+}
+
 async function refreshModules() {
   let data;
   try {
@@ -1166,7 +1215,9 @@ async function refreshModules() {
         label.textContent = f.label || f.key;
         label.title = f.help || "";
         let input;
-        if (f.type === "choice") {
+        if (f.type === "time12") {
+          input = makeTime12((mod.values || {})[f.key] || f.default || "");
+        } else if (f.type === "choice") {
           input = document.createElement("select");
           (f.choices || []).forEach((c) => {
             const opt = document.createElement("option");

@@ -326,3 +326,23 @@ summary.module-head::-webkit-details-marker { display: none; }
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 4px; color: var(--text); padding: 3px 6px; flex: 1;
 }
+
+/* 12-hour time editor: hour/mm boxes + stacked AM/PM squares */
+.module-field .time12 { display: inline-flex; align-items: center; gap: 4px; flex: 1; }
+.module-field .time12 input {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); padding: 3px 0;
+  width: 3.5ch; text-align: center; flex: 0 0 auto;
+}
+.module-field .time12 input::placeholder { color: var(--muted); }
+.ampm {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  background: none; border: none; padding: 0; cursor: pointer;
+}
+.ampm span {
+  display: block; width: 34px; padding: 2px 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); font-size: 11px; text-align: center;
+}
+.ampm span.sel { background: var(--accent); border-color: var(--accent);
+  color: #08111c; font-weight: 700; }

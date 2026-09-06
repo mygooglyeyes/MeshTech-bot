@@ -143,8 +143,9 @@ class WeatherModule(ModuleSpec):
          "default": "", "help": "Used when someone types !wx without a zip"},
         {"key": "channel", "label": "Forecast channel", "type": "channel",
          "default": "", "help": "Where the daily forecast posts (leave empty for no post)"},
-        {"key": "post_time", "label": "Forecast time", "type": "text",
-         "default": "07:00", "help": "Local HH:MM for the daily forecast post"},
+        {"key": "post_time", "label": "Forecast time", "type": "time12",
+         "default": "07:00", "help": "Local time for the daily forecast post "
+         "(12-hour picker; saved as 24-hour HH:MM)"},
     ]
 
     def __init__(self) -> None:

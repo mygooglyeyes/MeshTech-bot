@@ -252,7 +252,7 @@ def build_app(service) -> FastAPI:
     @app.post("/api/modules/{name}", dependencies=[Depends(require_auth)])
     async def module_save(name: str, payload: Dict[str, Any]):
         """Save one module's enabled flag + settings; hot-reloads."""
-        from core.modules import module_menu
+        from core.modules import module_menu, valid_hhmm
         from core.persist import save_module_settings
         from core.config import ConfigError
         known = [m for m in module_menu() if m["name"] == name]
@@ -285,6 +285,10 @@ def build_app(service) -> FastAPI:
                 if choices and str(value) not in choices:
                     problems.append(f"{field_def.get('label', key)} must be one of: "
                                     ", ".join(str(c) for c in choices))
+            elif ftype == "time12":
+                if not valid_hhmm(str(value)):
+                    problems.append(f"{field_def.get('label', key)} must be a time "
+                                    "like 7:30 pm (saved as 19:30)")
         if problems:
             return json_error("; ".join(problems))
 

@@ -22,12 +22,24 @@ whatever settings it needs (e.g. a push channel).
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from handlers.base import Handler
 
 if TYPE_CHECKING:
     from .service import BotService
+
+
+# 24-hour "HH:MM" (also accepts "H:MM") - the storage format for time
+# fields (e.g. weather's daily post time). The console shows a 12-hour
+# editor; this is what ends up in config.yaml.
+_HHMM_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def valid_hhmm(value: str) -> bool:
+    """True for a 24-hour 'HH:MM' time string ('7:05', '19:30')."""
+    return bool(_HHMM_RE.match((value or "").strip()))
 
 
 class ModuleSpec(Handler):
@@ -94,6 +106,10 @@ class ModuleSpec(Handler):
                 if choices and str(value) not in choices:
                     problems.append(f"{field_def.get('label', key)} must be one of: "
                                     + ", ".join(str(c) for c in choices))
+            elif ftype == "time12":
+                if not valid_hhmm(str(value)):
+                    problems.append(f"{field_def.get('label', key)} must be a time "
+                                    "like 7:30 pm (saved as 19:30)")
         return problems
 
 

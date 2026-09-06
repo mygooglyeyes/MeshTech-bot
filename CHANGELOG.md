@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.030 - 2026-09-06
+- Changed: the weather "Forecast time" setting is now a 12-hour picker -
+  an hour box, a minute box (both with sample text), and a stacked AM/PM
+  toggle - so "6 am" no longer has to be typed as "06:00". It saves as
+  24-hour HH:MM in config.yaml either way.
+
 ## 0.0.029 - 2026-09-06
 - Changed: Weather gets two feeds. `!wx [zip]` (alias of `!weather`)
   answers with current conditions on demand; the scheduled push is now a
