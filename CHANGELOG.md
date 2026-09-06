@@ -9,6 +9,11 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.036 - 2026-09-06
+- Removed: the dead "refresh" button in Channels & Controls. It had no
+  handler - status already auto-refreshes every few seconds, so the
+  button only ever confused.
+
 ## 0.0.035 - 2026-09-06
 - Fixed: slow keyword replies. The mesh library waits up to 15 s for a
   companion ack that openHop never sends - every reply parked the full
