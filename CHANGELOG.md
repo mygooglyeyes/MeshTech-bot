@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.042 - 2026-09-06
+- Fixed: brief !help now starts with the commands themselves
+  ("!2byte !help ..."), not a "cmds:" label. Some mesh console
+  clients (Waev Outpost) render a leading key:value as their own
+  stats widget instead of the text - leading with content avoids
+  that everywhere.
+
 ## 0.0.041 - 2026-09-06
 - Condensed: !help (brief) is now a single compact line that always
   fits one LoRa packet - commands, the 'x' hint, plain words, and the

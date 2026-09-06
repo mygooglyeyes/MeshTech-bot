@@ -46,21 +46,26 @@ def format_brief_help(command_words: str, canned_words: str,
                       admin_hint: str) -> str:
     """One-packet brief help: commands + plain words + the x-modifier.
 
+    The line starts with the bang-prefixed commands themselves - no
+    label prefix ("cmds:"). Some mesh console clients render messages
+    beginning with a key:value label as their own stats widget instead
+    of plain text, so the visible content leads and labels never do.
+
     Degradation ladder when space runs out: shrink the plain-word list,
     drop it, drop the admin hint, and only if the command list alone
     exceeds the packet (pathological) hard-ellipsize - the reply never
     exceeds one LoRa packet.
     """
-    cmds = f"cmds: {command_words}"
-    xhint = "x = more (e.g. !pathx)"
+    cmds = " ".join("!" + w for w in command_words.split())
+    xhint = "add x for more (e.g. !pathx)"
+    base = ([cmds, xhint] if cmds else [xhint])
 
-    line = _fit_words([cmds, xhint], canned_words,
+    line = _fit_words(base, canned_words,
                       [admin_hint] if admin_hint else [])
     if len(line.encode("utf-8")) <= _BRIEF_BUDGET:
         return line
 
     # Words did not fit: drop them, keep the admin hint if it fits.
-    base = [cmds, xhint]
     parts = list(base)
     if admin_hint:
         parts.append(admin_hint)
@@ -77,7 +82,7 @@ def format_brief_help(command_words: str, canned_words: str,
     while cmds_cut and len((" | ".join([cmds_cut, xhint])).encode("utf-8")) \
             > _BRIEF_BUDGET:
         cmds_cut = cmds_cut[:-1]
-    return " | ".join([cmds_cut, xhint])
+    return " | ".join([cmds_cut, xhint]) if cmds_cut else xhint
 
 
 class HelpHandler(Handler):
@@ -110,13 +115,14 @@ class HelpHandler(Handler):
                 pairs.append((handler, kw, scope, access))
 
         canned_keywords = [kw for rule in settings.replies for kw in rule.keywords]
-        canned_words = " ".join(sorted(set(canned_keywords))) or "(none)"
+        canned_list = " ".join(sorted(set(canned_keywords)))
+        canned_words = canned_list or "(none)"
 
         if ctx.verbosity == "brief":
             command_words = " ".join(sorted({kw for _, kw, _, _ in pairs}))
             admin_hint = ("admin: reload shutdown diag"
                           if ctx.is_admin else "")
-            data = format_brief_help(command_words, canned_words, admin_hint)
+            data = format_brief_help(command_words, canned_list, admin_hint)
             return HandlerResult(kind="text", data=data)
 
         rows = []
