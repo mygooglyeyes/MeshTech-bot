@@ -150,8 +150,13 @@ class RadioClient:
         if self.own_name:
             log.info("Companion node name: %s", self.own_name)
 
+        # Courtesy clock-sync: standalone companions have no clock of their
+        # own, but firmware that keeps time already (like openHop on a Linux
+        # repeater) may refuse with ERR_CODE_ILLEGAL_ARG - harmless, expected,
+        # and logged quietly rather than as a scary warning.
         await self._try("set device time",
-                         lambda: mc.commands.set_time(int(time.time())))
+                         lambda: mc.commands.set_time(int(time.time())),
+                         quiet=True)
 
         await self._read_channel_slots()
         await self._apply_configured_channels()
@@ -207,12 +212,20 @@ class RadioClient:
     # ------------------------------------------------------------------ helpers
 
     @staticmethod
-    async def _try(what: str, command_fn) -> bool:
-        """Run a meshcore command, logging failures instead of crashing."""
+    async def _try(what: str, command_fn, quiet: bool = False) -> bool:
+        """Run a meshcore command, logging failures instead of crashing.
+
+        ``quiet`` downgrades the failure log to info level - for commands
+        whose rejection is normal on some companions (e.g. set_time).
+        """
         try:
             result = await command_fn()
             if result is not None and getattr(result, "type", None) == EventType.ERROR:
-                log.warning("%s failed: %s", what, getattr(result, "payload", "error"))
+                if quiet:
+                    log.info("%s not accepted (harmless): %s",
+                             what, getattr(result, "payload", "error"))
+                else:
+                    log.warning("%s failed: %s", what, getattr(result, "payload", "error"))
                 return False
             return True
         except Exception as exc:

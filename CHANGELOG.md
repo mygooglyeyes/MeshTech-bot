@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.025 - 2026-09-06
+- Changed: the startup clock-sync is no longer logged as a warning when
+  the companion declines it (error 6, illegal argument). Firmware that
+  already keeps time itself - like openHop on a Linux repeater - does
+  this on purpose; it is harmless, and the log now says so quietly.
+
 ## 0.0.024 - 2026-09-06
 - Added: a friendly log hint when the companion link flaps. If the
   connection is accepted then dropped repeatedly within seconds, the
