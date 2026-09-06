@@ -106,6 +106,35 @@ class StorageCfg:
 
 
 @dataclass
+class ModuleCfg:
+    """One entry of the optional `modules:` section.
+
+    ``settings`` is a free-form map owned by the module itself (zip code,
+    push channel, poll interval...); the web console edits it through the
+    module's declared fields. Unknown module names / settings keys are
+    preserved as-is so a config written for a newer or older version
+    never loses data on reload.
+    """
+    name: str
+    enabled: bool = False
+    settings: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ModulesCfg:
+    """The `modules:` section: optional add-on features, menu-manageable.
+
+    Mirrors everything found under ``modules:`` in config.yaml; modules
+    read their own entry and the web console writes back through
+    ``save_module_settings`` (core/persist.py).
+    """
+    entries: Dict[str, ModuleCfg] = field(default_factory=dict)
+
+    def get(self, name: str) -> ModuleCfg:
+        return self.entries.get(name) or ModuleCfg(name=name, enabled=False)
+
+
+@dataclass
 class ReplyRule:
     keywords: List[str] = field(default_factory=list)
     texts: List[str] = field(default_factory=list)
@@ -161,6 +190,7 @@ class Settings:
     limits: LimitsCfg
     web: WebCfg
     logging: LogCfg
+    modules: ModulesCfg
     config_path: str = "config.yaml"
     warnings: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -420,6 +450,33 @@ def load(config_path: str = "config.yaml") -> Settings:
                             "travel as plaintext HTTP over your network. Consider a TLS "
                             "reverse proxy (nginx/caddy) if the LAN is not fully trusted.")
 
+    # --- modules (optional add-ons; tolerant: unknown names/keys preserved) ---
+    modules_raw = raw.get("modules")
+    module_entries: Dict[str, ModuleCfg] = {}
+    if modules_raw is not None and not isinstance(modules_raw, dict):
+        errors.append("modules: must be a mapping of module name -> settings "
+                      "(e.g. modules:\n  weather:\n    enabled: true)")
+        modules_raw = None
+    if isinstance(modules_raw, dict):
+        for mod_name, mod_body in modules_raw.items():
+            mod_name = str(mod_name).strip()
+            if not mod_name:
+                continue
+            if not isinstance(mod_body, dict):
+                # bare `weather:` or `weather: true` -> just enable it
+                enabled = bool(mod_body) if isinstance(mod_body, bool) else True
+                module_entries[mod_name] = ModuleCfg(name=mod_name, enabled=enabled)
+                continue
+            module_entries[mod_name] = ModuleCfg(
+                name=mod_name,
+                enabled=_bool(mod_body, "enabled", False, errors,
+                              f"modules.{mod_name}.enabled"),
+                # free-form settings map - the module owns its keys; only
+                # 'enabled' is parsed here, everything else passes through
+                settings={str(k): v for k, v in mod_body.items() if k != "enabled"},
+            )
+    modules = ModulesCfg(entries=module_entries)
+
     # --- logging ---
     log_raw = _section(raw, "logging", errors)
     tz = _text(log_raw, "timezone", "local", errors, "logging.timezone")
@@ -452,6 +509,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         limits=limits,
         web=web,
         logging=log_cfg,
+        modules=modules,
         config_path=config_path,
         warnings=warnings,
         raw=raw,

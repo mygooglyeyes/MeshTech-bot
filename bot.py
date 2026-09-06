@@ -111,6 +111,9 @@ async def _run(settings: Settings) -> None:
     service.client = client
     client.set_inbound_handler(router.on_inbound)
 
+    # Module pulses (optional scheduled pushes) - rebuilt on every reload.
+    service.schedule_module_pulses()
+
     stop = asyncio.Event()
     service.set_stop_callback(stop.set)
 

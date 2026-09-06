@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.027 - 2026-09-06
+- Added: the modules menu (on the feature/modules branch, not yet in
+  DEV). A menu of optional add-on features, managed from a new Modules
+  card in the web console: enable a module, edit its settings (zip
+  code, push channel, poll interval), save - no restart. First module:
+  Weather (`!weather [zip]` via the National Weather Service; `x` adds
+  a 3-day outlook; optional scheduled push of condition changes to a
+  channel, off until you enable it). NIXLE appears grayed out as a
+  roadmap entry. New dependency: aiohttp.
+
 ## 0.0.026 - 2026-09-06
 - Docs: companion creation order is now a stated requirement - create
   the everyday-use companion FIRST and the bot's companion second, and

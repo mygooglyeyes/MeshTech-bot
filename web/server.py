@@ -232,6 +232,73 @@ def build_app(service) -> FastAPI:
         return {"config": service.config_snapshot(),
                 "warnings": service.settings.warnings}
 
+    # ------------------------------------------------------------- modules
+
+    @app.get("/api/modules", dependencies=[Depends(require_auth)])
+    async def modules_list():
+        """The module menu: declaration + current state per module."""
+        from core.modules import module_menu
+        settings_map = service.settings.modules.entries
+        items = []
+        for item in module_menu():
+            name = item["name"]
+            cfg = settings_map.get(name)
+            values = dict(cfg.settings) if cfg else {}
+            item["enabled"] = bool(cfg.enabled) if cfg else False
+            item["values"] = values
+            items.append(item)
+        return {"modules": items}
+
+    @app.post("/api/modules/{name}", dependencies=[Depends(require_auth)])
+    async def module_save(name: str, payload: Dict[str, Any]):
+        """Save one module's enabled flag + settings; hot-reloads."""
+        from core.modules import module_menu
+        from core.persist import save_module_settings
+        from core.config import ConfigError
+        known = [m for m in module_menu() if m["name"] == name]
+        if not known:
+            return json_error(f"Unknown module '{name}'", 404)
+        if not known[0].get("available", True):
+            return json_error(f"Module '{name}' is not available: "
+                              f"{known[0].get('unavailable_reason', 'not implemented')}")
+        enabled = bool(payload.get("enabled", False))
+        values = payload.get("settings") or {}
+        if not isinstance(values, dict):
+            return json_error("settings must be an object")
+        values = {str(k): v for k, v in values.items() if k != "enabled"}
+
+        # validate against the module's declared fields before writing
+        problems = []
+        for field_def in known[0].get("fields", []):
+            key = field_def.get("key")
+            value = values.get(key)
+            ftype = field_def.get("type", "text")
+            if value in (None, ""):
+                continue
+            if ftype == "number":
+                try:
+                    values[key] = int(str(value))
+                except (TypeError, ValueError):
+                    problems.append(f"{field_def.get('label', key)} must be a whole number")
+            elif ftype == "choice":
+                choices = field_def.get("choices") or []
+                if choices and str(value) not in choices:
+                    problems.append(f"{field_def.get('label', key)} must be one of: "
+                                    ", ".join(str(c) for c in choices))
+        if problems:
+            return json_error("; ".join(problems))
+
+        try:
+            fresh = save_module_settings(service.settings.config_path, name,
+                                         enabled, values)
+        except (ConfigError, OSError) as exc:
+            return json_error(f"Config not saved: {exc}")
+        summary = service.reload()
+        service.feed.publish("notice", {"text": f"Module {name} "
+                                                f"{'enabled' if enabled else 'disabled'}"})
+        return {"ok": True, "message": summary, "module": {
+            "name": name, "enabled": fresh.enabled, "values": fresh.settings}}
+
     # ------------------------------------------------------------- actions
 
     @app.post("/api/actions", dependencies=[Depends(require_auth)])

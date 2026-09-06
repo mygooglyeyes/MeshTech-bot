@@ -1067,6 +1067,12 @@ function setupCollapsibleSections() {
 
 // ------------------------------------------------------------------ boot
 
+function showActionResult(text) {
+  const el = $("action-result");
+  el.textContent = text || "";
+  setTimeout(() => { el.textContent = ""; }, 6000);
+}
+
 async function refreshAll() {
   try {
     await refreshStatus();
@@ -1075,8 +1081,116 @@ async function refreshAll() {
     await refreshMessages();
     await refreshPackets();
     await refreshAnalysis();
+    await refreshModules();
   } catch (e) { /* auth or network handled elsewhere */ }
 }
+
+// ------------------------------------------------------------------ modules
+
+// The module menu: every ModuleSpec the bot knows, with its declared
+// settings fields. Toggles save immediately; field edits save on Apply.
+async function refreshModules() {
+  let data;
+  try {
+    data = await api("/api/modules");
+  } catch (e) {
+    return;
+  }
+  const wrap = $("module-list");
+  wrap.innerHTML = "";
+  (data.modules || []).forEach((mod) => {
+    const el = document.createElement("div");
+    el.className = "module";
+
+    const head = document.createElement("div");
+    head.className = "module-head";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = mod.name;
+    const state = document.createElement("span");
+    state.className = "tag";
+    state.textContent = mod.available
+      ? (mod.enabled ? "on" : "off")
+      : (mod.unavailable_reason || "not available");
+    if (!mod.available) state.classList.add("muted-note");
+    head.append(name, state);
+
+    const desc = document.createElement("div");
+    desc.className = "module-desc";
+    desc.textContent = mod.description || "";
+
+    el.append(head, desc);
+
+    if (mod.available && (mod.fields || []).length) {
+      const form = document.createElement("div");
+      form.className = "module-form";
+      const inputs = {};
+      (mod.fields || []).forEach((f) => {
+        const row = document.createElement("label");
+        row.className = "module-field";
+        const label = document.createElement("span");
+        label.textContent = f.label || f.key;
+        label.title = f.help || "";
+        let input;
+        if (f.type === "choice") {
+          input = document.createElement("select");
+          (f.choices || []).forEach((c) => {
+            const opt = document.createElement("option");
+            opt.value = c; opt.textContent = c;
+            input.appendChild(opt);
+          });
+          input.value = (mod.values || {})[f.key];
+          if (input.value === undefined || input.value === null) input.value = f.default || "";
+        } else {
+          input = document.createElement("input");
+          input.type = f.type === "number" ? "number" : "text";
+          input.value = (mod.values || {})[f.key];
+          if (input.value === undefined || input.value === null) input.value = f.default || "";
+        }
+        inputs[f.key] = input;
+        row.append(label, input);
+        form.appendChild(row);
+      });
+      const apply = document.createElement("button");
+      apply.className = "btn small";
+      apply.textContent = "apply";
+      apply.addEventListener("click", async () => {
+        const settings = {};
+        Object.entries(inputs).forEach(([k, input]) => { settings[k] = input.value; });
+        const res = await api("/api/modules/" + mod.name, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: mod.enabled, settings }),
+        });
+        showActionResult(res.message || res.detail || "saved");
+        refreshModules();
+      });
+      form.appendChild(apply);
+      el.appendChild(form);
+    }
+
+    if (mod.available) {
+      const toggle = document.createElement("button");
+      toggle.className = "btn small" + (mod.enabled ? " danger" : "");
+      toggle.textContent = mod.enabled ? "turn off" : "turn on";
+      toggle.addEventListener("click", async () => {
+        const res = await api("/api/modules/" + mod.name, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !mod.enabled,
+                                 settings: mod.values || {} }),
+        });
+        showActionResult(res.message || res.detail || "saved");
+        refreshModules();
+      });
+      head.appendChild(toggle);
+    }
+
+    wrap.appendChild(el);
+  });
+}
+
+$("btn-refresh-modules").addEventListener("click", refreshModules);
 
 // Periodic refreshes keep the dashboard live (uptime chip, messages, node
 // cells, packets, analysis). Registered exactly once - from boot() when the

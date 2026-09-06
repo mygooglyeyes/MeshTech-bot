@@ -97,6 +97,21 @@ storage:
   packet_jsonl_max_bytes: 67108864   # 64 MB
   packet_max_rows: 200000        # keep the last N rows in the database
 
+# ---------------------------------------------------------------------------
+# Modules - optional add-on features, managed from the web console's
+# Modules card (or by hand here). Each module keeps its own settings.
+# Modules that are not listed are simply off. Unknown settings keys are
+# preserved, so it is safe to edit while a newer version runs.
+# ---------------------------------------------------------------------------
+modules:
+  # Weather: `!weather [zip]` on the mesh; optional scheduled push of
+  # forecast changes to a channel.
+  weather:
+    enabled: false
+    # zip: "84321"          # default zip for !weather (US)
+    # channel: "#bot"       # where the pulse pushes (push off until set + enabled)
+    # poll_minutes: 30      # how often the pulse checks, when push is on
+
 # --- Simple canned answers (no code needed) ----------------------
 # When one of these keywords appears in a message, the bot replies with the
 # matching text. If several texts are listed, one is chosen at random.

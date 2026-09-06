@@ -11,6 +11,7 @@ circular imports:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Callable, Dict, List, Optional
@@ -35,6 +36,9 @@ class BotService:
         self.started_at: float = time.time()
         self.stop_requested = False
         self._stop_callback: Optional[Callable[[], None]] = None
+        # Module pulse scheduler (core.modules.ModuleSpec.push): one asyncio
+        # task per enabled module that opts in. Rebuilt on config reload.
+        self._pulse_tasks: Dict[str, "asyncio.Task"] = {}
 
     # ------------------------------------------------------------------ basics
 
@@ -53,6 +57,15 @@ class BotService:
         self.settings = settings
         if self.router is not None:
             self.router.on_config_reload()
+        # modules may have been enabled/disabled/reconfigured in the console
+        for handler in self.registry:
+            changed = getattr(handler, "on_settings_changed", None)
+            if callable(changed):
+                try:
+                    changed()
+                except Exception:
+                    pass
+        self.schedule_module_pulses()
         summary = (
             f"Config reloaded from {settings.config_path}: "
             f"{len(settings.channels)} channel(s), {len(self.registry)} handler(s), "
@@ -70,8 +83,82 @@ class BotService:
         log.info("Shutdown requested: %s", reason)
         self.stop_requested = True
         self.feed.publish("notice", {"text": f"Shutdown {reason}"})
+        self.stop_module_pulses()
         if self._stop_callback is not None:
             self._stop_callback()
+
+    # ------------------------------------------------------------- modules
+
+    def schedule_module_pulses(self) -> None:
+        """(Re)start pulse pollers for enabled modules; called at startup
+        and after every config reload."""
+        self.stop_module_pulses()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return                       # not on the event loop yet (startup)
+        for handler in self.registry:
+            pulse = getattr(handler, "pulse", None)
+            seconds_fn = getattr(handler, "pulse_seconds", None)
+            if pulse is None or seconds_fn is None:
+                continue
+            try:
+                seconds = int(seconds_fn() or 0)
+            except Exception:
+                seconds = 0
+            if seconds < 30:
+                continue                 # opt-in only, sane minimum
+            name = getattr(handler, "name", "module")
+            self._pulse_tasks[name] = loop.create_task(
+                self._module_pulse_loop(handler, seconds))
+            log.info("Module pulse started: %s (every %d min)",
+                     name, max(1, seconds // 60))
+
+    def stop_module_pulses(self) -> None:
+        for name, task in list(self._pulse_tasks.items()):
+            if not task.done():
+                task.cancel()
+        self._pulse_tasks.clear()
+
+    async def _module_pulse_loop(self, handler, seconds: int) -> None:
+        name = getattr(handler, "name", "module")
+        try:
+            await asyncio.sleep(10)      # let the link settle after startup
+            while not self.stop_requested:
+                try:
+                    text = await handler.pulse()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    log.debug("module %s pulse failed: %s", name, exc)
+                    text = None
+                if text:
+                    await self._module_push(name, text)
+                await asyncio.sleep(seconds)
+        except asyncio.CancelledError:
+            pass
+
+    async def _module_push(self, module_name: str, text: str) -> None:
+        """Post one module push to the module's configured channel."""
+        client = self.client
+        if client is None or not client.is_connected:
+            log.debug("module %s push skipped: not connected", module_name)
+            return
+        cfg = self.settings.modules.get(module_name)
+        channel = str(cfg.settings.get("channel", "") or "").strip()
+        if not channel:
+            return
+        target = channel.lstrip("#").strip().casefold()
+        idx = next((i for i, n in client.channel_names().items()
+                    if n.lstrip("#").strip().casefold() == target), None)
+        if idx is None:
+            log.info("module %s push skipped: channel %s is not configured "
+                     "on the companion", module_name, channel)
+            return
+        ok = await client.send_channel(idx, text)
+        if ok:
+            log.info("Module push [%s] -> %s: %s", module_name, channel,
+                     text.splitlines()[0] if text else "")
 
     # ------------------------------------------------------------------ channels
 

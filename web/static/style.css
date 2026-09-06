@@ -299,3 +299,24 @@ em { color: var(--muted); }
 }
 .pkt-profile b { color: var(--accent); }
 .pkt-profile div:first-child { margin-bottom: 2px; }
+
+/* Modules card */
+#module-list { display: flex; flex-direction: column; gap: 10px; }
+.module {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.module-head { display: flex; align-items: center; gap: 8px; }
+.module-head .name { font-weight: 600; text-transform: capitalize; }
+.module-head .tag { color: var(--muted); font-size: 12px; }
+.module-head button { margin-left: auto; }
+.module-desc { color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
+.module-form { display: flex; flex-direction: column; gap: 6px; }
+.module-field { display: flex; align-items: center; gap: 8px; }
+.module-field > span { min-width: 150px; color: var(--muted); font-size: 12px; }
+.module-field input, .module-field select {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); padding: 3px 6px; flex: 1;
+}
