@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.039 - 2026-09-06
+- Faster (for real this time): message sends no longer wait 3 s for a
+  companion ack that never comes - the wait is now 0.2 s, since the
+  bytes are already on the wire before the wait begins. The OUT log
+  line, the Messages card, and the live feed now show outgoing replies
+  the moment they are transmitted. Sends are serialized so multi-part
+  replies stay in order; other commands keep the 3 s budget.
+
 ## 0.0.038 - 2026-09-06
 - Faster: !2byte now reuses its answer for 5 minutes instead of querying
   the database on every ask - node stats barely change, so repeated

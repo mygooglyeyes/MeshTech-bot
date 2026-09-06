@@ -95,6 +95,8 @@ class RadioClient:
         self._on_inbound: Optional[Callable[[InboundMessage], Awaitable[None]]] = None
         self._contact_sync_again_at = 0.0
         self._last_advert_sync = 0.0
+        # Serializes message sends on the companion link (see MSG_ACK_TIMEOUT).
+        self._send_lock: Optional[asyncio.Lock] = None
 
     # ------------------------------------------------------------------ wiring
 
@@ -222,6 +224,12 @@ class RadioClient:
     # _apply_ack_timeout); message sends additionally treat "no ack" as
     # delivered - the bytes leave before the wait begins.
     SEND_ACK_TIMEOUT = 3.0
+    # Message sends (channel text / DMs) park the sender for the ack wait,
+    # and the OUT log line + Messages-card entry only land after it. The
+    # bytes are on the wire before the wait starts, so these sends get a
+    # near-zero wait; the send lock serializes messages so chunk N+1 cannot
+    # steal the ack of chunk N (a shared ERROR would mis-nest replies).
+    MSG_ACK_TIMEOUT = 0.2
     _NO_ACK_REASONS = frozenset({"no_event_received", "timeout"})
 
     def _apply_ack_timeout(self, mc) -> None:
@@ -238,6 +246,22 @@ class RadioClient:
         except AttributeError:
             log.warning("Could not set companion ack timeout (library layout "
                         "changed) - keeping the 15s default")
+
+    def _send_ctx(self):
+        """(lock, original default_timeout) for message sends.
+
+        The lock is created lazily here - asyncio primitives bind to the
+        running loop at creation, and the bot may be restarted within one
+        process (tests do exactly that).
+        """
+        if self._send_lock is None:
+            self._send_lock = asyncio.Lock()
+        default = None
+        try:
+            default = self.mc.commands.default_timeout
+        except AttributeError:
+            pass
+        return self._send_lock, default
 
     @classmethod
     async def _try(cls, what: str, command_fn, quiet: bool = False,
@@ -278,6 +302,24 @@ class RadioClient:
         except Exception as exc:
             log.warning("%s raised: %s", what, exc)
             return False
+
+    async def _send_via_link(self, what: str, command_fn) -> bool:
+        """Send a message with the ack wait near-zero and sends serialized.
+
+        The bytes are handed to the companion before the library's wait
+        begins, and openHop never acks - so waiting even 3 s buys nothing
+        while it delays the OUT log, the Messages card, and the live feed.
+        """
+        lock, default = self._send_ctx()
+        async with lock:
+            cmds = self.mc.commands
+            if default is not None:
+                cmds.default_timeout = self.MSG_ACK_TIMEOUT
+            try:
+                return await self._try(what, command_fn, ack_expected=False)
+            finally:
+                if default is not None:
+                    cmds.default_timeout = default
 
     # ------------------------------------------------------------------ channels
 
@@ -525,9 +567,9 @@ class RadioClient:
         if not self.is_connected or self.mc is None:
             log.warning("Not connected - dropping channel reply.")
             return False
-        ok = await self._try(f"send channel message (slot {idx})",
-                             lambda: self.mc.commands.send_chan_msg(idx, text),
-                             ack_expected=False)
+        ok = await self._send_via_link(
+            f"send channel message (slot {idx})",
+            lambda: self.mc.commands.send_chan_msg(idx, text))
         if ok:
             self.store.add_message(MsgRecord(kind="channel", direction="out",
                                              channel_name=self.name_for_idx(idx),
@@ -546,9 +588,9 @@ class RadioClient:
         if contact is None:
             log.warning("Cannot reply by DM to %s: no contact/full key stored.", sender_prefix)
             return False
-        ok = await self._try(f"send DM to {sender_prefix}",
-                             lambda: self.mc.commands.send_msg(contact, text),
-                             ack_expected=False)
+        ok = await self._send_via_link(
+            f"send DM to {sender_prefix}",
+            lambda: self.mc.commands.send_msg(contact, text))
         if ok:
             self.store.add_message(MsgRecord(kind="dm", direction="out",
                                              sender_prefix=sender_prefix,
