@@ -19,6 +19,11 @@ data/*
 .freebuff/
 project-id
 
+# Local dev/test scaffolding - not part of the shipped project
+# (kept on each developer's machine; recoverable from git history)
+tests/
+requirements-dev.txt
+
 # Editors / OS
 .idea/
 .vscode/

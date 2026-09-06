@@ -1,4 +1,0 @@
-# Extra dependencies for running the test suite.
-# Install with:  pip install -r requirements-dev.txt
--r requirements.txt
-pytest>=8.0

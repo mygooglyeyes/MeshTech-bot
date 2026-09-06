@@ -27,8 +27,9 @@ section in `config.yaml` — no code required.
 
 1. **Fork the repo** and create a branch for your change.
 2. **Keep the change small** — one fix or feature per pull request.
-3. **Add or update a test** if you changed behavior (tests live in
-   `tests/`, run with `python -m pytest`).
+3. **Check your change by hand** — run the bot once with your change
+   and confirm your feature answers the way it should (and that
+   nothing else broke).
 4. **Bump the version** — open `core/version.py` and raise the number by
    one (for example `0.0.005` becomes `0.0.006`). Every commit gets its
    own version number, like a counter: it makes it obvious which changes
