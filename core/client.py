@@ -40,6 +40,45 @@ log = logging.getLogger("meshtech-bot.client")
 
 MAX_CHANNEL_SLOTS = 8
 
+# ---------------------------------------------------------------- flap hint
+# If the companion accepts the TCP connection but drops it again within a
+# few seconds, over and over, the usual cause is another client holding the
+# companion (e.g. the repeater's web console auto-connects to it at
+# startup) - companions serve one client at a time. We log a clear hint
+# once per episode instead of spamming it on every retry.
+_FLAP_WINDOW_SECONDS = 120.0   # look at connections made in the last 2 min
+_FLAP_SHORT_SECONDS = 15.0     # "died almost immediately" threshold
+_FLAP_THRESHOLD = 3            # short-lived connections before the hint
+
+_FLAP_HINT = ("companion keeps accepting then dropping the link - another "
+              "client may be holding it (e.g. the repeater's web console "
+              "auto-connects to a companion at startup). Check which "
+              "companion the repeater console is using, or set it to not "
+              "auto-connect.")
+
+
+def flap_state_after_drop(state: Dict[str, Any], now: float,
+                          conn_started: float, dropped: float) -> Dict[str, Any]:
+    """Pure flap-detector state machine (tested without a live connection).
+
+    ``state`` keys: ``starts`` (list of recent connect times), ``hinted_at``
+    (time the current episode's hint was logged, or 0). Returns the new
+    state and whether the hint should be logged now (``log_hint`` key).
+    """
+    starts = [t for t in state.get("starts", [])
+              if now - t <= _FLAP_WINDOW_SECONDS]
+    starts.append(conn_started)
+    short = sum(1 for t in starts if (dropped - t) <= _FLAP_SHORT_SECONDS)
+    hinted = state.get("hinted_at", 0.0) or 0.0
+    new_state = {"starts": starts, "hinted_at": hinted}
+    if short >= _FLAP_THRESHOLD and (not hinted or
+                                     now - hinted > _FLAP_WINDOW_SECONDS):
+        new_state["hinted_at"] = now
+        new_state["log_hint"] = True
+    else:
+        new_state["log_hint"] = False
+    return new_state
+
 
 class RadioClient:
     def __init__(self, service: BotService):
@@ -67,7 +106,9 @@ class RadioClient:
     async def run(self) -> None:
         """Supervision loop: connect, serve, reconnect with backoff."""
         delay = self.settings.connection.reconnect_min_seconds
+        flap_state: Dict[str, Any] = {"starts": [], "hinted_at": 0.0}
         while not self.service.stop_requested:
+            conn_started = time.time()
             try:
                 await self._connect_and_serve()
             except asyncio.CancelledError:
@@ -76,6 +117,13 @@ class RadioClient:
                 log.warning("Connection problem: %s", exc)
             finally:
                 await self._teardown()
+            # Flap detection: a connection that dies almost immediately,
+            # repeatedly, usually means another client is holding the
+            # companion. Log the friendly hint once per episode.
+            flap_state = flap_state_after_drop(
+                flap_state, time.time(), conn_started, time.time())
+            if flap_state.pop("log_hint", False):
+                log.warning("%s", _FLAP_HINT)
             if self.service.stop_requested:
                 break
             if not self.settings.connection.reconnect:

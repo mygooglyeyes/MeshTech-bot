@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.024 - 2026-09-06
+- Added: a friendly log hint when the companion link flaps. If the
+  connection is accepted then dropped repeatedly within seconds, the
+  bot now says the likely cause once - another client holding the
+  companion (e.g. the repeater's web console auto-connects to it at
+  startup) - instead of leaving a wall of reconnect lines to decode.
+
 ## 0.0.023 - 2026-09-06
 - Docs: branch policy and release rhythm spelled out in the
   contributing guide — small work commits straight to DEV, branches
