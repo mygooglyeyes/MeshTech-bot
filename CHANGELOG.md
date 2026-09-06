@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.044 - 2026-09-06
+- Fixed: long message/packet text no longer spills past the card edge.
+  The Messages and Packets tables use a fixed layout now - text wraps
+  inside the card (long words and hex included) while the meta columns
+  keep set widths. The tables scale with the text-size control.
+
 ## 0.0.043 - 2026-09-06
 - Changed: brief !help opens with "My Commands - " followed by the
   command list (80 bytes, still one packet).
