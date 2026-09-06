@@ -7,6 +7,9 @@ Two feeds, two jobs:
     !wx 84321        - conditions right now for that zip
     !weather         - same command, longer name (alias)
     add x: !wxx      - adds a 3-day outlook
+    Measured first: the bot reads the nearest reporting station's latest
+    observation and marks it (obs KLGU). If no station has reported
+    recently (over 90 minutes) it falls back to the NWS forecast block.
 
   Daily forecast (we push, once a day):
     posts the 3-day outlook to the configured channel at the configured
@@ -15,8 +18,8 @@ Two feeds, two jobs:
 Data: National Weather Service api.weather.gov (free, no API key);
 zip -> coordinates via zippopotam.us (free, no key). US coverage only.
 The NWS "current" block is actually today's forecast, so filler words
-(Sunny, Clear, Partly Sunny...) are stripped and the reply is labelled
-"now" - it reads as conditions, not a forecast.
+(Sunny, Clear, Partly Sunny...) are stripped there - but a station
+observation's description is a real measurement and passes through.
 
 Everything network-related is defensive: timeouts, quiet failure logs,
 never an exception into the router.
@@ -26,7 +29,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models import HandlerResult
@@ -37,6 +40,8 @@ log = logging.getLogger("meshtech-bot.modules.weather")
 _HTTP_TIMEOUT = 10          # seconds per API call
 _CACHE_SECONDS = 600        # reuse a forecast for 10 min (mesh can spam us)
 _PULSE_CHECK_SECONDS = 60   # how often the daily-post pulse wakes up
+_OBS_MAX_AGE_SECONDS = 90 * 60   # station readings older than this are stale
+_OBS_CACHE_SECONDS = 120    # reuse an observation for 2 min
 
 
 # --------------------------------------------------------------------------
@@ -103,15 +108,54 @@ def short_conditions(period: Dict[str, Any]) -> str:
 
 
 def format_weather(place: str, current_line: str,
-                   outlook: Optional[List[Tuple[str, str]]] = None) -> str:
+                   outlook: Optional[List[Tuple[str, str]]] = None,
+                   station: Optional[str] = None) -> str:
     """The mesh text for on-demand conditions. Brief = one line;
-    x = + 3-day outlook lines."""
-    head = (f"Weather {place} now: {current_line}" if place
-            else f"Weather now: {current_line}")
+    x = + 3-day outlook lines. ``station`` marks the line as measured
+    ("obs KLGU") rather than forecast-derived."""
+    tag = f" (obs {station})" if station else ""
+    head = (f"Weather {place} now{tag}: {current_line}" if place
+            else f"Weather now{tag}: {current_line}")
     lines = [head]
     for label, line in (outlook or []):
         lines.append(f"{label}: {line}")
     return "\n".join(lines)
+
+
+def observation_conditions(props: Dict[str, Any]) -> Optional[str]:
+    """One compact line from an NWS latest-observation payload.
+
+    Observation values arrive in SI units (temperature in C, wind in
+    km/h); both are converted to the module's F/mph house style. Any
+    missing value is simply left out. Returns None when the observation
+    carries nothing usable.
+    """
+    temp = (props.get("temperature") or {}).get("value")
+    wind = (props.get("windSpeed") or {}).get("value")     # km/h
+    desc = (props.get("textDescription") or "").strip()
+    parts = []
+    if temp is not None:
+        parts.append(f"{round(temp * 9 / 5 + 32)}F")
+    if wind is not None:
+        parts.append(f"wind {round(wind * 0.621371)}mph")
+    if desc:
+        parts.append(desc)          # observed, not forecast: keep as-is
+    return " ".join(parts) or None
+
+
+def observation_age_seconds(props: Dict[str, Any],
+                            now: Optional[datetime] = None) -> Optional[float]:
+    """Age of an observation in seconds, or None when its timestamp is
+    missing or unparseable (callers treat None as too old)."""
+    raw = (props.get("timestamp") or "").strip()
+    if not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    ref = now or datetime.now(timezone.utc)
+    return max(0.0, (ref - ts).total_seconds())
 
 
 def format_forecast(place: str,
@@ -150,6 +194,7 @@ class WeatherModule(ModuleSpec):
 
     def __init__(self) -> None:
         self._cache: Dict[str, Any] = {}   # zip -> (ts, place, current, outlook)
+        self._obs_cache: Dict[str, Any] = {}   # zip -> (ts, station, line)
         self._next_post: Optional[float] = None   # epoch of the next daily post
 
     def on_settings_changed(self) -> None:
@@ -170,14 +215,15 @@ class WeatherModule(ModuleSpec):
 
         extended = ctx.verbosity == "full"
         try:
-            place, current, outlook = await self._forecast(zip_code,
-                                                           want_outlook=extended)
+            place, current, outlook, station = await self._conditions(
+                zip_code, want_outlook=extended)
         except Exception as exc:
             log.info("weather lookup failed for %s: %s", zip_code, exc)
             return HandlerResult(kind="text", data="Weather: lookup failed, try later")
         return HandlerResult(
             kind="text",
-            data=format_weather(place, current, outlook if extended else None))
+            data=format_weather(place, current,
+                                outlook if extended else None, station))
 
     # ------------------------------------------------- daily forecast push
 
@@ -219,6 +265,97 @@ class WeatherModule(ModuleSpec):
 
     # ---------------------------------------------------------------- api
 
+    async def _conditions(self, zip_code: str, want_outlook: bool):
+        """(place, line, outlook, station) for the on-demand reply.
+
+        A fresh station observation wins when available (``station`` set);
+        otherwise the reply falls back to the forecast-derived line. The
+        daily forecast post does not come through here - it always uses
+        the forecast feed.
+        """
+        station: Optional[str] = None
+        line: Optional[str] = None
+        place: Optional[str] = None
+        now = time.time()
+        obs = self._obs_cache.get(zip_code)
+        if obs and now - obs[0] < _OBS_CACHE_SECONDS:
+            station, line, place = obs[1], obs[2], obs[3]
+        else:
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession(
+                        timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT)) as http:
+                    place, lat, lon = await self._geocode(http, zip_code)
+                    found = await self._observation(http, lat, lon)
+            except Exception as exc:
+                log.info("observation lookup failed for %s: %s", zip_code, exc)
+                found = None
+            if found:
+                station, line = found
+                self._obs_cache[zip_code] = (now, station, line, place)
+
+        if line is None:
+            p, current, outlook = await self._forecast(zip_code,
+                                                       want_outlook=want_outlook)
+            return p, current, (outlook if want_outlook else None), None
+
+        if not want_outlook:
+            return place, line, None, station
+        # observation + outlook: outlook still comes from the forecast feed
+        try:
+            _p, _current, outlook = await self._forecast(zip_code,
+                                                         want_outlook=True)
+        except Exception as exc:
+            log.info("forecast unavailable, observation only: %s", exc)
+            return place, line, None, station
+        return place, line, outlook, station
+
+    @staticmethod
+    async def _geocode(http, zip_code: str) -> Tuple[str, str, str]:
+        """zip -> (place label, lat, lon) via zippopotam.us."""
+        async with http.get(f"https://api.zippopotam.us/us/{zip_code}") as r:
+            if r.status != 200:
+                raise RuntimeError(f"zip lookup HTTP {r.status}")
+            geo = await r.json(content_type=None)
+        places = geo.get("places") or []
+        if not places:
+            raise RuntimeError("zip not found")
+        place = ", ".join(x for x in (places[0].get("place name"),
+                                      places[0].get("state abbreviation")) if x)
+        return place, places[0]["latitude"], places[0]["longitude"]
+
+    @staticmethod
+    async def _observation(http, lat, lon) -> Optional[Tuple[str, str]]:
+        """Nearest reporting station's latest reading -> (station, line).
+
+        Tries the closest few stations; returns None when none has
+        reported within the freshness window (caller falls back to the
+        forecast block)."""
+        async with http.get(
+                f"https://api.weather.gov/stations?point={lat},{lon}",
+                headers={"User-Agent": "meshtech-bot/0.1"}) as r:
+            if r.status != 200:
+                raise RuntimeError(f"NWS stations HTTP {r.status}")
+            stations = await r.json(content_type=None)
+        ids = [((f.get("properties") or {}).get("stationId") or "")
+               for f in (stations.get("features") or [])]
+        ids = [s for s in ids if s][:3]
+        for station in ids:
+            async with http.get(
+                    f"https://api.weather.gov/stations/{station}/observations/latest",
+                    headers={"User-Agent": "meshtech-bot/0.1"}) as r:
+                if r.status != 200:
+                    continue
+                latest = await r.json(content_type=None)
+            props = latest.get("properties") or {}
+            age = observation_age_seconds(props)
+            if age is None or age > _OBS_MAX_AGE_SECONDS:
+                continue                       # stale station - try the next
+            line = observation_conditions(props)
+            if line:
+                return station, line
+        return None
+
     async def _forecast(self, zip_code: str, want_outlook: bool):
         """Returns (place, current_line, outlook_lines|None). Cached."""
         now = time.time()
@@ -231,17 +368,7 @@ class WeatherModule(ModuleSpec):
         import aiohttp
         async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT)) as http:
-            # zip -> coordinates
-            async with http.get(f"https://api.zippopotam.us/us/{zip_code}") as r:
-                if r.status != 200:
-                    raise RuntimeError(f"zip lookup HTTP {r.status}")
-                geo = await r.json(content_type=None)
-            places = geo.get("places") or []
-            if not places:
-                raise RuntimeError("zip not found")
-            place = ", ".join(x for x in (places[0].get("place name"),
-                                          places[0].get("state abbreviation")) if x)
-            lat, lon = places[0]["latitude"], places[0]["longitude"]
+            place, lat, lon = await self._geocode(http, zip_code)
 
             # NWS: gridpoint -> forecast
             async with http.get(f"https://api.weather.gov/points/{lat},{lon}",

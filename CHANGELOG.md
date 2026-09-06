@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.032 - 2026-09-06
+- Changed: `!wx` now reports measured conditions when possible. The bot
+  reads the nearest reporting weather station's latest observation (NWS,
+  still free, no key), converts it to F/mph, and marks the reply
+  `(obs KLGU)`; readings older than 90 minutes are skipped (next-nearest
+  station tried, then the forecast block). The daily forecast post is
+  unchanged - it remains a forecast.
+
 ## 0.0.031 - 2026-09-06
 - Added: automatic cache-busting for the dashboard. The page loads its
   app.js and style.css with the running version in the URL, so every
