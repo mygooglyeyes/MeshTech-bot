@@ -300,7 +300,8 @@ em { color: var(--muted); }
 .pkt-profile b { color: var(--accent); }
 .pkt-profile div:first-child { margin-bottom: 2px; }
 
-/* Modules card */
+/* Modules card: each module is a collapsed row; click the name to open
+   its editor (same caret pattern as the data cards). */
 #module-list { display: flex; flex-direction: column; gap: 10px; }
 .module {
   background: var(--panel2);
@@ -308,10 +309,15 @@ em { color: var(--muted); }
   border-radius: 6px;
   padding: 8px 10px;
 }
-.module-head { display: flex; align-items: center; gap: 8px; }
+.module-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .module-head .name { font-weight: 600; text-transform: capitalize; }
 .module-head .tag { color: var(--muted); font-size: 12px; }
 .module-head button { margin-left: auto; }
+.module-head .caret { color: var(--muted); font-size: 11px; margin-left: 2px; }
+.module[open] .module-head .caret::after { content: "▾"; font-size: 11px; }
+.module[open] .module-head .caret { font-size: 0; }
+.module[open] .module-head { margin-bottom: 6px; }
+summary.module-head::-webkit-details-marker { display: none; }
 .module-desc { color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
 .module-form { display: flex; flex-direction: column; gap: 6px; }
 .module-field { display: flex; align-items: center; gap: 8px; }

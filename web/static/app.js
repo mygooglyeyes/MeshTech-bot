@@ -1099,10 +1099,13 @@ async function refreshModules() {
   const wrap = $("module-list");
   wrap.innerHTML = "";
   (data.modules || []).forEach((mod) => {
-    const el = document.createElement("div");
+    const el = document.createElement("details");
     el.className = "module";
 
-    const head = document.createElement("div");
+    // The head is the always-visible row; click it to open/close the
+    // settings body below. The toggle button lives on the head so a
+    // module can be switched without opening it.
+    const head = document.createElement("summary");
     head.className = "module-head";
     const name = document.createElement("span");
     name.className = "name";
@@ -1113,13 +1116,44 @@ async function refreshModules() {
       ? (mod.enabled ? "on" : "off")
       : (mod.unavailable_reason || "not available");
     if (!mod.available) state.classList.add("muted-note");
-    head.append(name, state);
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.textContent = "▸";
+    head.append(name, state, caret);
 
+    if (mod.available) {
+      const toggle = document.createElement("button");
+      toggle.className = "btn small" + (mod.enabled ? " danger" : "");
+      toggle.textContent = mod.enabled ? "turn off" : "turn on";
+      // Buttons inside a <summary> toggle their parent; stop that so
+      // clicking the switch doesn't also open the editor.
+      toggle.addEventListener("click", (ev) => ev.stopPropagation());
+      toggle.addEventListener("click", async () => {
+        toggle.disabled = true;
+        try {
+          const res = await api("/api/modules/" + mod.name, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: !mod.enabled,
+                                   settings: mod.values || {} }),
+          });
+          showActionResult(res.message || res.detail || "saved");
+        } finally {
+          toggle.disabled = false;
+        }
+        refreshModules();
+      });
+      head.appendChild(toggle);
+    }
+    el.appendChild(head);
+
+    // Body: description + (for available modules) the settings form.
+    const body = document.createElement("div");
+    body.className = "module-body";
     const desc = document.createElement("div");
     desc.className = "module-desc";
     desc.textContent = mod.description || "";
-
-    el.append(head, desc);
+    body.appendChild(desc);
 
     if (mod.available && (mod.fields || []).length) {
       const form = document.createElement("div");
@@ -1157,40 +1191,29 @@ async function refreshModules() {
       apply.addEventListener("click", async () => {
         const settings = {};
         Object.entries(inputs).forEach(([k, input]) => { settings[k] = input.value; });
-        const res = await api("/api/modules/" + mod.name, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled: mod.enabled, settings }),
-        });
-        showActionResult(res.message || res.detail || "saved");
+        // Apply saves the settings AND switches the module on in the
+        // same save - one config write, one reload, module left running.
+        apply.disabled = true;
+        try {
+          const res = await api("/api/modules/" + mod.name, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: true, settings }),
+          });
+          showActionResult(res.message || res.detail || "saved");
+        } finally {
+          apply.disabled = false;
+        }
         refreshModules();
       });
       form.appendChild(apply);
-      el.appendChild(form);
+      body.appendChild(form);
     }
 
-    if (mod.available) {
-      const toggle = document.createElement("button");
-      toggle.className = "btn small" + (mod.enabled ? " danger" : "");
-      toggle.textContent = mod.enabled ? "turn off" : "turn on";
-      toggle.addEventListener("click", async () => {
-        const res = await api("/api/modules/" + mod.name, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled: !mod.enabled,
-                                 settings: mod.values || {} }),
-        });
-        showActionResult(res.message || res.detail || "saved");
-        refreshModules();
-      });
-      head.appendChild(toggle);
-    }
-
+    el.appendChild(body);
     wrap.appendChild(el);
   });
 }
-
-$("btn-refresh-modules").addEventListener("click", refreshModules);
 
 // Periodic refreshes keep the dashboard live (uptime chip, messages, node
 // cells, packets, analysis). Registered exactly once - from boot() when the

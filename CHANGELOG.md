@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.028 - 2026-09-06
+- Changed: Modules card polish from first box testing. Each module is
+  now a collapsed row - click the module name to open its settings
+  editor (the toggle button stays visible on the row). Applying the
+  settings also switches the module on, so one save does the whole job.
+- Changed: the Weather module's reply is labelled "now" and forecast
+  filler words (Sunny, Mostly Clear, Chance...) are stripped, because
+  the NWS feed carries forecasts rather than live observations.
+
 ## 0.0.027 - 2026-09-06
 - Added: the modules menu (on the feature/modules branch, not yet in
   DEV). A menu of optional add-on features, managed from a new Modules
