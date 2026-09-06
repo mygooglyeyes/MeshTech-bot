@@ -3,6 +3,10 @@
 Thanks for helping with MeshTech-Bot. This project is run by a small
 group, so keep things simple and be patient.
 
+**Where development happens:** all work goes to the `DEV` branch.
+`main` is the stable branch general users install from — it only moves
+when tested changes are released.
+
 ## Reporting a bug
 
 Open an issue on GitHub. Say:
@@ -25,7 +29,7 @@ section in `config.yaml` — no code required.
 
 ## Proposing a change
 
-1. **Fork the repo** and create a branch for your change.
+1. **Fork the repo**, then create your branch **from `DEV`**.
 2. **Keep the change small** — one fix or feature per pull request.
 3. **Check your change by hand** — run the bot once with your change
    and confirm your feature answers the way it should (and that
@@ -35,7 +39,8 @@ section in `config.yaml` — no code required.
    own version number, like a counter: it makes it obvious which changes
    a running bot has. Git tags (`v0.0.004` and so on) are reserved for
    milestone releases and are not needed for ordinary commits.
-5. **Open a pull request** describing what changed and why.
+5. **Open a pull request** targeting the `DEV` branch (not `main`),
+   describing what changed and why.
 
 ## Things to know
 
