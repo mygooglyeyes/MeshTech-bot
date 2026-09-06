@@ -366,6 +366,7 @@ summary.module-head::-webkit-details-marker { display: none; }
 .module-form { display: flex; flex-direction: column; gap: 6px; }
 .module-error { color: var(--bad); font-size: 0.75rem; white-space: pre-wrap; }
 .module-error:not(:empty) { padding: 2px 0; }
+.module-hint { color: var(--muted); font-size: 0.75rem; line-height: 1.35; }
 .module-field { display: flex; align-items: center; gap: 8px; }
 .module-field > span { min-width: 150px; color: var(--muted); font-size: 0.75rem; }
 .module-field input, .module-field select {

@@ -1299,6 +1299,15 @@ async function refreshModules() {
         inputs[f.key] = input;
         row.append(label, input);
         form.appendChild(row);
+        // Help text renders VISIBLY under the field (the hover title stays
+        // too). A first-time user must see e.g. the '# optional' channel
+        // note without having to guess that hovering the label does anything.
+        if (help) {
+          const hint = document.createElement("div");
+          hint.className = "module-hint";
+          hint.textContent = help;
+          form.appendChild(hint);
+        }
       });
       const apply = document.createElement("button");
       apply.className = "btn small";

@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.048 - 2026-09-06
+
+Every module setting's help text now shows **visibly under its field** in
+the console - previously it only appeared when hovering the label, so the
+"the # is optional" channel note was effectively invisible. The hover
+title stays as a bonus.
+
 ## 0.0.047 - 2026-09-06
 
 Module cards fixed up after first real use:
