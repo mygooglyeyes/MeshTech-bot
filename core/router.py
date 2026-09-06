@@ -430,6 +430,18 @@ class Router:
                     log.debug("Channel per-sender pace: %s replied to %.0fs ago.",
                               identity, now - self._last_channel_answer[identity])
                     return
+        # -- airtime budget: cheap non-recording pre-filter (the authoritative
+        #    check+record happens under the send lock) so a doomed command
+        #    never even spawns a handler task. Covers keyword replies AND
+        #    pushes; admins (DM only) are exempt.
+        if not self.service.budget_check(
+                "reply",
+                self._lane_of(msg) if msg.kind == "channel" else "dm",
+                msg.sender_prefix or msg.sender_name or "?",
+                msg.text,
+                exempt=(msg.kind == "dm" and is_admin),
+                record=False):
+            return
 
         # -- run the handler off the dispatch chain -------------------------
         task = asyncio.get_running_loop().create_task(
@@ -485,6 +497,17 @@ class Router:
                             if identity and send_now - \
                                     self._last_channel_answer.get(identity, 0.0) < pace:
                                 return
+                    # airtime budget, authoritative: check + record one slot
+                    # per reply (a multi-chunk answer is one answer)
+                    if not self.service.budget_check(
+                            "reply",
+                            self._lane_of(ctx.msg) if ctx.msg.kind == "channel"
+                            else "dm",
+                            ctx.msg.sender_prefix or ctx.msg.sender_name or "?",
+                            reply_text,
+                            exempt=(ctx.msg.kind == "dm" and ctx.is_admin),
+                            record=True):
+                        return
                     await self._send_reply(ctx, reply_text,
                                            force_dm=(result.kind == "dm_text"))
         except asyncio.CancelledError:

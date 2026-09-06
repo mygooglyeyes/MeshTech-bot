@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.051 - 2026-09-06
+
+The airtime budget now covers **all** bot transmissions, not just module
+pushes: keyword-command replies (!help, !wx, ...) and pushes share ONE
+budget - minimum gap 30 s between transmissions, at most 5 per rolling
+hour, at most 15 per rolling day. Anything over budget is dropped and
+noted in the activity feed, so a crowd of requesters cannot spam the mesh
+through the bot. Admin DMs are exempt (and do not consume the budget).
+The Push budget card's labels and help text now describe the full scope.
+
 ## 0.0.050 - 2026-09-06
 
 Guardrails so no single module, channel or node can flood the mesh:

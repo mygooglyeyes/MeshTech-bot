@@ -151,6 +151,63 @@ class BotService:
         except asyncio.CancelledError:
             pass
 
+    # ---------------------------------------------------------------- budget
+
+    def budget_check(self, kind: str, channel: str, sender: str, text: str,
+                     exempt: bool = False, record: bool = True) -> bool:
+        """The airtime budget gate for EVERY bot transmission - scheduled
+        module pushes AND keyword-command replies alike.
+
+        Returns True when the transmission may proceed (recording it unless
+        ``record`` is False - the router's dispatch pre-filter checks
+        without recording; the authoritative check+record happens under the
+        send lock). Returns False when the budget dropped it, with the
+        reason published to the activity feed.
+
+        Rules (owned by the 'pushbudget' console card; disabling that card
+        turns the budget off):
+        - minimum gap between any two transmissions (default 30 s)
+        - at most max_per_hour in any rolling hour (default 5)
+        - at most max_per_day in any rolling day (default 15)
+        Admin replies pass ``exempt=True`` - key-verified admins must stay
+        answerable while the bot is being flooded, and their traffic does
+        not consume the strangers' budget.
+        """
+        budget = self.settings.modules.get("pushbudget")
+        if exempt or not budget.enabled:
+            return True
+        now = time.time()
+        gap = self._push_number(budget, "gap_seconds", 30.0)
+        per_hour = self._push_number(budget, "max_per_hour", 5.0)
+        per_day = self._push_number(budget, "max_per_day", 15.0)
+        recent = [t for t in self._push_times if t > now - 86400.0]
+        self._push_times = recent
+        in_hour = sum(1 for t in recent if t > now - 3600.0)
+        reason = None
+        if gap > 0 and now - self._last_push_at < gap:
+            reason = (f"airtime budget: less than {gap:.0f}s since the "
+                      "last transmission")
+        elif per_hour > 0 and in_hour >= per_hour:
+            reason = (f"airtime budget: {per_hour:.0f} transmissions in "
+                      "the last hour")
+        elif per_day > 0 and len(recent) >= per_day:
+            reason = (f"airtime budget: {per_day:.0f} transmissions in "
+                      "the last day")
+        if reason:
+            log.info("budget dropped %s for %s: %s", kind, channel, reason)
+            self.feed.publish("dropped", {
+                "reason": reason,
+                "kind": kind,
+                "channel": channel,
+                "sender": sender,
+                "text": text,
+            })
+            return False
+        if record:
+            self._push_times.append(now)
+            self._last_push_at = now
+        return True
+
     async def _module_push(self, module_name: str, text: str) -> None:
         """Post one module push to the module's configured channel(s).
 
@@ -187,41 +244,9 @@ class BotService:
             return
         if not channels:
             return
-        # -- push budget -------------------------------------------------
-        # A misconfigured module (interval of seconds, or a chatty feed)
-        # must not flood the mesh. The budget is a module card so operators
-        # can tune it; disabling that card turns the budget off.
-        budget = self.settings.modules.get("pushbudget")
-        budget_on = bool(budget.enabled)
-        if budget_on:
-            now = time.time()
-            gap = self._push_number(budget, "gap_seconds", 30.0)
-            per_hour = self._push_number(budget, "max_per_hour", 5.0)
-            per_day = self._push_number(budget, "max_per_day", 15.0)
-            hour_cut = now - 3600.0
-            day_cut = now - 86400.0
-            recent = [t for t in self._push_times if t > day_cut]
-            self._push_times = recent
-            in_hour = sum(1 for t in recent if t > hour_cut)
-            reason = None
-            if gap > 0 and now - self._last_push_at < gap:
-                reason = f"push budget: less than {gap:.0f}s since the last push"
-            elif per_hour > 0 and in_hour >= per_hour:
-                reason = f"push budget: {per_hour:.0f} pushes in the last hour"
-            elif per_day > 0 and len(recent) >= per_day:
-                reason = f"push budget: {per_day:.0f} pushes in the last day"
-            if reason:
-                log.info("module %s push dropped: %s", module_name, reason)
-                self.feed.publish("dropped", {
-                    "reason": reason,
-                    "kind": "module",
-                    "channel": module_name,
-                    "sender": module_name,
-                    "text": text,
-                })
-                return
-            self._push_times.append(now)
-            self._last_push_at = now
+        # -- airtime budget (shared with command replies, see budget_check)
+        if not self.budget_check("push", module_name, module_name, text):
+            return
         for channel in channels:
             target = channel.lstrip("#").strip().casefold()
             idx = next((i for i, n in client.channel_names().items()

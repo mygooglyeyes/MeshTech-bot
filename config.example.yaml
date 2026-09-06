@@ -121,14 +121,15 @@ modules:
   #   enabled: false
   # quake:                # USGS earthquakes: !quake [zip]
   #   enabled: false
-  # Push flood guardrail (no ! command - tune it in the console card).
-  # Scheduled pushes are dropped (and noted in the activity feed) when
-  # they come faster than these limits:
+  # Airtime budget for EVERYTHING the bot transmits (no ! command - tune
+  # it in the console card). Scheduled pushes AND keyword replies share
+  # one budget; over-budget transmissions are dropped and noted in the
+  # activity feed. Admin DMs are exempt.
   pushbudget:
     enabled: true
-    # gap_seconds: 30      # minimum seconds between pushes
-    # max_per_hour: 5      # most pushes in any rolling hour
-    # max_per_day: 15      # most pushes in any rolling day
+    # gap_seconds: 30      # minimum seconds between transmissions
+    # max_per_hour: 5      # most transmissions in any rolling hour
+    # max_per_day: 15      # most transmissions in any rolling day
 
 # --- Simple canned answers (no code needed) ----------------------
 # When one of these keywords appears in a message, the bot replies with the
