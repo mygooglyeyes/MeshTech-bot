@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.041 - 2026-09-06
+- Condensed: !help (brief) is now a single compact line that always
+  fits one LoRa packet - commands, the 'x' hint, plain words, and the
+  admin hint joined with |. If space runs out the plain-word list
+  shrinks first, then drops; the reply never exceeds one packet.
+  Extended help (DM) keeps the full table.
+
 ## 0.0.040 - 2026-09-06
 - Fixed: reply splitting now measures UTF-8 bytes, not characters. The
   radio carries bytes, so a 133-character reply full of bar glyphs or

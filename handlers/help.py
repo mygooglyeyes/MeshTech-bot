@@ -7,6 +7,78 @@ from core.format import fmt_table
 from core.models import HandlerResult
 from .base import Handler
 
+# Byte budget for the brief help so it always fits one LoRa packet
+# (MeshCore's per-message text limit). Kept in one place beside the
+# formatter; the router's chunker would split it otherwise.
+_BRIEF_BUDGET = 133
+
+
+def _fit_words(prefix_parts: List[str], canned_words: str,
+               suffix_parts: List[str]) -> str:
+    """Join parts, shrinking the plain-word list until the line fits.
+
+    ``prefix_parts`` and ``suffix_parts`` are fixed; the words list between
+    them is truncated word-by-word (prefix preserved, order kept) and then
+    dropped entirely if even that is not enough. Returns a line guaranteed
+    within _BRIEF_BUDGET when the fixed parts fit; caller handles the rest.
+    """
+    sep_b = len(" | ".encode("utf-8"))
+    fixed_b = sum(len(p.encode("utf-8")) for p in prefix_parts + suffix_parts)
+    fixed_b += sep_b * max(0, len(prefix_parts) + len(suffix_parts) - 1)
+
+    words_budget = _BRIEF_BUDGET - fixed_b - len("words: ".encode("utf-8")) \
+        - (sep_b if prefix_parts else 0)
+    words_out = ""
+    for word in canned_words.split():
+        candidate = (words_out + " " + word).strip()
+        if len(candidate.encode("utf-8")) > max(0, words_budget):
+            break
+        words_out = candidate
+
+    parts = list(prefix_parts)
+    if words_out:
+        parts.append("words: " + words_out)
+    parts.extend(suffix_parts)
+    return " | ".join(parts)
+
+
+def format_brief_help(command_words: str, canned_words: str,
+                      admin_hint: str) -> str:
+    """One-packet brief help: commands + plain words + the x-modifier.
+
+    Degradation ladder when space runs out: shrink the plain-word list,
+    drop it, drop the admin hint, and only if the command list alone
+    exceeds the packet (pathological) hard-ellipsize - the reply never
+    exceeds one LoRa packet.
+    """
+    cmds = f"cmds: {command_words}"
+    xhint = "x = more (e.g. !pathx)"
+
+    line = _fit_words([cmds, xhint], canned_words,
+                      [admin_hint] if admin_hint else [])
+    if len(line.encode("utf-8")) <= _BRIEF_BUDGET:
+        return line
+
+    # Words did not fit: drop them, keep the admin hint if it fits.
+    base = [cmds, xhint]
+    parts = list(base)
+    if admin_hint:
+        parts.append(admin_hint)
+    line = " | ".join(parts)
+    if len(line.encode("utf-8")) <= _BRIEF_BUDGET:
+        return line
+
+    line = " | ".join(base)
+    if len(line.encode("utf-8")) <= _BRIEF_BUDGET:
+        return line
+
+    # Last resort: the command list itself is too long - cut it to size.
+    cmds_cut = cmds
+    while cmds_cut and len((" | ".join([cmds_cut, xhint])).encode("utf-8")) \
+            > _BRIEF_BUDGET:
+        cmds_cut = cmds_cut[:-1]
+    return " | ".join([cmds_cut, xhint])
+
 
 class HelpHandler(Handler):
     name = "help"
@@ -42,14 +114,10 @@ class HelpHandler(Handler):
 
         if ctx.verbosity == "brief":
             command_words = " ".join(sorted({kw for _, kw, _, _ in pairs}))
-            lines = [
-                "Commands: " + command_words,
-                "Plain words I also answer: " + canned_words,
-                "Add 'x' for the extended version (e.g. !nodes x, !pathx).",
-                "Admin can use: reload, shutdown, diag (DM only)." if ctx.is_admin
-                else "DM me for admin help once your node is allowlisted.",
-            ]
-            return HandlerResult(kind="text", data="\n".join(lines))
+            admin_hint = ("admin: reload shutdown diag"
+                          if ctx.is_admin else "")
+            data = format_brief_help(command_words, canned_words, admin_hint)
+            return HandlerResult(kind="text", data=data)
 
         rows = []
         for handler, kw, scope, access in sorted(pairs, key=lambda p: p[0].priority):
