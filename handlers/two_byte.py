@@ -18,6 +18,7 @@ when too few nodes are identified to be meaningful.
 """
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from core.models import HandlerResult
@@ -31,6 +32,10 @@ _NODE_MIN_SAMPLE = 3
 # CP437 shading glyphs: 0xB2 (178) = filled share, 0xB1 (177) = remainder
 _FILL = "\u2593"   # ▓ dark shade
 _EMPTY = "\u2592"  # ▒ medium shade
+
+# Node stats change slowly (new registrations only), so the DB answer is
+# reused for a few minutes - keeps repeated asks cheap on small boards.
+_CACHE_TTL = 300.0  # seconds
 
 
 def _bar(pct: float, width: int = _BAR_WIDTH) -> str:
@@ -74,7 +79,16 @@ class TwoByteHandler(Handler):
     access = "public"
     priority = 96
 
+    _cache_ts = 0.0
+    _cache_text = ""
+
     async def handle(self, ctx) -> Optional[HandlerResult]:
+        now = time.monotonic()
+        if self._cache_text and now - self._cache_ts < _CACHE_TTL:
+            return HandlerResult(kind="text", data=self._cache_text)
         stats = ctx.store.path_hash_node_stats()
-        return HandlerResult(kind="text",
-                             data=format_2byte_report(stats))
+        text = format_2byte_report(stats)
+        if stats.get("frames_total", 0):   # never cache the no-data notice
+            self._cache_ts = now
+            self._cache_text = text
+        return HandlerResult(kind="text", data=text)

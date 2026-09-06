@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.038 - 2026-09-06
+- Faster: !2byte now reuses its answer for 5 minutes instead of querying
+  the database on every ask - node stats barely change, so repeated
+  questions cost almost nothing. (The "no data yet" notice is never
+  cached, so early asks stay accurate while capture builds.)
+
 ## 0.0.037 - 2026-09-06
 - Moved: the Modules card now sits on the right side, directly under
   Channels & Controls, so module settings live with the other controls.
