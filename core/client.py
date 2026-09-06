@@ -142,6 +142,7 @@ class RadioClient:
         log.info("Connecting to %s:%s ...", cfg.host, cfg.port)
         mc = await MeshCore.create_tcp(cfg.host, cfg.port, auto_reconnect=False)
         self.mc = mc
+        self._apply_ack_timeout(mc)
         self.is_connected = True
         log.info("Connected to %s:%s", cfg.host, cfg.port)
 
@@ -151,12 +152,13 @@ class RadioClient:
             log.info("Companion node name: %s", self.own_name)
 
         # Courtesy clock-sync: standalone companions have no clock of their
-        # own, but firmware that keeps time already (like openHop on a Linux
-        # repeater) may refuse with ERR_CODE_ILLEGAL_ARG - harmless, expected,
-        # and logged quietly rather than as a scary warning.
-        await self._try("set device time",
-                         lambda: mc.commands.set_time(int(time.time())),
-                         quiet=True)
+        # own. Off by default: firmware that keeps time already (openHop on
+        # a Linux repeater) refuses with ERR_CODE_ILLEGAL_ARG - harmless,
+        # but pointless work at startup. Enable with bot.sync_device_time.
+        if self.service.settings.bot.sync_device_time:
+            await self._try("set device time",
+                             lambda: mc.commands.set_time(int(time.time())),
+                             quiet=True)
 
         await self._read_channel_slots()
         await self._apply_configured_channels()
@@ -211,15 +213,60 @@ class RadioClient:
 
     # ------------------------------------------------------------------ helpers
 
-    @staticmethod
-    async def _try(what: str, command_fn, quiet: bool = False) -> bool:
+    # Companion link latency budget: meshcore waits for an application-level
+    # ack after every command, defaulting to 15 s. Most companions (openHop
+    # included) transmit immediately but never send that ack, so the bot
+    # would park up to 15 s per send - stalling its own reply pipeline and,
+    # because inbound events are dispatched serially, delaying the handling
+    # of later messages. The default is lowered once at connect (see
+    # _apply_ack_timeout); message sends additionally treat "no ack" as
+    # delivered - the bytes leave before the wait begins.
+    SEND_ACK_TIMEOUT = 3.0
+    _NO_ACK_REASONS = frozenset({"no_event_received", "timeout"})
+
+    def _apply_ack_timeout(self, mc) -> None:
+        """Lower the library's per-command ack wait for this connection.
+
+        The default_timeout lives on the CommandHandler instance
+        (meshcore.commands), so this is one attribute - no monkey-patching
+        of methods, and a library upgrade keeps working.
+        """
+        try:
+            mc.commands.default_timeout = self.SEND_ACK_TIMEOUT
+            log.info("Companion ack timeout set to %ss (library default 15s)",
+                     self.SEND_ACK_TIMEOUT)
+        except AttributeError:
+            log.warning("Could not set companion ack timeout (library layout "
+                        "changed) - keeping the 15s default")
+
+    @classmethod
+    async def _try(cls, what: str, command_fn, quiet: bool = False,
+                   ack_expected: bool = True) -> bool:
         """Run a meshcore command, logging failures instead of crashing.
 
         ``quiet`` downgrades the failure log to info level - for commands
         whose rejection is normal on some companions (e.g. set_time).
+        ``ack_expected=False`` marks fire-and-forget message sends: a
+        timeout there means "delivered, no ack" and returns True.
         """
         try:
             result = await command_fn()
+            if result is not None and getattr(result, "type", None) == EventType.ERROR:
+                reason = ""
+                payload = getattr(result, "payload", None)
+                if isinstance(payload, dict):
+                    reason = str(payload.get("reason", ""))
+                if ack_expected is False and reason in cls._NO_ACK_REASONS:
+                    log.debug("%s: no ack (treated as delivered)", what)
+                    return True
+                if quiet:
+                    log.info("%s not accepted (harmless): %s",
+                             what, getattr(result, "payload", "error"))
+                else:
+                    log.warning("%s failed: %s", what, getattr(result, "payload", "error"))
+                return False
+            return True
+        except Exception as exc:
             if result is not None and getattr(result, "type", None) == EventType.ERROR:
                 if quiet:
                     log.info("%s not accepted (harmless): %s",
@@ -479,7 +526,8 @@ class RadioClient:
             log.warning("Not connected - dropping channel reply.")
             return False
         ok = await self._try(f"send channel message (slot {idx})",
-                             lambda: self.mc.commands.send_chan_msg(idx, text))
+                             lambda: self.mc.commands.send_chan_msg(idx, text),
+                             ack_expected=False)
         if ok:
             self.store.add_message(MsgRecord(kind="channel", direction="out",
                                              channel_name=self.name_for_idx(idx),
@@ -499,7 +547,8 @@ class RadioClient:
             log.warning("Cannot reply by DM to %s: no contact/full key stored.", sender_prefix)
             return False
         ok = await self._try(f"send DM to {sender_prefix}",
-                             lambda: self.mc.commands.send_msg(contact, text))
+                             lambda: self.mc.commands.send_msg(contact, text),
+                             ack_expected=False)
         if ok:
             self.store.add_message(MsgRecord(kind="dm", direction="out",
                                              sender_prefix=sender_prefix,

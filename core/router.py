@@ -228,6 +228,15 @@ class Router:
         self.service = service
         self.handlers: List[Any] = []
         self._dedupe = _Dedupe()
+        # Handlers run OFF the inbound dispatch chain (see on_inbound): the
+        # meshcore event loop awaits each event handler to completion, so a
+        # slow command (weather's HTTP lookups, DB work) would hold up every
+        # later mesh message. The semaphore caps how many run at once (a
+        # burst must not stampede a Pi) and the reply lock keeps the
+        # rate-limit bookkeeping and multi-chunk sends atomic.
+        self._handler_gate = asyncio.Semaphore(2)
+        self._handler_tasks: set = set()
+        self._reply_lock = asyncio.Lock()
         self._last_reply_at = 0.0
         self._last_answer: Dict[str, float] = {}
         # Last-reply time per channel, for limits.channel_interval_seconds -
@@ -381,7 +390,9 @@ class Router:
                         command=command_word, args=args, verbosity=verbosity,
                         is_admin=is_admin)
 
-        # -- rate limiting (admin commands still respect the global pace)
+        # -- rate limiting (cheap, synchronous) ----------------------------
+        # Checked here rather than inside the spawned task so a flood of
+        # commands cannot even start handlers while the paces are exhausted.
         now = time.time()
         if now - self._last_reply_at < settings.limits.min_interval_seconds:
             log.debug("Rate limited: too soon since last reply.")
@@ -393,33 +404,68 @@ class Router:
         if msg.kind == "channel":
             lane = self._lane_of(msg)
             interval = self._channel_interval(lane, settings)
-            if interval > 0:
-                last = self._last_channel_reply.get(lane, 0.0)
-                if now - last < interval:
-                    log.debug("Channel %s reply cadence: too soon since the "
-                              "last reply there (%.0fs interval).", lane, interval)
-                    return
+            if interval > 0 and \
+                    now - self._last_channel_reply.get(lane, 0.0) < interval:
+                log.debug("Channel %s reply cadence: too soon since the "
+                          "last reply there (%.0fs interval).", lane, interval)
+                return
         if msg.kind == "dm" and msg.sender_prefix and not is_admin:
             last = self._last_answer.get(msg.sender_prefix, 0.0)
             if now - last < settings.limits.per_sender_seconds:
                 log.debug("Rate limited: recent reply to %s.", msg.sender_prefix)
                 return
 
-        try:
-            result = await handler.handle(ctx)
-        except Exception as exc:
-            log.exception("Handler %s failed: %s", handler.name, exc)
-            self.service.feed.publish("notice",
-                                      {"text": f"Handler {handler.name} error: {exc}"})
-            return
-        if result is None:
-            return
+        # -- run the handler off the dispatch chain -------------------------
+        task = asyncio.get_running_loop().create_task(
+            self._run_handler(handler, ctx, verbosity))
+        self._handler_tasks.add(task)
+        task.add_done_callback(self._handler_tasks.discard)
 
-        reply_text = self._render(handler, result, verbosity)
-        # kind="dm_text" forces the reply out as a DM to the sender, even
-        # when the command arrived on a channel (used by !dm).
-        await self._send_reply(ctx, reply_text,
-                               force_dm=(result.kind == "dm_text"))
+    async def _run_handler(self, handler, ctx, verbosity: str) -> None:
+        """Execute one command with bounded concurrency; sends serialized."""
+        try:
+            async with self._handler_gate:
+                try:
+                    result = await handler.handle(ctx)
+                except Exception as exc:
+                    log.exception("Handler %s failed: %s", handler.name, exc)
+                    self.service.feed.publish(
+                        "notice", {"text": f"Handler {handler.name} error: {exc}"})
+                    return
+                if result is None:
+                    return
+                reply_text = self._render(handler, result, verbosity)
+                # kind="dm_text" forces the reply out as a DM to the sender,
+                # even when the command arrived on a channel (used by !dm).
+                # The authoritative pace check happens HERE, under the lock,
+                # immediately before sending: handlers now run off the
+                # dispatch chain, so several may finish around the same time
+                # - checking only at dispatch would let two rapid messages
+                # both pass before either reply lands (double replies on
+                # the mesh). The dispatch-time check above stays as a cheap
+                # pre-filter so doomed commands never spawn a task.
+                async with self._reply_lock:
+                    send_settings = self.service.settings
+                    send_now = time.time()
+                    if send_now - self._last_reply_at < \
+                            send_settings.limits.min_interval_seconds:
+                        return
+                    if ctx.msg.kind == "channel":
+                        lane = self._lane_of(ctx.msg)
+                        interval = self._channel_interval(lane, send_settings)
+                        if interval > 0 and send_now - \
+                                self._last_channel_reply.get(lane, 0.0) < interval:
+                            return
+                    if ctx.msg.kind == "dm" and ctx.msg.sender_prefix \
+                            and not ctx.is_admin:
+                        if send_now - self._last_answer.get(
+                                ctx.msg.sender_prefix, 0.0) < \
+                                send_settings.limits.per_sender_seconds:
+                            return
+                    await self._send_reply(ctx, reply_text,
+                                           force_dm=(result.kind == "dm_text"))
+        except asyncio.CancelledError:
+            raise
 
     # ------------------------------------------------------------------ guards
 

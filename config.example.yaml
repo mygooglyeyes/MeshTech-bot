@@ -26,6 +26,8 @@ bot:
   #   false (default) = stay silent (recommended)
   #   true            = answer anyway - only for meshes where sender
   #                     identity is never available
+  # Clock-sync the companion at startup? Leave false when the companion
+  # keeps its own time (openHop on a Linux box does).
   answer_unknown_senders: false
 
 # --- Hop limits ------------------------------------------------

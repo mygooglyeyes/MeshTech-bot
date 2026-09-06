@@ -182,6 +182,15 @@ def main(argv=None) -> int:
         return _check(settings)
 
     try:
+        # uvloop (Linux/macOS): a faster event-loop implementation that
+        # uvicorn and the mesh client both inherit. Optional - the bot runs
+        # fine on the standard loop if it is missing.
+        try:
+            import uvloop
+            uvloop.install()
+            log.info("Event loop: uvloop")
+        except ImportError:
+            pass
         asyncio.run(_run(settings))
     except KeyboardInterrupt:
         pass

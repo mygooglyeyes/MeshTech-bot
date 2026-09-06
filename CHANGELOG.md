@@ -9,6 +9,27 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.035 - 2026-09-06
+- Fixed: slow keyword replies. The mesh library waits up to 15 s for a
+  companion ack that openHop never sends - every reply parked the full
+  timeout and, because inbound events are processed one at a time, held
+  up later messages too. The wait is now 3 s, and message sends that
+  get no ack count as delivered (the radio transmission itself was
+  never delayed). Bot replies also appear in the Messages card again
+  (they were being discarded after the timeout).
+- Changed: command handlers run off the inbound processing chain with
+  bounded concurrency (2), so a slow lookup (weather) no longer delays
+  other mesh messages; reply pacing is enforced under a lock so rapid
+  commands can't double-reply.
+- Changed: database writes no longer fsync on every message on the Pi's
+  SD card (SQLite synchronous=NORMAL with WAL) - same crash safety for
+  our use, much less write latency and card wear.
+- Added: uvloop event loop on Linux for lower CPU on the dashboard and
+  mesh I/O (optional dependency; standard loop used if absent).
+- Added: bot.sync_device_time config (default off) - the startup
+  clock-sync command is skipped unless a companion actually needs it,
+  which also removes the harmless 'set device time' warning.
+
 ## 0.0.034 - 2026-09-06
 - Added: logout button in the dashboard header (left of the connection
   chip) - revokes this browser's session and returns to the login

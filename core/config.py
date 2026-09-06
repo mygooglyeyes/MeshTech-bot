@@ -44,6 +44,10 @@ class BotCfg:
     answer_unknown_senders: bool = False
     # How the bot names itself in replies (e.g. the !pathx chain's last hop).
     display_name: str = "me"
+    # Courtesy clock-sync to the companion at startup. Leave off when the
+    # companion keeps its own time (openHop on a Linux box does); firmware
+    # without a clock can set true.
+    sync_device_time: bool = False
 
 
 @dataclass
@@ -265,6 +269,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         advertise_on_start=_bool(bot_raw, "advertise_on_start", True, errors, "bot.advertise_on_start"),
         answer_unknown_senders=_bool(bot_raw, "answer_unknown_senders", False, errors, "bot.answer_unknown_senders"),
         display_name=_text(bot_raw, "display_name", "me", errors, "bot.display_name"),
+        sync_device_time=_bool(bot_raw, "sync_device_time", False, errors, "bot.sync_device_time"),
     )
 
     # --- mesh ---

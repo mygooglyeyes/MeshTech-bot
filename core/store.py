@@ -184,6 +184,11 @@ class Store:
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        # WAL's natural partner: fsync only at checkpoints, not per commit.
+        # On a Pi's SD card this removes the per-message fsync stall while
+        # staying crash-safe (worst case on power cut: the last commits are
+        # lost, never a corrupted database).
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._migrate()
 
