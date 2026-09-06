@@ -101,6 +101,10 @@ main {
 }
 .chip.ok { border-color: var(--ok); color: var(--ok); }
 .chip.bad { border-color: var(--bad); color: var(--bad); }
+.chip.warn { border-color: var(--warn); color: var(--warn); }
+/* Budget chip carries "tx 12/30h 98/250d" plus hover detail - reserve a
+   stable width so cap-digit changes do not push the other chips around. */
+#chip-budget { min-width: 19ch; text-align: center; }
 
 /* Header chips are monospace (IBM Plex Mono), so `ch` = one character.
    Give the live counters a stable minimum width so digit changes (e.g.

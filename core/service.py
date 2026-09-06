@@ -356,6 +356,40 @@ class BotService:
 
     # ------------------------------------------------------------------ status
 
+    def budget_usage(self) -> Dict:
+        """How close the bot is to its flood-guardrail caps, for the
+        dashboard chip: total transmissions used of the hourly/daily caps,
+        plus the busiest single person's usage of the per-person caps.
+
+        The per-person layer only bounds replies, so "top person" is the
+        requester with the most answers in the trailing day window.
+        """
+        budget = self.settings.modules.get("pushbudget")
+        now = time.time()
+        total_day = [t for t in self._push_times if t > now - 86400.0]
+        total_hour = sum(1 for t in total_day if t > now - 3600.0)
+        top_person, top_day, top_hour = "", 0, 0
+        for ident, times in self._person_times.items():
+            recent = [t for t in times if t > now - 86400.0]
+            if len(recent) > top_day:
+                top_person, top_day = ident, len(recent)
+                top_hour = sum(1 for t in recent if t > now - 3600.0)
+        return {
+            "on": bool(budget.enabled),
+            # total layer (replies + pushes combined)
+            "total_hour": total_hour,
+            "total_hour_cap": self._push_number(budget, "max_per_hour", 30.0),
+            "total_day": len(total_day),
+            "total_day_cap": self._push_number(budget, "max_per_day", 250.0),
+            "gap": self._push_number(budget, "gap_seconds", 30.0),
+            # per-person layer (busiest requester)
+            "top_person": top_person,
+            "top_hour": top_hour,
+            "top_hour_cap": self._push_number(budget, "person_max_per_hour", 5.0),
+            "top_day": top_day,
+            "top_day_cap": self._push_number(budget, "person_max_per_day", 15.0),
+        }
+
     def status_snapshot(self) -> Dict:
         conn = None
         if self.client is not None:
@@ -380,6 +414,7 @@ class BotService:
             "db": self.store.stats_row(),
             "hop_limit": self.settings.mesh.max_inbound_hops,
             "started_at": self.started_at,
+            "budget": self.budget_usage(),
         }
 
     def config_snapshot(self) -> Dict:

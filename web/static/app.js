@@ -305,6 +305,34 @@ async function refreshStatus() {
                                             : "not connected";
   chip.className = "chip " + (conn && conn.connected ? "ok" : "bad");
   $("chip-uptime").textContent = "up " + fmtUptime(st.uptime_seconds);
+  // Airtime budget chip: total transmissions used of the caps, plus the
+  // busiest person's usage. Amber at >=80% of any cap, red when a cap is
+  // hit; hover carries the full breakdown. Hidden while the budget card
+  // is off (no limits to be close to).
+  const b = st.budget || {};
+  const bChip = $("chip-budget");
+  if (!b.on) {
+    bChip.textContent = "budget off";
+    bChip.className = "chip muted-note";
+    bChip.title = "The Push budget card is off - no flood limits.";
+  } else {
+    const hCap = Math.max(1, b.total_hour_cap || 1);
+    const dCap = Math.max(1, b.total_day_cap || 1);
+    const pCap = Math.max(1, b.top_hour_cap || 1);
+    const ratio = Math.max((b.total_hour || 0) / hCap,
+                           (b.total_day || 0) / dCap,
+                           (b.top_hour || 0) / pCap);
+    bChip.textContent = "tx " + (b.total_hour || 0) + "/" + hCap +
+      "h " + (b.total_day || 0) + "/" + dCap + "d";
+    bChip.className = "chip " + (ratio >= 1 ? "bad" : ratio >= 0.8 ? "warn" : "ok");
+    const who = b.top_person ? "busiest: " + b.top_person + " " +
+      (b.top_hour || 0) + "/" + pCap + "h, " + (b.top_day || 0) + "/" +
+      (b.top_day_cap || "?") + "d\n" : "no per-person usage yet\n";
+    bChip.title = "Airtime budget (last hour / day):\n" +
+      "transmissions: " + (b.total_hour || 0) + " of " + hCap + " per hour, " +
+      (b.total_day || 0) + " of " + dCap + " per day\n" + who +
+      "min gap between transmissions: " + (b.gap || 0) + "s";
+  }
   // Build stamp: release version + the git commit it runs (v0.0.1).
   // Hover shows the full detail (version, branch, commit, source).
   // The openHop companion we talk through, next to the bot's name in

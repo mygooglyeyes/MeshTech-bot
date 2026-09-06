@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.053 - 2026-09-06
+
+New dashboard chip: **budget usage at a glance**. The header now shows
+`tx 4/30h 62/250d` - transmissions used in the last hour and day against
+the total caps. Hovering reveals the busiest person's usage of the
+per-person caps and the minimum gap. The chip turns amber at 80% of any
+cap and red when a cap is hit; it reads "budget off" (no color) when the
+Push budget card is disabled.
+
 ## 0.0.052 - 2026-09-06
 
 The flood guardrails are now two independent layers, as intended:
