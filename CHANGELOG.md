@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.023 - 2026-09-06
+- Docs: branch policy and release rhythm spelled out in the
+  contributing guide — small work commits straight to DEV, branches
+  only for big/risky/experimental work, and `main` moves when a tested
+  batch is ready (or an important fix can't wait), tagged as a
+  milestone.
+
 ## 0.0.022 - 2026-09-06
 - Added: this changelog. Full history backfilled below; from now on
   every version bump records its fix here.

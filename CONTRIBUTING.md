@@ -7,6 +7,25 @@ group, so keep things simple and be patient.
 `main` is the stable branch general users install from — it only moves
 when tested changes are released.
 
+**Branches in a nutshell:**
+
+- Small fixes and features go **straight onto `DEV`** as ordinary
+  commits — no branch ceremony needed.
+- Make a branch off `DEV` (name it `feature/<thing>` or `fix/<thing>`)
+  only when the work is big, risky, long-running, or experimental.
+  Merge it back into `DEV` when it's done and working, then delete the
+  branch.
+- Outside contributors: a branch in your fork plus a pull request to
+  `DEV` already follows this policy — nothing extra to do.
+
+**Getting changes to users (`DEV` → `main`):**
+
+`main` moves when a batch of changes has been running on a real bot
+and is ready for general use — or sooner, if an important fix can't
+wait. Each time we merge to `main`, we tag a milestone version
+(`v0.0.0XX`) and the `CHANGELOG.md` entries since the last tag become
+the release notes.
+
 ## Reporting a bug
 
 Open an issue on GitHub. Say:
