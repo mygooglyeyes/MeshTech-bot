@@ -1261,6 +1261,15 @@ async function refreshModules() {
         let input;
         if (f.type === "time12") {
           input = makeTime12((mod.values || {})[f.key] || f.default || "");
+        } else if (f.type === "channels") {
+          // Multi-channel push target: plain text field, comma separated.
+          // The stored value may be a list (config) - show it joined.
+          input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "#novato, #alert";
+          const raw = (mod.values || {})[f.key];
+          input.value = Array.isArray(raw) ? raw.join(", ")
+            : (raw === undefined || raw === null ? (f.default || "") : raw);
         } else if (f.type === "choice") {
           input = document.createElement("select");
           (f.choices || []).forEach((c) => {

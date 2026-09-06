@@ -359,6 +359,14 @@ class RadioClient:
             return info["name"]
         return None
 
+    def slot_for_channel(self, name: str) -> Optional[int]:
+        """Companion slot index holding *name* ('#bot' or 'bot'), or None."""
+        key = self._name_key(name)
+        for idx, info in self._slot_info.items():
+            if self._name_key(info.get("name", "")) == key:
+                return idx
+        return None
+
     @staticmethod
     def _name_key(name: str) -> str:
         return name.lstrip("#").strip().casefold()

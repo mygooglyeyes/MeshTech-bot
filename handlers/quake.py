@@ -90,8 +90,9 @@ class QuakeModule(WeatherModule):
     require_prefix = True
     priority = 81
 
-    menu_description = ("Recent earthquakes (!quake [zip]) plus an "
-                        "optional push when new ones are detected.")
+    menu_description = ("Recent earthquakes (!quake [zip]) with an "
+                        "optional push to one or more channels when new "
+                        "ones are detected.")
     settings_fields = [
         {"key": "zip", "label": "Default ZIP code", "type": "text",
          "default": "", "help": "Used when someone types !quake without a zip"},
@@ -99,8 +100,11 @@ class QuakeModule(WeatherModule):
          "default": "500", "help": "How far from the zip to look"},
         {"key": "min_mag", "label": "Minimum magnitude", "type": "number",
          "default": "3", "help": "Smallest quake to list or push (decimals ok, e.g. 2.5)"},
-        {"key": "push_channel", "label": "Push channel", "type": "channel",
-         "default": "", "help": "Where new quakes are posted (leave empty for no push)"},
+        {"key": "push_channels", "label": "Push channels", "type": "channels",
+         "default": "", "help": "Comma-separated channels for new quakes, "
+         "e.g. #novato, #alert (leave empty for no push)"},
+        {"key": "check_minutes", "label": "Check every (minutes)", "type": "number",
+         "default": "10", "help": "How often to look for new quakes when pushing is on"},
     ]
 
     def __init__(self) -> None:
@@ -172,15 +176,21 @@ class QuakeModule(WeatherModule):
 
     # ---------------------------------------------------------------- push
 
+    def _check_minutes(self) -> int:
+        try:
+            return max(2, min(120, int(str(self.setting("check_minutes", 10)))))
+        except (TypeError, ValueError):
+            return 10
+
     def pulse_seconds(self) -> Optional[int]:
-        if not str(self.setting("push_channel", "") or ""):
+        if not self.push_channels():
             return None
-        return 600                      # check every 10 minutes
+        return self._check_minutes() * 60
 
     async def pulse(self) -> Optional[str]:
         zip_code = str(self.setting("zip", "") or "")
-        channel = str(self.setting("push_channel", "") or "")
-        if not zip_code or not channel or not self.is_enabled():
+        channels = self.push_channels()
+        if not zip_code or not channels or not self.is_enabled():
             return None
         try:
             _place, features = await self._quakes_for(zip_code)

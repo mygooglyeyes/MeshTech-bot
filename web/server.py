@@ -297,6 +297,21 @@ def build_app(service) -> FastAPI:
                 if not valid_hhmm(str(value)):
                     problems.append(f"{field_def.get('label', key)} must be a time "
                                     "like 7:30 pm (saved as 19:30)")
+            elif ftype == "channels":
+                from core.modules import parse_channel_list
+                names = parse_channel_list(value)
+                if not names:
+                    problems.append(f"{field_def.get('label', key)} must be one or "
+                                    "more channel names (e.g. #novato, #alert)")
+                else:
+                    known = {c.name for c in service.settings.channels}
+                    unknown = [n for n in names if n not in known]
+                    if unknown:
+                        problems.append(f"{field_def.get('label', key)}: "
+                                        + ", ".join(unknown)
+                                        + " is not a configured channel")
+                    else:
+                        values[key] = names      # store as a clean list
         if problems:
             return json_error("; ".join(problems))
 

@@ -22,10 +22,13 @@ whatever settings it needs (e.g. a push channel).
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from handlers.base import Handler
+
+log = logging.getLogger("meshtech-bot.modules")
 
 if TYPE_CHECKING:
     from .service import BotService
@@ -40,6 +43,28 @@ _HHMM_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 def valid_hhmm(value: str) -> bool:
     """True for a 24-hour 'HH:MM' time string ('7:05', '19:30')."""
     return bool(_HHMM_RE.match((value or "").strip()))
+
+
+def parse_channel_list(value: Any) -> List[str]:
+    """Parse a multi-channel setting into clean channel names.
+
+    Accepts a list, or a string with comma/space separated names.
+    Every name gets a leading '#' if missing; duplicates drop; order
+    is preserved ('#novato, alert' -> ['#novato', '#alert']).
+    """
+    if isinstance(value, (list, tuple)):
+        parts: List[str] = [str(v) for v in value]
+    else:
+        parts = str(value or "").replace(",", " ").split()
+    out: List[str] = []
+    seen: set = set()
+    for p in parts:
+        name = p.strip().lstrip("#")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append("#" + name)
+    return out
 
 
 class ModuleSpec(Handler):
@@ -87,6 +112,18 @@ class ModuleSpec(Handler):
     def is_enabled(self) -> bool:
         return bool(self.service.settings.modules.get(self.name).enabled)
 
+    def push_channels(self, key: str = "push_channels") -> List[str]:
+        """The channel list a module pushes to (may be empty).
+
+        Accepts the raw stored value (list or comma/space string);
+        see parse_channel_list. Falls back to the legacy single-channel
+        'channel' key so pre-multichannel configs keep working.
+        """
+        names = parse_channel_list(self.setting(key, ""))
+        if names:
+            return names
+        return parse_channel_list(self.setting("channel", ""))
+
     def validate_settings(self, values: Dict[str, Any]) -> List[str]:
         """Console-side validation; returns plain-language problems."""
         problems: List[str] = []
@@ -110,6 +147,18 @@ class ModuleSpec(Handler):
                 if not valid_hhmm(str(value)):
                     problems.append(f"{field_def.get('label', key)} must be a time "
                                     "like 7:30 pm (saved as 19:30)")
+            elif ftype == "channels":
+                names = parse_channel_list(value)
+                if not names:
+                    problems.append(f"{field_def.get('label', key)} must be one or "
+                                    "more channel names (e.g. #novato, #alert)")
+                known = {c.name for c in self.service.settings.channels}
+                unknown = [n for n in names
+                           if n not in known and ("#" + n) not in known]
+                if unknown:
+                    problems.append(f"{field_def.get('label', key)}: "
+                                    + ", ".join(unknown)
+                                    + " is not a configured channel")
         return problems
 
 

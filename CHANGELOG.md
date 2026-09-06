@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.046 - 2026-09-06
+- Changed: alert and quake pushes can go to several channels - the
+  module card's "Push channels" takes a comma-separated list
+  (e.g. #novato, #alert), validated against your configured channels.
+- Changed: how often the modules look for new alerts/quakes is now a
+  card setting ("Check every N minutes"; alerts default 5, quake 10,
+  minimum 2). Polling continues as long as push channels are set.
+- Backward compatible: an older single-channel 'channel' setting still
+  works; weather's daily post gains the same multi-channel support.
+
 ## 0.0.045 - 2026-09-06
 - New: two more modules on the module menu. **alerts** - active NWS
   weather alerts per zip (!alerts [zip], !alertsx for more) with an

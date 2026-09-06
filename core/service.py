@@ -147,26 +147,33 @@ class BotService:
             pass
 
     async def _module_push(self, module_name: str, text: str) -> None:
-        """Post one module push to the module's configured channel."""
+        """Post one module push to the module's configured channel(s).
+
+        Reads 'push_channels' (list or comma/space string, e.g.
+        '#novato, #alert'); a module may also deliver itself and return
+        None from pulse() - both patterns are supported.
+        """
         client = self.client
         if client is None or not client.is_connected:
             log.debug("module %s push skipped: not connected", module_name)
             return
         cfg = self.settings.modules.get(module_name)
-        channel = str(cfg.settings.get("channel", "") or "").strip()
-        if not channel:
+        from .modules import parse_channel_list
+        channels = parse_channel_list(cfg.settings.get("push_channels", ""))
+        if not channels:
             return
-        target = channel.lstrip("#").strip().casefold()
-        idx = next((i for i, n in client.channel_names().items()
-                    if n.lstrip("#").strip().casefold() == target), None)
-        if idx is None:
-            log.info("module %s push skipped: channel %s is not configured "
-                     "on the companion", module_name, channel)
-            return
-        ok = await client.send_channel(idx, text)
-        if ok:
-            log.info("Module push [%s] -> %s: %s", module_name, channel,
-                     text.splitlines()[0] if text else "")
+        for channel in channels:
+            target = channel.lstrip("#").strip().casefold()
+            idx = next((i for i, n in client.channel_names().items()
+                        if n.lstrip("#").strip().casefold() == target), None)
+            if idx is None:
+                log.info("module %s push skipped: channel %s is not configured "
+                         "on the companion", module_name, channel)
+                continue
+            ok = await client.send_channel(idx, text)
+            if ok:
+                log.info("Module push [%s] -> %s: %s", module_name, channel,
+                         text.splitlines()[0] if text else "")
 
     # ------------------------------------------------------------------ channels
 

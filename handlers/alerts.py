@@ -87,13 +87,17 @@ class AlertsModule(WeatherModule):
     require_prefix = True
     priority = 82
 
-    menu_description = ("Active NWS alerts (!alerts [zip]) plus an "
-                        "optional push when new alerts appear.")
+    menu_description = ("Active NWS alerts (!alerts [zip]) with an "
+                        "optional push to one or more channels when new "
+                        "alerts appear.")
     settings_fields = [
         {"key": "zip", "label": "Default ZIP code", "type": "text",
          "default": "", "help": "Used when someone types !alerts without a zip"},
-        {"key": "push_channel", "label": "Push channel", "type": "channel",
-         "default": "", "help": "Where new alerts are posted (leave empty for no push)"},
+        {"key": "push_channels", "label": "Push channels", "type": "channels",
+         "default": "", "help": "Comma-separated channels for new alerts, "
+         "e.g. #novato, #alert (leave empty for no push)"},
+        {"key": "check_minutes", "label": "Check every (minutes)", "type": "number",
+         "default": "5", "help": "How often to look for new alerts when pushing is on"},
         {"key": "min_severity", "label": "Push severity", "type": "choice",
          "default": "Severe", "choices": ["Severe", "Moderate", "Minor"],
          "help": "Lowest severity worth pushing (Severe = fewer posts)"},
@@ -137,15 +141,21 @@ class AlertsModule(WeatherModule):
 
     # ---------------------------------------------------------------- push
 
+    def _check_minutes(self) -> int:
+        try:
+            return max(2, min(120, int(str(self.setting("check_minutes", 5)))))
+        except (TypeError, ValueError):
+            return 5
+
     def pulse_seconds(self) -> Optional[int]:
-        if not str(self.setting("push_channel", "") or ""):
+        if not self.push_channels():
             return None
-        return 300                      # check every 5 minutes
+        return self._check_minutes() * 60
 
     async def pulse(self) -> Optional[str]:
         zip_code = str(self.setting("zip", "") or "")
-        channel = str(self.setting("push_channel", "") or "")
-        if not zip_code or not channel or not self.is_enabled():
+        channels = self.push_channels()
+        if not zip_code or not channels or not self.is_enabled():
             return None
         try:
             _place, features = await self._alerts_for(zip_code)
