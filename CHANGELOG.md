@@ -9,6 +9,17 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.045 - 2026-09-06
+- New: two more modules on the module menu. **alerts** - active NWS
+  weather alerts per zip (!alerts [zip], !alertsx for more) with an
+  optional push to a channel when new Severe/Extreme alerts appear
+  (deduped, severity floor configurable). **quake** - recent USGS
+  earthquakes near a zip (!quake [zip], !quakex) with radius and
+  magnitude settings plus optional push of new quakes. Both share the
+  weather module's geocoder and were verified against the live APIs.
+- Removed: the NIXLE menu placeholder - it offers no open API, so the
+  entry could never become real.
+
 ## 0.0.044 - 2026-09-06
 - Fixed: long message/packet text no longer spills past the card edge.
   The Messages and Packets tables use a fixed layout now - text wraps

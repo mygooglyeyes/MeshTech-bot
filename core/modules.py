@@ -51,7 +51,7 @@ class ModuleSpec(Handler):
     # e.g. [{"key": "zip", "label": "Default ZIP code", "type": "text",
     #        "default": "", "help": "US zip for !weather"}]
 
-    # NIXLE-style placeholder: shown in the menu but not implementable yet
+    # Placeholder support: a module can show as "unavailable" in the menu
     available: bool = True
     unavailable_reason: str = ""
 
@@ -117,11 +117,6 @@ class ModuleSpec(Handler):
 # Registry - the menu the console renders. Order here = order in the card.
 # --------------------------------------------------------------------------
 
-# Imported lazily by web/server.py via module_menu() to avoid import cycles
-# at package-import time (handlers import core, not the other way).
-_MENU_ORDER: List[str] = ["weather", "alerts", "quake", "nixle"]
-
-
 def module_menu() -> List[Dict[str, Any]]:
     """The console menu: every known module, its declaration and state.
 
@@ -146,15 +141,7 @@ def module_menu() -> List[Dict[str, Any]]:
                                           ModuleSpec.pulse_seconds) is not ModuleSpec.pulse_seconds,
         })
         seen.add(cls.name)
-    # placeholders for announced-but-not-yet-buildable modules
-    for name in _MENU_ORDER:
-        if name == "nixle" and "nixle" not in seen:
-            items.append({
-                "name": "nixle",
-                "description": "Local NIXLE public-safety alerts for your area.",
-                "available": False,
-                "unavailable_reason": "needs a custom feed - NIXLE offers no open API",
-                "fields": [],
-                "has_pulse": False,
-            })
+    # Placeholder for announced-but-not-buildable modules: none right now.
+    # (NIXLE was removed - it offers no open API, so the entry could never
+    # become real. Re-add a placeholder block here if one is ever needed.)
     return items
