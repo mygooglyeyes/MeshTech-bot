@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.056 - 2026-09-06
+
+New **Budget down** control - the reverse of Budget up. Click the
+console button or DM **!down** as an admin to **cancel all active
+boosts immediately**: the budget returns straight to its base caps
+(30/h, 250/d) and the boost list is cleared from the database, so
+nothing comes back on restart. The reply and the activity feed say how
+many boosts were cancelled ("no active boosts" when there were none),
+and !down appears in the admin hint of !helpx.
+
 ## 0.0.055 - 2026-09-06
 
 Budget boosts now **survive a restart**. Each boost is stored in the

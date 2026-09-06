@@ -6,6 +6,8 @@
     !up              - raise the airtime budget (boost), e.g. before an
                        event: +30/hour +150/day per use, at most 90/hour
                        and 2200/day. Boosts age out after 24 hours.
+    !down            - cancel ALL active boosts; the budget returns to
+                       its base caps immediately.
 
 Access is enforced by the router (access="admin") plus the allowlist in
 config.yaml (dm.admin_pubkey_prefixes).
@@ -23,8 +25,8 @@ from .base import Handler
 
 class AdminHandler(Handler):
     name = "admin"
-    keywords = ["diag", "reload", "shutdown", "up"]
-    description = "Bot administration (diag/reload/shutdown/up)"
+    keywords = ["diag", "reload", "shutdown", "up", "down"]
+    description = "Bot administration (diag/reload/shutdown/up/down)"
     scope = "dm"
     access = "admin"
     priority = 50
@@ -52,6 +54,16 @@ class AdminHandler(Handler):
             elif result["day_maxed"]:
                 lines.append("Daily cap maxed (2200).")
             return HandlerResult(kind="text", data="\n".join(lines))
+        if command == "down":
+            result = ctx.service.deflate_budget()
+            if result["cancelled"]:
+                return HandlerResult(kind="text", data=
+                    f"Budget down: {result['cancelled']} boost(s) cancelled "
+                    f"- now {result['hour_cap']:.0f}/h, "
+                    f"{result['day_cap']:.0f}/d")
+            return HandlerResult(kind="text", data=
+                f"No boosts active - budget already at base "
+                f"({result['hour_cap']:.0f}/h, {result['day_cap']:.0f}/d)")
         if command == "shutdown":
             asyncio.get_event_loop().call_later(1.5, ctx.service.request_shutdown,
                                                 "admin DM command")

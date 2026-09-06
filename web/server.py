@@ -348,6 +348,17 @@ def build_app(service) -> FastAPI:
                     f"{result['day_cap']:.0f}/d "
                     f"({result['boosts']} boost(s), oldest expires "
                     f"{expires})"}
+        if action == "deflate":
+            result = service.deflate_budget()
+            if not result.get("cancelled"):
+                return {"ok": True, "message":
+                        f"No boosts active - budget already at base "
+                        f"({result['hour_cap']:.0f}/h, "
+                        f"{result['day_cap']:.0f}/d)"}
+            return {"ok": True, "message":
+                    f"Budget down: {result['cancelled']} boost(s) cancelled "
+                    f"- now {result['hour_cap']:.0f}/h, "
+                    f"{result['day_cap']:.0f}/d"}
         if action == "shutdown":
             asyncio.get_event_loop().call_later(1.0, service.request_shutdown,
                                                 "web dashboard")

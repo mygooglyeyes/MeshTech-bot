@@ -982,6 +982,23 @@ $("btn-boost").addEventListener("click", async () => {
   refreshStatus();
 });
 
+$("btn-deflate").addEventListener("click", async () => {
+  // Cancel ALL active boosts (with confirmation - it undoes every !up);
+  // the reply text carries the restored base caps.
+  if (!confirm("Cancel all active budget boosts? The budget returns to its base caps immediately.")) return;
+  try {
+    const r = await api("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deflate" }),
+    });
+    $("action-result").textContent = (r && r.message) || "done";
+  } catch (e) {
+    $("action-result").textContent = String(e.message || e);
+  }
+  refreshStatus();
+});
+
 $("btn-shutdown").addEventListener("click", async () => {
   if (!confirm("Really shut down the bot?")) return;
   await api("/api/actions", {

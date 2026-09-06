@@ -211,6 +211,23 @@ class BotService:
                 "hour_maxed": hour_cap >= self.BOOST_MAX_HOUR,
                 "day_maxed": day_cap >= self.BOOST_MAX_DAY}
 
+    def deflate_budget(self) -> Dict:
+        """Admin 'budget down': cancel ALL active boosts at once - the total
+        budget returns straight to its base caps (the pushbudget card's
+        values). Boosts removed from storage, so nothing comes back on
+        restart."""
+        before = self._budget_caps()
+        had = len(self._boost_times)
+        self.store.clear_boosts()
+        self._boost_times = []
+        _gap, hour_cap, day_cap = self._budget_caps()
+        self.feed.publish("notice", {
+            "text": (f"Budget down: boosts cancelled ({had} active) - "
+                     f"now {hour_cap:.0f}/h, {day_cap:.0f}/d")})
+        return {"ok": True, "cancelled": had,
+                "hour_cap": hour_cap, "day_cap": day_cap,
+                "previous_hour_cap": before[1], "previous_day_cap": before[2]}
+
     def budget_check(self, kind: str, channel: str, sender: str, text: str,
                      exempt: bool = False, record: bool = True) -> bool:
         """TOTAL airtime budget: every transmission the bot makes - replies

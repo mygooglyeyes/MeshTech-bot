@@ -635,6 +635,10 @@ class Store:
         self.set_override(self._BOOST_KEY,
                           json.dumps(live) if live else None)
 
+    def clear_boosts(self) -> None:
+        """Cancel every active boost (admin 'budget down')."""
+        self.set_override(self._BOOST_KEY, None)
+
     def channel_reply_override(self, channel_name: str) -> Optional[bool]:
         raw = self.get_override(f"channel_reply:{channel_name}")
         if raw is None:
