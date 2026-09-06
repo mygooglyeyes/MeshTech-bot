@@ -1,10 +1,18 @@
 # Adding features
 
-Two levels, depending on how much you want to do:
+Three levels, depending on how much you want to do:
 
+0. **Dashboard** — switch on a ready-made **module** (weather, alerts,
+   quake) in the web console's Modules card and fill in its settings.
+   No code, no restart. Check this first — it may already do what you
+   want.
 1. **No code** — add a keyword reply in `config.yaml`. Good for simple answers.
-2. **Python handler** — a new command like `!weather`. For people
-   comfortable writing code, or working with a developer.
+2. **Python handler** — a new command like `!joke`. For people
+   comfortable writing code, or working with a developer. To build a
+   data-pulling add-on like the weather module itself, copy
+   `handlers/quake.py` — it shows the module pattern: menu entry,
+   dashboard-editable settings, optional channel pushes, and a mesh
+   command in one file.
 
 ---
 

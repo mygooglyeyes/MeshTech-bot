@@ -121,9 +121,12 @@ modules:
   #   enabled: false
   # quake:                # USGS earthquakes: !quake [zip]
   #   enabled: false
-  # Flood guardrails (no ! command - tune both layers in the console
-  # card). Over-limit transmissions are dropped and noted in the activity
-  # feed. Admin DMs are exempt.
+  # Flood guardrails - tune both layers in the console card. Over-limit
+  # transmissions are dropped and noted in the activity feed. Admin DMs are
+  # exempt. Need more room on a busy day? DM '!up' as an admin (or use the
+  # console's Budget up button) to add +30/hour and +150/day per use,
+  # up to 90/hour and 2200/day; each boost ages out after 24 hours.
+  # '!down' (or the Budget down button) cancels all active boosts at once.
   pushbudget:
     enabled: true
     # Per person - keyword replies only (pushes have no person):

@@ -219,6 +219,7 @@ journalctl -u meshtech-bot -n 20
 | 7 | Restart the repeater | The bot disconnects, then reconnects by itself |
 | 8 | Reboot the bot machine | The bot is running again without you logging in |
 | 9 | Open the dashboard at `http://<bot-machine>:8081` and log in | Tables fill with live data |
+| 10 | Open the Modules card and switch **weather** on, then send `!wx <zip>` | A current-conditions reply (needs internet) |
 
 The bot spaces out its replies (a few seconds between any two), so wait a
 moment between tests.

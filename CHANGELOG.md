@@ -9,6 +9,47 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.057 - 2026-09-06
+
+Documentation caught up with the modules era: the README now lists the
+module commands (!wx / !alerts / !quake), the Modules and mesh-quiet
+guardrails sections, and the new dashboard features (Modules card,
+budget chip); the install guide's test checklist covers switching on a
+module; ADDING_FEATURES points at the dashboard modules first and uses
+handlers/quake.py as the copy-me pattern; config.example.yaml documents
+!up / !down; and the changelog gained a batch summary of 0.0.027 →
+0.0.056. No code changes.
+
+## Batch summary: 0.0.027 → 0.0.056 (the modules era)
+
+Thirty releases that turned the bot from a passive answerer into a
+monitoring tool. In one glance:
+
+- **Modules** (0.0.027–0.0.030, 0.0.032, 0.0.033, 0.0.045–0.047): a
+  dashboard Modules card hosting optional add-ons, editable without a
+  restart. Weather (`!wx` - live METAR observations plus a scheduled
+  daily forecast post), NWS active alerts (`!alerts`), and USGS
+  earthquakes (`!quake`) - each with default zip, push channels, check
+  interval, and per-item local times.
+- **Guardrails** (0.0.048–0.053, 0.056): the Public channel can no
+  longer be a push target; per-person reply limits (30 s gap, 5/hour,
+  15/day) and a total transmission budget (30 s gap, 30/hour, 250/day)
+  with every drop visible in the activity feed; a budget usage chip in
+  the header; and admin Budget up / Budget down controls (`!up` /
+  `!down`) that stack or cancel extra allowance, persisted across
+  restarts.
+- **Performance** (0.0.035, 0.038–0.040): fixed the 15-second ack stall
+  that made every reply feel slow; handlers run off the inbound chain;
+  UTF-8-byte-accurate reply splitting; cached `!2byte`; one-packet
+  `!help`.
+- **Console usability** (0.0.028–0.031, 0.034, 0.036–0.037, 0.041–0.044):
+  collapsed module cards with visible help text and
+  "leave blank for default" fields, independent columns, logout,
+  companion name in the title bar, text-size buttons, cache-busted
+  assets, and wrapping tables.
+- **Ops** (0.0.021, 0.025, 0.026): rotating packet log, harmless
+  clock-sync logging, and the companion-order requirement documented.
+
 ## 0.0.056 - 2026-09-06
 
 New **Budget down** control - the reverse of Budget up. Click the

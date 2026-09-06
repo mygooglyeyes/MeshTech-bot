@@ -15,6 +15,8 @@ repeater is the bot's mesh identity.
 - Answers keywords from `config.yaml` (no code needed) or from pluggable command handlers
 - Answers direct messages; admin commands are restricted to allowlisted nodes
 - Ignores messages that travelled more than a set number of hops — far-away nodes don't get replies
+- Optional **modules** — weather, NWS alerts, earthquakes — with scheduled pushes to channels of your choice
+- Flood guardrails: per-person reply limits plus an overall transmission budget, both tunable in the dashboard
 - Keeps a SQLite database of nodes, messages, routes, and packet captures
 - Gives short replies by default; add `x` for the extended version (`!nodes x`)
 - Shows everything on a live web dashboard
@@ -94,7 +96,10 @@ With `web.enabled: true`, open `http://<bot-machine>:8081` in a browser
 and enter the password you set. The dashboard shows live activity,
 per-channel mute toggles, the node table with drill-down and per-node
 **block checkboxes** (ignore everything from a node), a message browser,
-packet capture views, and reload/shutdown buttons. Blocks survive restarts.
+packet capture views, a **Modules card** for the optional add-ons, and
+reload/shutdown buttons. Blocks survive restarts. The header shows the
+running version, uptime, and how close the bot is to its transmission
+budget.
 
 ## Commands on the mesh
 
@@ -106,6 +111,10 @@ packet capture views, and reload/shutdown buttons. Blocks survive restarts.
 | `!2byte` | anyone | Share of nodes using 2-byte path hashes (bar chart) |
 | `!nodes` / `!nodes x` | DM | Known nodes from the database |
 | `!path` / `!pathx` / `!path <node>` | anyone | The path your message took to the bot, or the route to another node |
+| `!wx` / `!weather <zip>` | anyone | Current conditions for a US zip (module) |
+| `!alerts [zip]` | anyone | Active NWS weather alerts (module) |
+| `!quake [zip]` | anyone | Recent USGS earthquakes near a zip (module) |
+| `!up` / `!down` | admin (DM) | Raise or cancel the extra transmission budget (see below) |
 | `!stats <node or #channel>` | admin (DM) | Propagation delay + hop stats |
 | `!diag` / `!diag x` | admin (DM) | Database + traffic summary |
 | `!reload` | admin (DM) | Re-read `config.yaml` |
@@ -115,6 +124,39 @@ packet capture views, and reload/shutdown buttons. Blocks survive restarts.
 - Append **`x`** for the extended version. The words `brief`/`full` also work.
 - Plain-word replies (`replies:` in config.yaml) are empty by default — the
   bot is for testing, not chat, so `hello` gets no answer.
+
+## Modules (optional add-ons)
+
+Modules are features you switch on from the dashboard's **Modules card**
+(no restart needed) or in the `modules:` section of `config.yaml`:
+
+| Module | Command | Also does |
+|---|---|---|
+| weather | `!wx <zip>` / `!weather <zip>` | Daily forecast post to a channel at a time you set |
+| alerts | `!alerts [zip]` | Pushes new severe NWS alerts to your chosen channels |
+| quake | `!quake [zip]` | Pushes new USGS earthquakes near a zip to your channels |
+
+Each module keeps its own settings (default zip, push channels, check
+interval) edited right in the card. Pushes land in the channels you
+pick — `novato` and `#novato` are the same channel. Modules need
+internet access; the mesh commands work even when pushes are off.
+
+## Keeping the mesh quiet
+
+The bot never floods the channel. Two limits, both tunable in the
+dashboard's **Push budget** card:
+
+- **Per person** — one requester gets at most one answer every 30 s,
+  5 per hour and 15 per day (covers replies; pushes have no person).
+- **Total** — everything the bot transmits (replies + pushes combined)
+  keeps at least 30 s between transmissions, max 30 per hour and 250
+  per day.
+
+Busy day? Admins can raise the total budget with the **Budget up**
+button (or DM `!up`): +30/hour and +150/day per use, up to 90/hour and
+2200/day, easing back after 24 hours. **Budget down** (`!down`) cancels
+the extras immediately. Over-budget messages are dropped and noted in
+the activity feed; admin DMs are exempt.
 
 ## Packet capture and export
 
