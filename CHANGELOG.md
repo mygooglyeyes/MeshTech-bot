@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.040 - 2026-09-06
+- Fixed: reply splitting now measures UTF-8 bytes, not characters. The
+  radio carries bytes, so a 133-character reply full of bar glyphs or
+  emoji node names could previously exceed the 133-byte on-air limit.
+  Cuts still fall between characters, so no glyph is ever split in
+  half. Pure-ASCII replies are unchanged. Command-by-command audit:
+  every standard command now fits a single packet; only extended ('x')
+  replies still split, by design.
+
 ## 0.0.039 - 2026-09-06
 - Faster (for real this time): message sends no longer wait 3 s for a
   companion ack that never comes - the wait is now 0.2 s, since the

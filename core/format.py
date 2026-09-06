@@ -2,10 +2,15 @@
 
 MeshCore messages are short text messages, so all replies are built from
 these helpers to stay visually tidy:
-  * wrap_text / chunk_text  - respect the 133-char message limit and split
+  * wrap_text / chunk_text  - respect the 133-byte message limit and split
     long replies across several messages with [1/2] markers
   * fmt_table              - aligned ASCII tables for lists of nodes etc.
   * time helpers           - human friendly timestamps / durations / delays
+
+Widths are measured in UTF-8 *bytes* - that is what the radio carries -
+while cuts always fall between characters, so multi-byte glyphs (the
+bar shades, emoji node names) are never split in half. Pure-ASCII text
+is unaffected: byte length equals character length.
 """
 from __future__ import annotations
 
@@ -16,42 +21,61 @@ from typing import List, Optional, Sequence
 ELLIPSIS = "\u2026"  # …
 
 
+def _blen(text: str) -> int:
+    """UTF-8 byte length of *text* - the space it costs on air."""
+    return len(text.encode("utf-8"))
+
+
+def _bcut(text: str, budget: int) -> str:
+    """Longest prefix of *text* within a *budget* of UTF-8 bytes.
+
+    Cuts fall between characters, so a multi-byte glyph is never split.
+    """
+    if _blen(text) <= budget:
+        return text
+    out = text
+    while out and _blen(out) > budget:
+        out = out[:-1]
+    return out
+
+
 # --------------------------------------------------------------------------
 # Text width helpers
 # --------------------------------------------------------------------------
 
 def truncate(text: str, width: int) -> str:
-    """Shorten text to *width* characters, adding an ellipsis if cut."""
+    """Shorten text to *width* bytes, adding an ellipsis if cut."""
     text = str(text)
-    if len(text) <= width:
+    if _blen(text) <= width:
         return text
     if width <= 1:
         return ELLIPSIS
-    return text[: max(1, width - 1)] + ELLIPSIS
+    return _bcut(text, max(1, width - _blen(ELLIPSIS))) + ELLIPSIS
 
 
 def wrap_line(line: str, width: int) -> List[str]:
-    """Hard-wrap one line to *width* chars at word boundaries."""
+    """Hard-wrap one line to *width* bytes at word boundaries."""
     line = str(line)
     if width <= 0:
         return [line]
-    if len(line) <= width:
+    if _blen(line) <= width:
         return [line] if line != "" else [""]
     words = line.split(" ")
     out: List[str] = []
     current = ""
     for word in words:
         candidate = word if not current else current + " " + word
-        if len(candidate) <= width:
+        if _blen(candidate) <= width:
             current = candidate
             continue
         if current:
             out.append(current)
             current = ""
         # A single word longer than the width must be split
-        while len(word) > width:
-            out.append(word[:width])
-            word = word[width:]
+        while _blen(word) > width:
+            piece = _bcut(word, width)
+            out.append(piece)
+            word = word[len(piece):]
         current = word
     if current or not out:
         out.append(current)
@@ -59,7 +83,7 @@ def wrap_line(line: str, width: int) -> List[str]:
 
 
 def chunk_text(text: str, width: int, max_chunks: int = 6) -> List[str]:
-    """Split reply *text* into <= width-char messages.
+    """Split reply *text* into <= width-byte messages.
 
     Returns a list of message strings. When more than one message is needed
     each is prefixed with a [1/2] style marker. If the reply would exceed
@@ -78,14 +102,14 @@ def chunk_text(text: str, width: int, max_chunks: int = 6) -> List[str]:
         messages: List[str] = []
         current = ""
         for line in lines:
-            if len(line) > capacity:
+            if _blen(line) > capacity:
                 for piece in wrap_line(line, capacity):
                     if current:
                         messages.append(current)
                         current = ""
                     messages.append(piece)
                 continue
-            if current and len(current) + 1 + len(line) > capacity:
+            if current and _blen(current) + 1 + _blen(line) > capacity:
                 messages.append(current)
                 current = ""
             current = line if not current else current + "\n" + line
