@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.050 - 2026-09-06
+
+Guardrails so no single module, channel or node can flood the mesh:
+
+- **The reserved 'Public' channel is rejected** in every module channel
+  field (both `public` and `#public` spellings) with a visible console
+  error - and a runtime backstop refuses it too if written by hand, with
+  a notice in the activity feed.
+- **Push budget card** (new, console-configurable like the modules):
+  scheduled pushes are dropped when they come faster than the minimum
+  gap (30 s), the per-hour cap (5) or the per-day cap (15). Every drop
+  is reported in the activity feed. Turn the card off to remove the
+  limit (not recommended).
+- **Per-sender pace in channels** (`limits.per_sender_channel_seconds`,
+  default 30 s, admins exempt, 0 = off): after the bot answers a node in
+  a channel, that node waits before being answered again there - one
+  persistent node can no longer eat every reply slot. DM pacing is
+  unchanged.
+
 ## 0.0.049 - 2026-09-06
 
 Optional settings with a built-in default now show **"leave blank for

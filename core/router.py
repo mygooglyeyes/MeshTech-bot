@@ -242,6 +242,10 @@ class Router:
         # Last-reply time per channel, for limits.channel_interval_seconds -
         # one busy channel must not reset the global pace for everyone else.
         self._last_channel_reply: Dict[str, float] = {}
+        # Last-reply time per sender IN CHANNELS, for
+        # limits.per_sender_channel_seconds - one persistent node must not
+        # eat every cadence slot in a busy channel. DMs use _last_answer.
+        self._last_channel_answer: Dict[str, float] = {}
         self._rebuild_registry()
 
     # ------------------------------------------------------------------ registry
@@ -414,6 +418,18 @@ class Router:
             if now - last < settings.limits.per_sender_seconds:
                 log.debug("Rate limited: recent reply to %s.", msg.sender_prefix)
                 return
+        # -- per-sender pace in channels: the same node asking again within
+        #    the window waits (admins exempt; identity resolved best-effort
+        #    from the embedded name, as the block list does).
+        if msg.kind == "channel" and not is_admin:
+            pace = settings.limits.per_sender_channel_seconds
+            if pace > 0:
+                identity = self._channel_sender_identity(msg)
+                if identity and \
+                        now - self._last_channel_answer.get(identity, 0.0) < pace:
+                    log.debug("Channel per-sender pace: %s replied to %.0fs ago.",
+                              identity, now - self._last_channel_answer[identity])
+                    return
 
         # -- run the handler off the dispatch chain -------------------------
         task = asyncio.get_running_loop().create_task(
@@ -462,12 +478,29 @@ class Router:
                                 ctx.msg.sender_prefix, 0.0) < \
                                 send_settings.limits.per_sender_seconds:
                             return
+                    if ctx.msg.kind == "channel" and not ctx.is_admin:
+                        pace = send_settings.limits.per_sender_channel_seconds
+                        if pace > 0:
+                            identity = self._channel_sender_identity(ctx.msg)
+                            if identity and send_now - \
+                                    self._last_channel_answer.get(identity, 0.0) < pace:
+                                return
                     await self._send_reply(ctx, reply_text,
                                            force_dm=(result.kind == "dm_text"))
         except asyncio.CancelledError:
             raise
 
     # ------------------------------------------------------------------ guards
+
+    def _channel_sender_identity(self, msg: InboundMessage) -> Optional[str]:
+        """Best-effort stable identity of a channel sender, for per-sender
+        pacing: the embedded name resolved to a known node's prefix (the
+        same resolution and trust level the block list uses). Falls back
+        to the bare embedded name when the node is unknown."""
+        if not msg.sender_name:
+            return None
+        node = self.service.store.find_node(msg.sender_name)
+        return node["prefix"] if node else f"name:{msg.sender_name}"
 
     def _blocked_identity(self, msg: InboundMessage, settings: Settings) -> Optional[str]:
         """Return the blocked identity if this message's sender is blocked.
@@ -601,6 +634,9 @@ class Router:
             self._last_reply_at = now
             if ctx.msg.kind == "channel":
                 self._last_channel_reply[self._lane_of(ctx.msg)] = now
+                identity = self._channel_sender_identity(ctx.msg)
+                if identity:
+                    self._last_channel_answer[identity] = now
             if ctx.msg.kind == "dm" and ctx.msg.sender_prefix:
                 self._last_answer[ctx.msg.sender_prefix] = now
             if force_dm and dm_target:

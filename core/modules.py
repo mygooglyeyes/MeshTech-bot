@@ -45,6 +45,12 @@ def valid_hhmm(value: str) -> bool:
     return bool(_HHMM_RE.match((value or "").strip()))
 
 
+# Channel name that MeshCore reserves for unhashed broadcast traffic.
+# Module pushes must never target it: it is not a '#'-style public channel
+# and posts there would flood every nearby node with no context.
+PUBLIC_CHANNEL_NAMES = {"public", "#public"}
+
+
 def parse_channel_list(value: Any) -> List[str]:
     """Parse a multi-channel setting into clean channel names.
 
@@ -152,13 +158,29 @@ class ModuleSpec(Handler):
                 if not names:
                     problems.append(f"{field_def.get('label', key)} must be one or "
                                     "more channel names (e.g. #novato, #alert)")
+                # The reserved non-# 'Public' channel is never a valid push
+                # target - both spellings, since the console says the # is
+                # optional and users of either form mean the same thing.
+                hit_public = [n for n in names
+                              if n.lower() in PUBLIC_CHANNEL_NAMES]
+                if hit_public:
+                    problems.append(f"{field_def.get('label', key)}: 'Public' "
+                                    "is not a named channel and cannot be used "
+                                    "here - pick a # channel you created")
                 known = {c.name for c in self.service.settings.channels}
                 unknown = [n for n in names
-                           if n not in known and ("#" + n) not in known]
+                           if n not in known and ("#" + n) not in known
+                           and n.lower() not in PUBLIC_CHANNEL_NAMES]
                 if unknown:
                     problems.append(f"{field_def.get('label', key)}: "
                                     + ", ".join(unknown)
                                     + " is not a configured channel")
+            elif ftype == "channel":
+                name = str(value).strip().lstrip("#")
+                if name.lower() in PUBLIC_CHANNEL_NAMES:
+                    problems.append(f"{field_def.get('label', key)}: 'Public' "
+                                    "is not a named channel and cannot be used "
+                                    "here - pick a # channel you created")
         return problems
 
 

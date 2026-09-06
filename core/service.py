@@ -39,6 +39,11 @@ class BotService:
         # Module pulse scheduler (core.modules.ModuleSpec.push): one asyncio
         # task per enabled module that opts in. Rebuilt on config reload.
         self._pulse_tasks: Dict[str, "asyncio.Task"] = {}
+        # Push budget (core.service._module_push): timestamps of module pushes
+        # sent, for the per-hour / per-day windows, plus the last push time
+        # for the minimum-gap check.
+        self._push_times: List[float] = []
+        self._last_push_at: float = 0.0
 
     # ------------------------------------------------------------------ basics
 
@@ -152,16 +157,71 @@ class BotService:
         Reads 'push_channels' (list or comma/space string, e.g.
         '#novato, #alert'); a module may also deliver itself and return
         None from pulse() - both patterns are supported.
+
+        Guardrails (both logged to the activity feed):
+        - the reserved non-# 'Public' channel is never a push target
+        - the push budget: pushes no closer than push_gap_seconds apart,
+          at most push_max_per_hour per hour and push_max_per_day per day
+          (limits owned by the 'pushbudget' module card; disabled card =
+          budget off).
         """
         client = self.client
         if client is None or not client.is_connected:
             log.debug("module %s push skipped: not connected", module_name)
             return
         cfg = self.settings.modules.get(module_name)
-        from .modules import parse_channel_list
+        from .modules import parse_channel_list, PUBLIC_CHANNEL_NAMES
         channels = parse_channel_list(cfg.settings.get("push_channels", ""))
+        # Config written by hand can bypass console validation - refuse the
+        # reserved Public channel here too.
+        if any(c.lower() in PUBLIC_CHANNEL_NAMES for c in channels):
+            bad = [c for c in channels if c.lower() in PUBLIC_CHANNEL_NAMES]
+            self.feed.publish("dropped", {
+                "reason": f"push refused: {', '.join(bad)} is not a named "
+                          "channel (the bot never posts to 'Public')",
+                "kind": "module",
+                "channel": module_name,
+                "sender": module_name,
+                "text": text,
+            })
+            return
         if not channels:
             return
+        # -- push budget -------------------------------------------------
+        # A misconfigured module (interval of seconds, or a chatty feed)
+        # must not flood the mesh. The budget is a module card so operators
+        # can tune it; disabling that card turns the budget off.
+        budget = self.settings.modules.get("pushbudget")
+        budget_on = bool(budget.enabled)
+        if budget_on:
+            now = time.time()
+            gap = self._push_number(budget, "gap_seconds", 30.0)
+            per_hour = self._push_number(budget, "max_per_hour", 5.0)
+            per_day = self._push_number(budget, "max_per_day", 15.0)
+            hour_cut = now - 3600.0
+            day_cut = now - 86400.0
+            recent = [t for t in self._push_times if t > day_cut]
+            self._push_times = recent
+            in_hour = sum(1 for t in recent if t > hour_cut)
+            reason = None
+            if gap > 0 and now - self._last_push_at < gap:
+                reason = f"push budget: less than {gap:.0f}s since the last push"
+            elif per_hour > 0 and in_hour >= per_hour:
+                reason = f"push budget: {per_hour:.0f} pushes in the last hour"
+            elif per_day > 0 and len(recent) >= per_day:
+                reason = f"push budget: {per_day:.0f} pushes in the last day"
+            if reason:
+                log.info("module %s push dropped: %s", module_name, reason)
+                self.feed.publish("dropped", {
+                    "reason": reason,
+                    "kind": "module",
+                    "channel": module_name,
+                    "sender": module_name,
+                    "text": text,
+                })
+                return
+            self._push_times.append(now)
+            self._last_push_at = now
         for channel in channels:
             target = channel.lstrip("#").strip().casefold()
             idx = next((i for i, n in client.channel_names().items()
@@ -174,6 +234,21 @@ class BotService:
             if ok:
                 log.info("Module push [%s] -> %s: %s", module_name, channel,
                          text.splitlines()[0] if text else "")
+
+    @staticmethod
+    def _push_number(cfg, key: str, default: float) -> float:
+        """A module setting as a non-negative float, with fallback.
+
+        An explicit 0 means OFF for that limit (unlike a falsy-value
+        fallback, which would make 0 indistinguishable from unset)."""
+        raw = cfg.settings.get(key)
+        if raw is None or str(raw).strip() == "":
+            return default
+        try:
+            value = float(str(raw))
+            return value if value >= 0 else default
+        except (TypeError, ValueError):
+            return default
 
     # ------------------------------------------------------------------ channels
 

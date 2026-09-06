@@ -121,6 +121,14 @@ modules:
   #   enabled: false
   # quake:                # USGS earthquakes: !quake [zip]
   #   enabled: false
+  # Push flood guardrail (no ! command - tune it in the console card).
+  # Scheduled pushes are dropped (and noted in the activity feed) when
+  # they come faster than these limits:
+  pushbudget:
+    enabled: true
+    # gap_seconds: 30      # minimum seconds between pushes
+    # max_per_hour: 5      # most pushes in any rolling hour
+    # max_per_day: 15      # most pushes in any rolling day
 
 # --- Simple canned answers (no code needed) ----------------------
 # When one of these keywords appears in a message, the bot replies with the
@@ -148,6 +156,11 @@ limits:
   # channel_intervals:
   #   "#bot": 30
   #   "#test": 0
+  # Per-sender pace inside CHANNELS: after the bot answers a node in a
+  # channel, that node waits this many seconds before it is answered again
+  # (admins exempt; 0 = off). One persistent node cannot eat every reply
+  # slot in a busy channel.
+  per_sender_channel_seconds: 30
   max_reply_length: 133      # MeshCore text limit per message
   max_chunks: 6              # max messages one reply may be split into
 

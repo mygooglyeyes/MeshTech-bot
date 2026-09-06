@@ -155,6 +155,14 @@ class LimitsCfg:
     # single noisy node spamming it - from resetting the global reply pace
     # (min_interval_seconds) and crowding out replies everywhere else.
     channel_interval_seconds: float = 0.0
+    # Per-sender pace inside CHANNELS: after the bot replies to a node in a
+    # channel, that node waits this many seconds before the bot answers it
+    # again (admins exempt, DMs untouched - they already use
+    # per_sender_seconds). 0 = off. Stops one persistent node from eating
+    # every cadence slot in a busy channel. Channel senders are identified
+    # by their embedded name resolved to a known node - best effort, like
+    # the block list.
+    per_sender_channel_seconds: float = 30.0
     # Optional per-channel overrides: channel name -> seconds (0 disables
     # the cadence for that channel). Absent channels use the default above.
     channel_intervals: Dict[str, float] = field(default_factory=dict)
@@ -433,6 +441,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         max_chunks=max(1, _int(limits_raw, "max_chunks", 6, errors, "limits.max_chunks")),
         channel_interval_seconds=max(0.0, _float(limits_raw, "channel_interval_seconds", 0.0, errors, "limits.channel_interval_seconds")),
         channel_intervals=channel_intervals,
+        per_sender_channel_seconds=max(0.0, _float(limits_raw, "per_sender_channel_seconds", 30.0, errors, "limits.per_sender_channel_seconds")),
     )
 
     # --- web ---
@@ -688,6 +697,7 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                     "packet_raw_hex": settings.storage.packet_raw_hex},
         "limits": {"min_interval_seconds": settings.limits.min_interval_seconds,
                    "per_sender_seconds": settings.limits.per_sender_seconds,
+                   "per_sender_channel_seconds": settings.limits.per_sender_channel_seconds,
                    "channel_interval_seconds": settings.limits.channel_interval_seconds,
                    "channel_intervals": settings.limits.channel_intervals,
                    "max_reply_length": settings.limits.max_reply_length,
