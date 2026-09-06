@@ -23,10 +23,18 @@ from .models import InboundMessage, MsgRecord
 from .config import ConnCfg, Settings
 from .service import BotService
 
-# Event types that are synthetic (not companion frames) and therefore not
-# captured as packets. CONTACTS is the aggregate end-of-sync bulk event; the
-# per-contact CONTACT/NEXT_CONTACT frames are captured individually.
-_CAPTURE_SKIP = {"CONTACTS", "CONNECTED", "DISCONNECTED"}
+# Event types not captured as packets:
+#   * synthetic events that are not companion frames at all (CONTACTS is the
+#     aggregate end-of-sync bulk event; CONNECTED/DISCONNECTED are link state)
+#   * companion bookkeeping frames - the bot<->companion inbox/contact sync
+#     (NEXT_CONTACT is one frame per node in a contact-list dump, CONTACT is
+#     its single-contact variant, NO_MORE_MSGS closes each sync, CURRENT_TIME
+#     is the clock answer). None of it is mesh traffic; at ~88% of captured
+#     rows it would evict real traffic from the packet history.
+_CAPTURE_SKIP = {
+    "CONTACTS", "CONNECTED", "DISCONNECTED",
+    "NEXT_CONTACT", "CONTACT", "NO_MORE_MSGS", "CURRENT_TIME",
+}
 
 log = logging.getLogger("meshtech-bot.client")
 

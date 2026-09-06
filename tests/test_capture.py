@@ -189,3 +189,21 @@ def test_jsonl_append(tmp_path):
     assert second["sender"] == "Alice"
     assert second["payload"] == {"payload": {"adv_name": "Alice"},
                                  "attributes": {}}
+
+
+def test_capture_skip_list_excludes_bookkeeping_and_real_traffic():
+    """The client's capture skip-list covers companion bookkeeping frames
+    (inbox/contact sync, clock answers) but never real traffic types."""
+    from core.client import _CAPTURE_SKIP
+    # bookkeeping: contact-list dumps and sync bookkeeping
+    for bookkeeping in ("NEXT_CONTACT", "CONTACT", "CONTACTS",
+                        "NO_MORE_MSGS", "CURRENT_TIME"):
+        assert bookkeeping in _CAPTURE_SKIP
+    # link-state synthetics (not frames at all)
+    for synthetic in ("CONNECTED", "DISCONNECTED"):
+        assert synthetic in _CAPTURE_SKIP
+    # real traffic must keep flowing into the capture
+    for real in ("RX_LOG_DATA", "CHANNEL_MSG_RECV", "CHANNEL_MSG_RECV_V3",
+                 "CONTACT_MSG_RECV", "ADVERTISEMENT", "NEW_CONTACT",
+                 "ADVERT_PATH", "ACK", "MESSAGES_WAITING", "MSG_SENT"):
+        assert real not in _CAPTURE_SKIP
