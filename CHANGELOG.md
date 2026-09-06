@@ -9,6 +9,10 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.043 - 2026-09-06
+- Changed: brief !help opens with "My Commands - " followed by the
+  command list (80 bytes, still one packet).
+
 ## 0.0.042 - 2026-09-06
 - Fixed: brief !help now starts with the commands themselves
   ("!2byte !help ..."), not a "cmds:" label. Some mesh console

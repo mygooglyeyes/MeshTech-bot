@@ -46,19 +46,20 @@ def format_brief_help(command_words: str, canned_words: str,
                       admin_hint: str) -> str:
     """One-packet brief help: commands + plain words + the x-modifier.
 
-    The line starts with the bang-prefixed commands themselves - no
-    label prefix ("cmds:"). Some mesh console clients render messages
-    beginning with a key:value label as their own stats widget instead
-    of plain text, so the visible content leads and labels never do.
+    The line opens with "My Commands - " followed by the bang-prefixed
+    commands. No key:value label prefix: some mesh console clients
+    render a leading label as their own stats widget instead of the
+    text, so visible content always leads.
 
     Degradation ladder when space runs out: shrink the plain-word list,
     drop it, drop the admin hint, and only if the command list alone
     exceeds the packet (pathological) hard-ellipsize - the reply never
     exceeds one LoRa packet.
     """
-    cmds = " ".join("!" + w for w in command_words.split())
+    cmds = "My Commands - " + " ".join("!" + w
+                                        for w in command_words.split())
     xhint = "add x for more (e.g. !pathx)"
-    base = ([cmds, xhint] if cmds else [xhint])
+    base = ([cmds, xhint] if command_words.strip() else [xhint])
 
     line = _fit_words(base, canned_words,
                       [admin_hint] if admin_hint else [])
