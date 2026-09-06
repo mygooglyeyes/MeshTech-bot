@@ -104,13 +104,17 @@ storage:
 # preserved, so it is safe to edit while a newer version runs.
 # ---------------------------------------------------------------------------
 modules:
-  # Weather: `!weather [zip]` on the mesh; optional scheduled push of
-  # forecast changes to a channel.
+  # Weather: `!wx [zip]` (or `!weather [zip]`) on the mesh; optional
+  # daily forecast post to a channel at a set local time.
   weather:
     enabled: false
-    # zip: "84321"          # default zip for !weather (US)
-    # channel: "#bot"       # where the pulse pushes (push off until set + enabled)
-    # poll_minutes: 30      # how often the pulse checks, when push is on
+    # zip: "84321"          # default zip for !wx (US)
+    # channel: "#bot"       # where the daily forecast posts (off until set)
+    # post_time: "07:00"    # local HH:MM for the daily forecast post
+  # alerts:               # (stage 2) NWS active alerts incl. wildfire
+  #   enabled: false
+  # quake:                # (stage 2) USGS earthquakes
+  #   enabled: false
 
 # --- Simple canned answers (no code needed) ----------------------
 # When one of these keywords appears in a message, the bot replies with the

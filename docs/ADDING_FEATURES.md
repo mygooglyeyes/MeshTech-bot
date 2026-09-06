@@ -34,7 +34,7 @@ is no other wiring.
 ### Step 1 — copy the template
 
 ```bash
-cp handlers/_template.py handlers/weather.py
+cp handlers/_template.py handlers/joke.py
 ```
 
 Files starting with an underscore (like `_template.py`) are templates and
@@ -42,7 +42,7 @@ are never loaded as real features — only your renamed copy is.
 
 ### Step 2 — what a "class" is
 
-Open `handlers/weather.py`. It contains a **class** — a named block that
+Open `handlers/joke.py`. It contains a **class** — a named block that
 bundles the feature's settings and behavior together. Think of it as the
 feature's file folder: name, trigger words, permissions, and the logic all
 live inside it.
@@ -58,13 +58,13 @@ class ExampleTemplateHandler(Handler):   # <- rename me!
     access = "public"                    # "public" | "admin"
 ```
 
-For a `!weather` command:
+For a `!joke` command:
 
-- **File name** → `handlers/weather.py` (already done in step 1)
-- **Class name** → change `ExampleTemplateHandler` to `WeatherHandler`
-- **Keywords** → change `keywords = ["example"]` to `keywords = ["weather"]`
+- **File name** → `handlers/joke.py` (already done in step 1)
+- **Class name** → change `ExampleTemplateHandler` to `JokeHandler`
+- **Keywords** → change `keywords = ["example"]` to `keywords = ["joke"]`
 
-With `keywords = ["weather"]`, a message `!weather` on a channel (or in a
+With `keywords = ["joke"]`, a message `!joke` on a channel (or in a
 DM) triggers the feature.
 
 ### Step 4 — fill in the behavior

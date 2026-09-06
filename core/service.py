@@ -134,6 +134,14 @@ class BotService:
                     text = None
                 if text:
                     await self._module_push(name, text)
+                # Re-ask every cycle: a module may schedule its next check
+                # dynamically (e.g. weather's daily wall-clock post).
+                try:
+                    seconds = int(seconds_fn() or 0)
+                except Exception:
+                    seconds = 0
+                if seconds < 30:
+                    break                # module turned its pulse off
                 await asyncio.sleep(seconds)
         except asyncio.CancelledError:
             pass

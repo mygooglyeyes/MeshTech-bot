@@ -1,19 +1,22 @@
 """Weather module - the template for MeshTech-Bot add-on modules.
 
-Mesh command:
-    !weather          - conditions RIGHT NOW at the module's default zip
-    !weather 84321    - conditions right now for that zip
-    !weatherx         - adds a 3-day outlook
+Two feeds, two jobs:
+
+  Current conditions (on demand, the mesh asks us):
+    !wx              - conditions RIGHT NOW at the module's default zip
+    !wx 84321        - conditions right now for that zip
+    !weather         - same command, longer name (alias)
+    add x: !wxx      - adds a 3-day outlook
+
+  Daily forecast (we push, once a day):
+    posts the 3-day outlook to the configured channel at the configured
+    local time (settings: channel + post_time, e.g. "07:00").
 
 Data: National Weather Service api.weather.gov (free, no API key);
 zip -> coordinates via zippopotam.us (free, no key). US coverage only.
 The NWS "current" block is actually today's forecast, so filler words
 (Sunny, Clear, Partly Sunny...) are stripped and the reply is labelled
 "now" - it reads as conditions, not a forecast.
-
-Scheduled push (off until the user enables it in the console):
-polls NWS every ``poll_minutes`` and posts one short line when the
-conditions summary changes - rare by design, mesh traffic is precious.
 
 Everything network-related is defensive: timeouts, quiet failure logs,
 never an exception into the router.
@@ -23,16 +26,22 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.models import HandlerResult
 from core.modules import ModuleSpec
-from .base import Handler  # noqa: F401  (kept so plain handlers can copy this file)
 
 log = logging.getLogger("meshtech-bot.modules.weather")
 
 _HTTP_TIMEOUT = 10          # seconds per API call
 _CACHE_SECONDS = 600        # reuse a forecast for 10 min (mesh can spam us)
+_PULSE_CHECK_SECONDS = 60   # how often the daily-post pulse wakes up
+
+
+# --------------------------------------------------------------------------
+# Pure helpers (unit-tested)
+# --------------------------------------------------------------------------
 
 # NWS shortForecast words that carry no information on a one-line
 # conditions readout (everything NWS emits is technically a forecast, so
@@ -46,6 +55,8 @@ _WEATHER_WORDS = {
     "chance", "", "none",
 }
 
+_POST_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
 
 def _strip_forecast_words(text: str) -> str:
     """Drop leading forecast-filler ("Chance Rain Showers" -> "Rain Showers")."""
@@ -54,6 +65,24 @@ def _strip_forecast_words(text: str) -> str:
         prev = text
         text = _WEATHER_PLACE.sub("", text).strip()
     return text
+
+
+def parse_post_time(value: str) -> Optional[Tuple[int, int]]:
+    """'HH:MM' -> (hours, minutes) 24-hour local; None if not valid."""
+    m = _POST_TIME_RE.match((value or "").strip())
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def seconds_until(hours: int, minutes: int,
+                  now: Optional[datetime] = None) -> int:
+    """Seconds from `now` (local) until the next HH:MM wall-clock slot."""
+    local = now or datetime.now()
+    target = local.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+    if target <= local:
+        target += timedelta(days=1)
+    return max(30, int((target - local).total_seconds()))
 
 
 def short_conditions(period: Dict[str, Any]) -> str:
@@ -73,8 +102,10 @@ def short_conditions(period: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-def format_weather(place: str, current_line: str, outlook: Optional[list] = None) -> str:
-    """The mesh text. Brief = one line; x = + 3-day outlook lines."""
+def format_weather(place: str, current_line: str,
+                   outlook: Optional[List[Tuple[str, str]]] = None) -> str:
+    """The mesh text for on-demand conditions. Brief = one line;
+    x = + 3-day outlook lines."""
     head = (f"Weather {place} now: {current_line}" if place
             else f"Weather now: {current_line}")
     lines = [head]
@@ -83,27 +114,47 @@ def format_weather(place: str, current_line: str, outlook: Optional[list] = None
     return "\n".join(lines)
 
 
+def format_forecast(place: str,
+                    outlook: List[Tuple[str, str]]) -> str:
+    """The mesh text for the daily push: place + one line per day."""
+    lines = [f"Forecast {place}:"]
+    for label, line in outlook:
+        lines.append(f"{label}: {line}")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# The module
+# --------------------------------------------------------------------------
+
 class WeatherModule(ModuleSpec):
     name = "weather"
-    description = "Local weather"
-    keywords = ["weather"]
+    description = "Current conditions on demand plus a daily forecast post."
+    keywords = ["weather", "wx"]
     scope = "both"
     access = "public"
     require_prefix = True
 
     # ---- menu declaration (core/modules.py reads this) -------------------
-    menu_description = "Current conditions and forecast for a US zip code."
+    menu_description = ("Current conditions (!wx [zip]) and a daily "
+                        "forecast post at a set time.")
     settings_fields = [
         {"key": "zip", "label": "Default ZIP code", "type": "text",
-         "default": "", "help": "Used when someone types !weather without a zip"},
-        {"key": "channel", "label": "Push channel", "type": "channel",
-         "default": "", "help": "Where scheduled pushes go (leave empty for no push)"},
-        {"key": "poll_minutes", "label": "Check every (minutes)", "type": "number",
-         "default": 30, "help": "How often push mode checks for changes"},
+         "default": "", "help": "Used when someone types !wx without a zip"},
+        {"key": "channel", "label": "Forecast channel", "type": "channel",
+         "default": "", "help": "Where the daily forecast posts (leave empty for no post)"},
+        {"key": "post_time", "label": "Forecast time", "type": "text",
+         "default": "07:00", "help": "Local HH:MM for the daily forecast post"},
     ]
 
     def __init__(self) -> None:
         self._cache: Dict[str, Any] = {}   # zip -> (ts, place, current, outlook)
+        self._next_post: Optional[float] = None   # epoch of the next daily post
+
+    def on_settings_changed(self) -> None:
+        # Re-arm the daily timer: the next wake-up recomputes it from the
+        # (possibly new) post_time.
+        self._next_post = None
 
     # ---------------------------------------------------------------- mesh
 
@@ -112,7 +163,7 @@ class WeatherModule(ModuleSpec):
             str(self.setting("zip", "") or "")
         if not zip_code:
             return HandlerResult(kind="text",
-                                 data="Weather: no zip. Try  !weather 84321")
+                                 data="Weather: no zip. Try  !wx 84321")
         if not zip_code.isdigit() or len(zip_code) != 5:
             return HandlerResult(kind="text", data="Weather: zip must be 5 digits")
 
@@ -127,31 +178,43 @@ class WeatherModule(ModuleSpec):
             kind="text",
             data=format_weather(place, current, outlook if extended else None))
 
-    # ---------------------------------------------------------------- push
+    # ------------------------------------------------- daily forecast push
+
+    def post_time_parts(self) -> Optional[Tuple[int, int]]:
+        return parse_post_time(str(self.setting("post_time", "07:00") or ""))
 
     def pulse_seconds(self) -> Optional[int]:
-        # opt in only when the user configured a push channel
-        return int(self.setting("poll_minutes", 30) or 30) * 60
+        # The scheduler re-asks after every cycle, so a steady 60 s cadence
+        # is all we need: each wake-up checks the wall clock and only posts
+        # when the configured HH:MM has arrived.
+        if self.post_time_parts() is None:
+            return 0                     # no valid post_time -> no daily post
+        return _PULSE_CHECK_SECONDS
 
     async def pulse(self) -> Optional[str]:
-        """Push one line when the conditions summary for the default zip
-        changes. No zip/channel configured -> nothing to do."""
+        """Daily forecast post: fire once when the configured time arrives."""
         zip_code = str(self.setting("zip", "") or "")
         channel = str(self.setting("channel", "") or "")
-        if not zip_code or not channel or not self.is_enabled():
+        parts = self.post_time_parts()
+        if not zip_code or not channel or not self.is_enabled() or parts is None:
             return None
+        if self._next_post is None:
+            # Fresh (re)load: arm the timer for the next slot, post nothing.
+            self._next_post = seconds_until(*parts)
+            return None
+        if time.time() < self._next_post:
+            return None
+        self._next_post = None           # consumed; re-armed only on success
         try:
-            place, current, _ = await self._forecast(zip_code, want_outlook=False)
+            place, _current, outlook = await self._forecast(zip_code,
+                                                            want_outlook=True)
         except Exception as exc:
-            log.debug("pulse weather lookup failed: %s", exc)
+            log.info("daily forecast post failed: %s", exc)
             return None
-        last = self._cache.get("push_last")
-        if last is not None and last == current:
-            return None                      # nothing changed - stay quiet
-        self._cache["push_last"] = current
-        if last is None:
-            return None                      # first observation: baseline only
-        return f"Weather {place} now: {current}"
+        self._next_post = seconds_until(*parts)
+        if not outlook:
+            return None
+        return format_forecast(place, outlook)
 
     # ---------------------------------------------------------------- api
 

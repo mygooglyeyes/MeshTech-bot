@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.029 - 2026-09-06
+- Changed: Weather gets two feeds. `!wx [zip]` (alias of `!weather`)
+  answers with current conditions on demand; the scheduled push is now a
+  **daily forecast post** at a time you choose (`post_time`, e.g.
+  "07:00") instead of change-based checks. Set the channel and time in
+  the Modules card.
+- Changed: the pulse scheduler now lets modules pick their next check
+  each cycle, so wall-clock schedules never drift.
+- Fixed: the add-features tutorial no longer tells users to create
+  `handlers/weather.py`, which is now a real module (example renamed to
+  `!joke`).
+
 ## 0.0.028 - 2026-09-06
 - Changed: Modules card polish from first box testing. Each module is
   now a collapsed row - click the module name to open its settings
