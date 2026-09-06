@@ -121,15 +121,19 @@ modules:
   #   enabled: false
   # quake:                # USGS earthquakes: !quake [zip]
   #   enabled: false
-  # Airtime budget for EVERYTHING the bot transmits (no ! command - tune
-  # it in the console card). Scheduled pushes AND keyword replies share
-  # one budget; over-budget transmissions are dropped and noted in the
-  # activity feed. Admin DMs are exempt.
+  # Flood guardrails (no ! command - tune both layers in the console
+  # card). Over-limit transmissions are dropped and noted in the activity
+  # feed. Admin DMs are exempt.
   pushbudget:
     enabled: true
+    # Per person - keyword replies only (pushes have no person):
+    # person_gap_seconds: 30     # wait between answers to one requester
+    # person_max_per_hour: 5     # most answers one person gets per hour
+    # person_max_per_day: 15     # most answers one person gets per day
+    # Total - everything the bot transmits, replies + pushes combined:
     # gap_seconds: 30      # minimum seconds between transmissions
-    # max_per_hour: 5      # most transmissions in any rolling hour
-    # max_per_day: 15      # most transmissions in any rolling day
+    # max_per_hour: 30     # most transmissions in any rolling hour
+    # max_per_day: 250     # most transmissions in any rolling day
 
 # --- Simple canned answers (no code needed) ----------------------
 # When one of these keywords appears in a message, the bot replies with the

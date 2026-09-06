@@ -430,10 +430,19 @@ class Router:
                     log.debug("Channel per-sender pace: %s replied to %.0fs ago.",
                               identity, now - self._last_channel_answer[identity])
                     return
-        # -- airtime budget: cheap non-recording pre-filter (the authoritative
-        #    check+record happens under the send lock) so a doomed command
-        #    never even spawns a handler task. Covers keyword replies AND
-        #    pushes; admins (DM only) are exempt.
+        # -- airtime budgets: cheap non-recording pre-filters (the
+        #    authoritative check+record happens under the send lock) so a
+        #    doomed command never even spawns a handler task. Two layers:
+        #    per-person (keyword replies only; admins exempt) and the total
+        #    budget (replies + pushes; admins exempt there too).
+        if not is_admin:
+            if not self.service.person_budget_check(
+                    self._channel_sender_identity(msg) if msg.kind == "channel"
+                    else (msg.sender_prefix or "?"),
+                    "reply",
+                    self._lane_of(msg) if msg.kind == "channel" else "dm",
+                    msg.text, record=False):
+                return
         if not self.service.budget_check(
                 "reply",
                 self._lane_of(msg) if msg.kind == "channel" else "dm",
@@ -497,8 +506,17 @@ class Router:
                             if identity and send_now - \
                                     self._last_channel_answer.get(identity, 0.0) < pace:
                                 return
-                    # airtime budget, authoritative: check + record one slot
+                    # airtime budgets, authoritative: check + record one slot
                     # per reply (a multi-chunk answer is one answer)
+                    if not ctx.is_admin and not self.service.person_budget_check(
+                            self._channel_sender_identity(ctx.msg)
+                            if ctx.msg.kind == "channel"
+                            else (ctx.msg.sender_prefix or "?"),
+                            "reply",
+                            self._lane_of(ctx.msg) if ctx.msg.kind == "channel"
+                            else "dm",
+                            reply_text, record=True):
+                        return
                     if not self.service.budget_check(
                             "reply",
                             self._lane_of(ctx.msg) if ctx.msg.kind == "channel"

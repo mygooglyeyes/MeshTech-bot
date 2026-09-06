@@ -1,27 +1,25 @@
-"""pushbudget - airtime budget for EVERYTHING the bot transmits.
+"""pushbudget - flood guardrails, two layers.
 
 Not a mesh command: this "module" exists only as a web-console card (the
-same form the other modules use) where the operator tunes how much airtime
-the bot may consume:
+same form the other modules use). It owns two independent limit sets:
 
-    - gap_seconds    minimum seconds between any two bot transmissions
-    - max_per_hour   most transmissions allowed in any rolling hour
-    - max_per_day    most transmissions allowed in any rolling day
+Per person (keyword replies only - pushes have no person):
+    - person_gap_seconds    wait between answers to ONE requester
+    - person_max_per_hour   most answers one person gets per rolling hour
+    - person_max_per_day    most answers one person gets per rolling day
+    A "person" is the DM sender's key prefix, or in channels the embedded
+    name resolved to a known node (same identity the block list uses).
+    Admins are exempt.
 
-It covers BOTH kinds of traffic: scheduled module pushes (weather
-forecasts, alerts, quakes) AND keyword-command replies (!help, !wx, ...).
-Everything the bot puts on the air shares one budget, so a crowd of
-requesters cannot spam the mesh through it. Every drop is reported to
-the activity feed. Disabling this card turns the budget off (not
-recommended - it is the flood guard).
+Total (everything the bot transmits - replies AND pushes combined):
+    - gap_seconds    minimum seconds between any two transmissions
+    - max_per_hour   most transmissions per rolling hour
+    - max_per_day    most transmissions per rolling day
 
-Admin DMs are exempt: key-verified administrators stay answerable while
-the bot is being flooded, and their traffic does not consume the
-strangers' budget.
-
-Defaults are deliberately quiet: 30 s apart, 5/hour, 15/day. MeshCore
-channels are shared airtime; a bot gone haywire must degrade to silence,
-not to noise.
+Both layers are enforced in core.service.budget_check / person_budget_check
+and the router; every drop is reported to the activity feed. Disabling
+this card turns both layers off (not recommended - it is the flood
+guard).
 """
 from __future__ import annotations
 
@@ -43,26 +41,44 @@ class PushBudgetModule(ModuleSpec):
     # available=True so the console renders its settings form. It has no
     # keywords, so no mesh message can ever reach it - it is a card only.
 
-    menu_description = ("Airtime budget for everything the bot transmits "
-                        "- module pushes AND command replies share it: the "
-                        "minimum gap between transmissions and the most "
-                        "allowed per hour / per day. Anything over budget "
-                        "is dropped and noted in the activity feed. Admin "
-                        "DMs are exempt. Leave the card off to remove the "
-                        "limit (not recommended).")
+    menu_description = ("Flood guardrails, two layers. Per person: how "
+                        "often one requester can be answered (30 s gap, 5 "
+                        "per hour, 15 per day; admins exempt; pushes not "
+                        "counted). Total: how much the bot may transmit "
+                        "overall, replies and pushes combined (30 s gap, "
+                        "30 per hour, 250 per day). Anything over either "
+                        "limit is dropped and noted in the activity feed. "
+                        "Leave the card off to remove the limits (not "
+                        "recommended).")
 
     settings_fields = [
-        {"key": "gap_seconds", "label": "Minimum gap (seconds)", "type": "number",
-         "default": "30", "help": "No two bot transmissions (push or reply) "
-         "closer than this. Leave blank for the default of 30 seconds."},
-        {"key": "max_per_hour", "label": "Max transmissions per hour",
+        # -- per person (keyword replies only; pushes have no person) ----
+        {"key": "person_gap_seconds", "label": "Per person: gap (seconds)",
+         "type": "number", "default": "30",
+         "help": "After the bot answers one requester, that person waits "
+         "this long before being answered again. Leave blank for the "
+         "default of 30 seconds."},
+        {"key": "person_max_per_hour", "label": "Per person: max per hour",
          "type": "number", "default": "5",
-         "help": "Most pushes + replies combined allowed in any rolling "
-         "hour. Leave blank for the default of 5."},
-        {"key": "max_per_day", "label": "Max transmissions per day",
+         "help": "Most answers one person can get in any rolling hour. "
+         "Leave blank for the default of 5."},
+        {"key": "person_max_per_day", "label": "Per person: max per day",
          "type": "number", "default": "15",
-         "help": "Most pushes + replies combined allowed in any rolling "
-         "day. Leave blank for the default of 15."},
+         "help": "Most answers one person can get in any rolling day. "
+         "Leave blank for the default of 15."},
+        # -- total (replies + pushes combined) ---------------------------
+        {"key": "gap_seconds", "label": "Total: gap (seconds)",
+         "type": "number", "default": "30",
+         "help": "No two bot transmissions (any reply or push) closer than "
+         "this. Leave blank for the default of 30 seconds."},
+        {"key": "max_per_hour", "label": "Total: max per hour",
+         "type": "number", "default": "30",
+         "help": "Most transmissions (replies + pushes) in any rolling "
+         "hour. Leave blank for the default of 30."},
+        {"key": "max_per_day", "label": "Total: max per day",
+         "type": "number", "default": "250",
+         "help": "Most transmissions (replies + pushes) in any rolling "
+         "day. Leave blank for the default of 250."},
     ]
 
     async def handle(self, ctx) -> Optional[HandlerResult]:  # pragma: no cover

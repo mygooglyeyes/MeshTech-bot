@@ -39,11 +39,13 @@ class BotService:
         # Module pulse scheduler (core.modules.ModuleSpec.push): one asyncio
         # task per enabled module that opts in. Rebuilt on config reload.
         self._pulse_tasks: Dict[str, "asyncio.Task"] = {}
-        # Push budget (core.service._module_push): timestamps of module pushes
-        # sent, for the per-hour / per-day windows, plus the last push time
-        # for the minimum-gap check.
+        # Airtime budgets (core.service.budget_check / person_budget_check):
+        # _push_times holds every transmission (reply or push) for the total
+        # windows; _person_times holds per-requester answer times for the
+        # per-person windows; _last_push_at backs the total minimum gap.
         self._push_times: List[float] = []
         self._last_push_at: float = 0.0
+        self._person_times: Dict[str, List[float]] = {}
 
     # ------------------------------------------------------------------ basics
 
@@ -155,8 +157,8 @@ class BotService:
 
     def budget_check(self, kind: str, channel: str, sender: str, text: str,
                      exempt: bool = False, record: bool = True) -> bool:
-        """The airtime budget gate for EVERY bot transmission - scheduled
-        module pushes AND keyword-command replies alike.
+        """TOTAL airtime budget: every transmission the bot makes - replies
+        AND pushes combined.
 
         Returns True when the transmission may proceed (recording it unless
         ``record`` is False - the router's dispatch pre-filter checks
@@ -167,31 +169,31 @@ class BotService:
         Rules (owned by the 'pushbudget' console card; disabling that card
         turns the budget off):
         - minimum gap between any two transmissions (default 30 s)
-        - at most max_per_hour in any rolling hour (default 5)
-        - at most max_per_day in any rolling day (default 15)
+        - at most max_per_hour in any rolling hour (default 30)
+        - at most max_per_day in any rolling day (default 250)
         Admin replies pass ``exempt=True`` - key-verified admins must stay
         answerable while the bot is being flooded, and their traffic does
-        not consume the strangers' budget.
+        not consume the total budget.
         """
         budget = self.settings.modules.get("pushbudget")
         if exempt or not budget.enabled:
             return True
         now = time.time()
         gap = self._push_number(budget, "gap_seconds", 30.0)
-        per_hour = self._push_number(budget, "max_per_hour", 5.0)
-        per_day = self._push_number(budget, "max_per_day", 15.0)
+        per_hour = self._push_number(budget, "max_per_hour", 30.0)
+        per_day = self._push_number(budget, "max_per_day", 250.0)
         recent = [t for t in self._push_times if t > now - 86400.0]
         self._push_times = recent
         in_hour = sum(1 for t in recent if t > now - 3600.0)
         reason = None
         if gap > 0 and now - self._last_push_at < gap:
-            reason = (f"airtime budget: less than {gap:.0f}s since the "
+            reason = (f"total budget: less than {gap:.0f}s since the "
                       "last transmission")
         elif per_hour > 0 and in_hour >= per_hour:
-            reason = (f"airtime budget: {per_hour:.0f} transmissions in "
+            reason = (f"total budget: {per_hour:.0f} transmissions in "
                       "the last hour")
         elif per_day > 0 and len(recent) >= per_day:
-            reason = (f"airtime budget: {per_day:.0f} transmissions in "
+            reason = (f"total budget: {per_day:.0f} transmissions in "
                       "the last day")
         if reason:
             log.info("budget dropped %s for %s: %s", kind, channel, reason)
@@ -206,6 +208,54 @@ class BotService:
         if record:
             self._push_times.append(now)
             self._last_push_at = now
+        return True
+
+    def person_budget_check(self, identity: str, kind: str, channel: str,
+                            text: str, record: bool = True) -> bool:
+        """PER-PERSON reply budget: one requester may be answered at most
+        person_gap_seconds apart, person_max_per_hour per rolling hour and
+        person_max_per_day per rolling day (all owned by the 'pushbudget'
+        card; the card off = limits off).
+
+        Keyword replies only - pushes have no person. Returns True to
+        proceed; False drops the reply with a feed notice. The router's
+        dispatch pre-filter passes record=False; the authoritative
+        check+record runs under the send lock.
+        """
+        budget = self.settings.modules.get("pushbudget")
+        if not budget.enabled:
+            return True
+        now = time.time()
+        gap = self._push_number(budget, "person_gap_seconds", 30.0)
+        per_hour = self._push_number(budget, "person_max_per_hour", 5.0)
+        per_day = self._push_number(budget, "person_max_per_day", 15.0)
+        times = [t for t in self._person_times.get(identity, [])
+                 if t > now - 86400.0]
+        self._person_times[identity] = times
+        in_hour = sum(1 for t in times if t > now - 3600.0)
+        reason = None
+        if gap > 0 and times and now - times[-1] < gap:
+            reason = (f"per-person budget: less than {gap:.0f}s since this "
+                      "person's last answer")
+        elif per_hour > 0 and in_hour >= per_hour:
+            reason = (f"per-person budget: {per_hour:.0f} answers for this "
+                      "person in the last hour")
+        elif per_day > 0 and len(times) >= per_day:
+            reason = (f"per-person budget: {per_day:.0f} answers for this "
+                      "person in the last day")
+        if reason:
+            log.info("person budget dropped %s for %s: %s", identity, channel,
+                     reason)
+            self.feed.publish("dropped", {
+                "reason": reason,
+                "kind": kind,
+                "channel": channel,
+                "sender": identity,
+                "text": text,
+            })
+            return False
+        if record:
+            times.append(now)
         return True
 
     async def _module_push(self, module_name: str, text: str) -> None:
@@ -244,7 +294,7 @@ class BotService:
             return
         if not channels:
             return
-        # -- airtime budget (shared with command replies, see budget_check)
+        # -- total airtime budget (replies + pushes combined)
         if not self.budget_check("push", module_name, module_name, text):
             return
         for channel in channels:

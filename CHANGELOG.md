@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.052 - 2026-09-06
+
+The flood guardrails are now two independent layers, as intended:
+
+- **Per person** (keyword replies only - pushes have no person): one
+  requester is answered at most every **30 s**, max **5 per hour**, max
+  **15 per day**. A person is their DM key prefix, or in channels the
+  embedded name resolved to a known node. One spammer can no longer take
+  anyone else's answers down with them.
+- **Total** (everything the bot transmits - replies AND pushes combined):
+  minimum gap **30 s** between transmissions, max **30 per hour**, max
+  **250 per day**. Protects the mesh from the bot itself no matter what.
+
+Both layers are tuned in the Push budget card (six fields, two groups);
+over-limit transmissions are dropped and noted in the activity feed;
+admins are exempt from both. The previous single-budget defaults (5/hour,
+15/day for everything combined) were far too tight - fixed.
+
 ## 0.0.051 - 2026-09-06
 
 The airtime budget now covers **all** bot transmissions, not just module
