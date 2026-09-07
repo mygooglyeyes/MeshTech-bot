@@ -93,13 +93,21 @@ def _github_api_url(repo_url: str) -> Optional[str]:
                        1) + "/releases/latest"
 
 
-def _raw_version_url(repo_url: str, branch: str) -> Optional[str]:
+def _raw_version_url(repo_url: str, commit: str) -> Optional[str]:
+    """Version file URL pinned to an exact COMMIT, not a branch name.
+
+    Branch URLs on the raw file service are CDN-cached for minutes, so a
+    just-pushed version can read as the OLD one (a real mismatch we hit).
+    A commit URL is immutable - cache it forever, it is always right.
+    """
     web = repo_web_url(repo_url)
     if not web.startswith("https://github.com/"):
         return None
+    if not re.fullmatch(r"[0-9a-fA-F]{6,40}", commit or ""):
+        return None          # never interpolate anything but a git sha
     return (web.replace("https://github.com/",
                         "https://raw.githubusercontent.com/", 1)
-            + f"/{branch}/core/version.py")
+            + f"/{commit}/core/version.py")
 
 
 def parse_version(text: str) -> str:
@@ -288,12 +296,10 @@ class UpdateChecker:
         # Version numbers for EVERY remote branch (cheap: one small fetch
         # per branch, cached for the check interval) - the popup then shows
         # a version on each row and "newer" is decided from numbers.
-        candidates = list(result["branches"].keys())
-        if running_branch and running_branch not in candidates:
-            candidates.insert(0, running_branch)
-        remote_versions = await self._branch_versions(candidates)
+        heads = dict(result["branches"])     # branch -> head sha
+        remote_versions = await self._branch_versions(heads)
         result["remote_versions"] = remote_versions
-        newer = newer_branch_from_versions(candidates, remote_versions,
+        newer = newer_branch_from_versions(list(heads.keys()), remote_versions,
                                            stamp.get("version") or "")
         if newer:
             result["update_available"] = True
@@ -318,8 +324,8 @@ class UpdateChecker:
         result["commits_url"] = f"{web}/commits/{branch}" if branch else web
         return result
 
-    async def _branch_versions(self, branches) -> Dict[str, str]:
-        """Read each branch's version number from the raw file service.
+    async def _branch_versions(self, heads: Dict[str, str]) -> Dict[str, str]:
+        """Read each branch's version number, pinned to its head commit.
 
         raw.githubusercontent.com is a plain file fetch (no API rate
         limit); any failure simply omits that branch, and the caller
@@ -334,8 +340,8 @@ class UpdateChecker:
             with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
                 return resp.read().decode("utf-8", errors="replace")
 
-        for branch in branches:
-            url = _raw_version_url(self.repo_url(), branch)
+        for branch, sha in heads.items():
+            url = _raw_version_url(self.repo_url(), sha)
             if not url:
                 continue
             try:

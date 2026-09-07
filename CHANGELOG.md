@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.078 - 2026-09-07
+
+Fix: the update popup could show the WRONG version for a branch (a
+branch head that is v0.0.077 reading as v0.0.076). The version file was
+fetched by branch name, and GitHub's cache serves those a few minutes
+stale right after a push. The fetch is now pinned to the exact commit,
+which is immutable and can never go stale. (Release notes showing the
+last published release, currently v0.0.063, is correct - they advance
+when a release is published.)
+
 ## 0.0.077 - 2026-09-07
 
 Update popup polish: the RUNNING box shows the version only (the branch
