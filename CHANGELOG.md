@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.080 - 2026-09-07
+
+Fix: the "View changes since v0.0.063" button never appeared - the code
+read the release tag under the wrong dictionary key, so the popup kept
+showing the old release-notes link. Now the running branch's compare
+view appears as intended. Regression test added.
+
 ## 0.0.079 - 2026-09-07
 
 The release-notes button now shows the RUNNING branch's changes: when

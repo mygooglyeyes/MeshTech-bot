@@ -11,6 +11,10 @@ Newest entries first within each branch.
 
 ## feature/branch-switcher (current work - contains the node-popup stack)
 
+- **v0.0.080** - Fixed the release-notes button: it read the release tag
+  under the wrong dictionary key, so "View changes since ..." never
+  appeared. Regression test added.
+
 Dashboard-driven updates and node-list analysis, stacked one feature on
 the next:
 

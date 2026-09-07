@@ -341,7 +341,7 @@ class UpdateChecker:
             # button shows what THIS branch changed since it (the user's
             # "release notes for the branch we are in"), not the old page.
             result["compare_url"] = compare_url_for(
-                web, str(rel.get("tag_name") or ""), branch,
+                web, str(rel.get("tag") or ""), branch,
                 stamp.get("version") or "")
         result["commits_url"] = f"{web}/commits/{branch}" if branch else web
         return result
