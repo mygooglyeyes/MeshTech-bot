@@ -17,6 +17,10 @@ DEFAULT_ADMIN_HELP = (
     "web dashboard to find prefixes."
 )
 
+# Where update checks look for newer code.  Forks can point this at their
+# own repository via updates: repo_url.
+DEFAULT_REPO_URL = "https://github.com/mygooglyeyes/MeshTech-bot.git"
+
 
 class ConfigError(Exception):
     """Raised when config.yaml cannot be used; message is human readable."""
@@ -182,6 +186,22 @@ class WebCfg:
 
 
 @dataclass
+class UpdatesCfg:
+    """Read-only 'is there newer code?' checking for the dashboard.
+
+    The bot compares its running commit against the repository's branch
+    heads once a day (configurable) and the dashboard version chip turns
+    amber when a newer build exists.  Checking only ever READS - it never
+    downloads code, restarts, or changes anything.
+    """
+    check_enabled: bool = True
+    # How often to look, in hours (minimum 0.25 = every 15 minutes).
+    check_hours: float = 24.0
+    # Which repository to check. Point this at your own fork if you run one.
+    repo_url: str = DEFAULT_REPO_URL
+
+
+@dataclass
 class LogCfg:
     level: str = "INFO"
     file: str = ""
@@ -203,6 +223,9 @@ class Settings:
     web: WebCfg
     logging: LogCfg
     modules: ModulesCfg
+    # Default keeps direct Settings(...) constructions (tests, tooling)
+    # working; load() always passes the parsed value explicitly.
+    updates: UpdatesCfg = field(default_factory=UpdatesCfg)
     config_path: str = "config.yaml"
     warnings: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -491,6 +514,23 @@ def load(config_path: str = "config.yaml") -> Settings:
             )
     modules = ModulesCfg(entries=module_entries)
 
+    # --- updates (optional; read-only version check for the dashboard) ---
+    upd_raw = _section(raw, "updates", errors)
+    check_hours = _float(upd_raw, "check_hours", 24.0, errors, "updates.check_hours")
+    if check_hours < 0.25:
+        errors.append("updates.check_hours must be at least 0.25 (15 minutes) "
+                      "- be kind to GitHub.")
+    repo_url = _text(upd_raw, "repo_url", DEFAULT_REPO_URL, errors, "updates.repo_url")
+    if repo_url and not repo_url.endswith(".git"):
+        repo_url += ".git"
+    if repo_url and not (repo_url.startswith("https://") or repo_url.startswith("git@")):
+        errors.append("updates.repo_url must be a git URL (https://... or git@...).")
+    updates = UpdatesCfg(
+        check_enabled=_bool(upd_raw, "check_enabled", True, errors, "updates.check_enabled"),
+        check_hours=check_hours,
+        repo_url=repo_url,
+    )
+
     # --- logging ---
     log_raw = _section(raw, "logging", errors)
     tz = _text(log_raw, "timezone", "local", errors, "logging.timezone")
@@ -524,6 +564,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         web=web,
         logging=log_cfg,
         modules=modules,
+        updates=updates,
         config_path=config_path,
         warnings=warnings,
         raw=raw,

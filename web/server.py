@@ -241,6 +241,25 @@ def build_app(service) -> FastAPI:
         return {"config": service.config_snapshot(),
                 "warnings": service.settings.warnings}
 
+    # ------------------------------------------------- updates (read-only)
+
+    @app.get("/api/update/status", dependencies=[Depends(require_auth)])
+    async def update_status():
+        """Last known update-check state (no network on this call)."""
+        checker = getattr(service, "update_checker", None)
+        if checker is None:
+            return {"checked": False, "enabled": False}
+        return checker.snapshot()
+
+    @app.post("/api/update/check", dependencies=[Depends(require_auth)])
+    async def update_check_now():
+        """Force a fresh check.  Read-only: a git ls-remote against the
+        repository plus the GitHub releases lookup - nothing is changed."""
+        checker = getattr(service, "update_checker", None)
+        if checker is None:
+            return json_error("Update checking is not available", 404)
+        return await checker.check(force=True)
+
     # ------------------------------------------------------------- modules
 
     @app.get("/api/modules", dependencies=[Depends(require_auth)])

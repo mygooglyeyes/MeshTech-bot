@@ -122,7 +122,10 @@ per-channel mute toggles, the node table with drill-down and per-node
 packet capture views, a **Modules card** for the optional add-ons, and
 reload/shutdown buttons. Blocks survive restarts. The header shows the
 running version, uptime, and how close the bot is to its transmission
-budget.
+budget. The **version chip** checks the repository once a day and turns
+amber when newer code exists — click it to see what's available, open
+the release notes, or run a manual check (look only; updating is still
+done with `./manage.sh update`).
 
 ## Commands on the mesh
 

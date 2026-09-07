@@ -117,8 +117,14 @@ async def _run(settings: Settings) -> None:
     stop = asyncio.Event()
     service.set_stop_callback(stop.set)
 
+    # Read-only software-update checker: feeds the dashboard's version
+    # chip and update popup.  It only reads - never downloads or restarts.
+    from core.updatecheck import UpdateChecker
+    service.update_checker = UpdateChecker(lambda: service.settings)
+
     tasks = [
         asyncio.create_task(client.run(), name="radio"),
+        service.update_checker.start(),
     ]
     if settings.web.enabled:
         try:
@@ -148,6 +154,10 @@ async def _run(settings: Settings) -> None:
              stamp, conn.host, conn.port, len(settings.channels))
     if settings.web.enabled:
         log.info("Dashboard: http://%s:%d", settings.web.host, settings.web.port)
+    if settings.updates.check_enabled:
+        log.info("Update check: every %g h", settings.updates.check_hours)
+    else:
+        log.info("Update check: disabled")
 
     try:
         await stop.wait()

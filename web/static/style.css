@@ -105,6 +105,14 @@ main {
 .chip.ok { border-color: var(--ok); color: var(--ok); }
 .chip.bad { border-color: var(--bad); color: var(--bad); }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
+
+/* The version chip is clickable (opens the software-updates popup) and
+   turns amber when the repo has newer code than the running build. */
+#chip-version { cursor: pointer; }
+#chip-version:focus-visible { outline: 1px solid var(--accent); }
+#chip-version.update-available {
+  border-color: var(--warn); color: var(--warn); font-weight: 600;
+}
 /* Budget chip carries "tx 12/30h 98/250d" plus hover detail - reserve a
    stable width so cap-digit changes do not push the other chips around. */
 #chip-budget { min-width: 19ch; text-align: center; }
@@ -279,6 +287,24 @@ input, select {
   word-break: break-word;
 }
 .aboutbox .btn { align-self: flex-start; }
+
+/* Software-updates popup: reuses the overlay + aboutbox shell. Branch
+   rows list the repo heads; the running branch is flagged, a newer
+   head than the running commit shows "← newer". */
+.update-branch {
+  display: flex; align-items: baseline; gap: 12px;
+  font-size: 0.8125rem; padding: 7px 10px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+}
+.ub-name { color: var(--accent); min-width: 4ch; }
+.ub-sha { color: var(--text); }
+.ub-flag {
+  margin-left: auto; color: var(--ok); font-size: 0.6875rem;
+  border: 1px solid var(--ok); border-radius: 4px; padding: 0 6px;
+}
+.update-note { font-size: 0.8125rem; }
+.update-checked { font-size: 0.6875rem; color: var(--muted); }
+a.btn { text-decoration: none; display: inline-block; }
 
 .muted-note { color: var(--warn); font-weight: 600; }
 em { color: var(--muted); }

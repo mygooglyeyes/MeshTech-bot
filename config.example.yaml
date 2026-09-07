@@ -191,6 +191,16 @@ web:
   # travels with config.yaml and the bot warns about it:
   # password: "change-me"
 
+# --- Update check -------------------------------------------------
+# The dashboard's version chip turns amber when newer code exists on the
+# repository, and clicking it shows what's available. This is READ-ONLY:
+# the bot only looks - it never downloads, installs, or restarts anything.
+updates:
+  check_enabled: true
+  check_hours: 24            # how often to look (minimum 0.25 = 15 min)
+  # repo_url: "https://github.com/mygooglyeyes/MeshTech-bot.git"
+  #                          ^ point at your own fork if you run one
+
 # --- Logging ----------------------------------------------------
 # With the systemd service, leave file empty and watch logs with:
 #   journalctl -u meshtech-bot -f

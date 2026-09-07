@@ -137,6 +137,120 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("about-overlay").classList.contains("hidden")) {
     $("about-overlay").classList.add("hidden");
   }
+  if (e.key === "Escape" && !$("update-overlay").classList.contains("hidden")) {
+    $("update-overlay").classList.add("hidden");
+  }
+});
+
+// ------------------------------------------------------------------ updates
+// Read-only: the bot checks the repo for newer code and this popup shows
+// the result. Nothing here downloads or restarts anything - the amber
+// version chip is purely an indicator.
+let updateState = null;
+
+function updateAvailable() {
+  return !!(updateState && updateState.checked && updateState.update_available);
+}
+
+function openUpdates() {
+  $("update-overlay").classList.remove("hidden");
+  renderUpdatePopup(updateState);
+  refreshUpdateStatus();
+}
+
+async function refreshUpdateStatus() {
+  try {
+    updateState = await api("/api/update/status");
+  } catch (e) { /* keep the last known state; popup shows it */ }
+  renderUpdateChipFlags();
+  if (!$("update-overlay").classList.contains("hidden")) {
+    renderUpdatePopup(updateState);
+  }
+}
+
+async function forceUpdateCheck() {
+  const btn = $("btn-update-check");
+  btn.disabled = true;
+  btn.textContent = "checking…";
+  try {
+    updateState = await api("/api/update/check", { method: "POST" });
+  } catch (e) {
+    updateState = Object.assign({}, updateState || {},
+      { checked: true, error: "check failed - is the bot online?" });
+  }
+  btn.disabled = false;
+  btn.textContent = "Check now";
+  renderUpdateChipFlags();
+  renderUpdatePopup(updateState);
+}
+
+function renderUpdateChipFlags() {
+  // The status poll rewrites the version chip text every few seconds;
+  // the amber class + title suffix are applied there via updateAvailable().
+  const chip = $("chip-version");
+  if (chip) chip.classList.toggle("update-available", updateAvailable());
+}
+
+function renderUpdatePopup(st) {
+  const cur = $("update-current");
+  const rows = $("update-branches");
+  const note = $("update-note");
+  const checked = $("update-checked");
+  if (!st) { cur.textContent = "loading…"; return; }
+  const run = st.running || {};
+  let runTxt = "running: v" + (run.version || "?");
+  if (run.branch || run.commit) {
+    runTxt += "  (" + (run.branch ? run.branch + "@" : "") + (run.commit || "?") + ")";
+  }
+  cur.textContent = runTxt;
+  rows.innerHTML = "";
+  const branches = st.branches || {};
+  Object.keys(branches).sort().forEach((name) => {
+    const isRunning = run.branch === name;
+    const newer = isRunning && st.update_available;
+    const row = document.createElement("div");
+    row.className = "update-branch";
+    row.innerHTML = '<span class="ub-name">' + esc(name) + "</span>" +
+      '<span class="ub-sha">' + esc(String(branches[name]).slice(0, 7)) +
+      (newer ? " ← newer" : "") + "</span>" +
+      (isRunning ? '<span class="ub-flag">running</span>' : "");
+    rows.appendChild(row);
+  });
+  note.classList.remove("hidden");
+  if (!st.checked) note.textContent = "No check has run yet - click Check now.";
+  else if (st.error) note.textContent = "Last check failed: " + st.error;
+  else if (st.update_available) {
+    note.textContent = "A newer build is available on " +
+      (st.newer_branch || "the repository") + ".";
+  } else note.textContent = "You are running the latest code on your branch.";
+  if (st.checked) {
+    const mins = Math.max(0, Math.round((st.age_seconds || 0) / 60));
+    const auto = st.enabled
+      ? "auto-check every " + Math.max(1, Math.round((st.ttl_seconds || 86400) / 3600)) + " h"
+      : "auto-check off";
+    checked.textContent = "checked " + (mins <= 0 ? "just now" : mins + " min ago") + " · " + auto;
+  } else {
+    checked.textContent = "";
+  }
+  const link = $("btn-release-notes");
+  const url = st.release_url || st.commits_url || "";
+  if (url) {
+    link.style.display = "";
+    link.href = url;
+    link.textContent = st.release_url
+      ? ("View release notes" + (st.release && st.release.tag ? " (" + st.release.tag + ")" : ""))
+      : "View commit history";
+  } else {
+    link.style.display = "none";
+  }
+}
+
+$("chip-version").addEventListener("click", openUpdates);
+$("btn-update-check").addEventListener("click", forceUpdateCheck);
+$("btn-update-close").addEventListener("click", () => $("update-overlay").classList.add("hidden"));
+// Click on the dark backdrop (outside the box) closes the dialog.
+$("update-overlay").addEventListener("click", (e) => {
+  if (e.target === $("update-overlay")) $("update-overlay").classList.add("hidden");
 });
 
 $("login-form").addEventListener("submit", async (e) => {
@@ -370,6 +484,9 @@ async function refreshStatus() {
       (cText ? "commit " + cText + "\n" : "") +
       "source: " + (v.source || "?")
     : "no build stamp available - run from a git clone or set MESHTECH_COMMIT";
+  // Update-check state: amber chip + hint when the repo has newer code.
+  vChip.classList.toggle("update-available", updateAvailable());
+  if (updateAvailable()) vChip.title += "\nnewer build available - click for details";
   $("chip-nodes").textContent = "nodes: " + (st.db ? st.db.nodes : "-");
   $("chip-msgs").textContent = "msgs: " + (st.db && st.db.messages ? st.db.messages : "-");
 
@@ -1206,6 +1323,7 @@ async function refreshAll() {
     await refreshPackets();
     await refreshAnalysis();
     await refreshModules();
+    await refreshUpdateStatus();
   } catch (e) { /* auth or network handled elsewhere */ }
 }
 
@@ -1454,6 +1572,9 @@ function startPolling() {
   setInterval(() => { refreshNodes($("node-filter").value).catch(() => {}); }, 30000);
   setInterval(() => { refreshPackets().catch(() => {}); }, 30000);
   setInterval(() => { refreshAnalysis().catch(() => {}); }, 30000);
+  // Update check status changes slowly; refresh the chip every 10 min
+  // (the bot itself re-checks on its own schedule).
+  setInterval(() => { refreshUpdateStatus().catch(() => {}); }, 600000);
 }
 
 async function boot() {

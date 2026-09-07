@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.065 - 2026-09-07
+
+Update checking, stage 1 (read-only): the bot compares its running
+commit against the repository's DEV and main heads once a day
+(`updates:` section in config.yaml, default every 24 h, can be
+disabled) and the dashboard's version chip turns amber when newer code
+exists. Clicking the chip opens a popup showing the current build, the
+latest head per branch, the newest published release, a **Check now**
+button, and a **View release notes** link to GitHub. Checking is two
+lightweight network reads (git ls-remote + the GitHub releases API)
+with caching and offline-safe error handling; nothing is ever
+downloaded, installed, or restarted by this stage. New API endpoints
+(`/api/update/status`, `/api/update/check`) sit behind the dashboard
+login like everything else; 11 new tests (suite: 278).
+
 ## 0.0.057 - 2026-09-06
 
 Documentation caught up with the modules era: the README now lists the

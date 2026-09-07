@@ -25,7 +25,7 @@
       <span class="chip" id="chip-conn">connecting…</span>
       <span class="chip" id="chip-uptime">-</span>
       <span class="chip" id="chip-budget" title="">budget: -</span>
-      <span class="chip" id="chip-version" title="">version: -</span>
+      <span class="chip" id="chip-version" title="" tabindex="0" role="button" aria-label="Software updates">version: -</span>
       <span class="chip" id="chip-nodes">nodes: -</span>
       <span class="chip" id="chip-msgs">msgs: -</span>
       <button class="btn small" id="btn-about" title="Version, license, and third-party attributions">about</button>
@@ -141,6 +141,22 @@
       </div>
       <pre id="about-text" class="about-text"></pre>
       <button class="btn" id="btn-about-close">Close</button>
+    </div>
+  </div>
+
+  <div id="update-overlay" class="overlay hidden">
+    <div class="aboutbox" role="dialog" aria-label="Software updates">
+      <h2>Software updates</h2>
+      <div id="update-current" class="about-version">loading…</div>
+      <div id="update-branches"></div>
+      <div id="update-note" class="update-note hidden"></div>
+      <div id="update-checked" class="update-checked"></div>
+      <div class="about-actions">
+        <button class="btn small" id="btn-update-check">Check now</button>
+        <a class="btn small" id="btn-release-notes" href="#" target="_blank"
+           rel="noopener noreferrer" style="display:none">View release notes</a>
+        <button class="btn small" id="btn-update-close">Close</button>
+      </div>
     </div>
   </div>
 
