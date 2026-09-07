@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.069 - 2026-09-07
+
+Update popup readability, from Brett's first real-use feedback: the
+running build moved out of the summary box into a header-style line
+above the list; the branch list gained a "Branches" title; and the
+branch the bot runs is now a highlighted box (accent border and glow)
+so there is no mistaking which one is live. Opening the popup also
+fires a fresh check automatically - one step instead of clicking
+Check now first. Dashboard-only; no bot code changed.
+
 ## 0.0.068 - 2026-09-07
 
 Self-healing update: a past update run as root can leave root-owned

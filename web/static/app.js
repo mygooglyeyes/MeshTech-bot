@@ -155,7 +155,10 @@ function updateAvailable() {
 function openUpdates() {
   $("update-overlay").classList.remove("hidden");
   renderUpdatePopup(updateState);
-  refreshUpdateStatus();
+  // One step, not two: opening the popup always fires a fresh check
+  // (the 10 s server-side cooldown quietly answers from cache if the
+  // popup is reopened quickly).
+  forceUpdateCheck();
 }
 
 async function refreshUpdateStatus() {
@@ -192,15 +195,15 @@ function renderUpdateChipFlags() {
 }
 
 function renderUpdatePopup(st) {
-  const cur = $("update-current");
+  const cur = $("update-running");
   const rows = $("update-branches");
   const note = $("update-note");
   const checked = $("update-checked");
-  if (!st) { cur.textContent = "loading…"; return; }
+  if (!st) { cur.textContent = "running: loading…"; return; }
   const run = st.running || {};
   let runTxt = "running: v" + (run.version || "?");
   if (run.branch || run.commit) {
-    runTxt += "  (" + (run.branch ? run.branch + "@" : "") + (run.commit || "?") + ")";
+    runTxt += " · " + (run.branch ? run.branch + "@" : "") + (run.commit || "?");
   }
   cur.textContent = runTxt;
   rows.innerHTML = "";
@@ -210,12 +213,12 @@ function renderUpdatePopup(st) {
     const isRunning = run.branch === name;
     const newer = isRunning && st.update_available;
     const row = document.createElement("div");
-    row.className = "update-branch";
+    // The branch the bot runs gets a highlighted box (CSS .running).
+    row.className = "update-branch" + (isRunning ? " running" : "");
     row.innerHTML = '<span class="ub-name">' + esc(name) + "</span>" +
       '<span class="ub-sha">' + esc(String(branches[name]).slice(0, 7)) +
       (rv[name] ? " (v" + esc(rv[name]) + ")" : "") +
-      (newer ? " ← newer" : "") + "</span>" +
-      (isRunning ? '<span class="ub-flag">running</span>' : "");
+      (newer ? " ← newer" : "") + "</span>";
     rows.appendChild(row);
   });
   note.classList.remove("hidden");
