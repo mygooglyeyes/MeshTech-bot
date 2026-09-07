@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.077 - 2026-09-07
+
+Update popup polish: the RUNNING box shows the version only (the branch
+lives on its highlighted row); every branch row now carries its version
+number (not just DEV/main); any branch newer than the running one shows
+"newer - click it to update"; clickable rows get an unmistakable hover
+hint ("switch to this →").
+
 ## 0.0.076 - 2026-09-07
 
 Node list sorting: click a column header to sort the Nodes card by name,

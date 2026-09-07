@@ -333,7 +333,18 @@ a.btn { text-decoration: none; display: inline-block; }
    enabled - say so on hover, and confirm before doing anything. */
 .update-hint { font-size: 0.6875rem; color: var(--muted); font-weight: 400; }
 .update-branch.clickable { cursor: pointer; }
-.update-branch.clickable:hover { border-color: var(--accent); }
+.update-branch.clickable:hover {
+  border-color: var(--accent);
+  background: var(--panel2);
+}
+/* Right-aligned hint so clickable rows are unmistakable on hover. */
+.update-branch.clickable:hover::after {
+  content: "switch to this \2192";
+  color: var(--accent);
+  font-size: 0.6875rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
 .warn-text { color: var(--warn); }
 .update-log {
   max-height: 260px; overflow-y: auto; font-size: 0.6875rem;

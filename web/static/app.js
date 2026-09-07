@@ -357,11 +357,9 @@ function renderUpdatePopup(st) {
   const checked = $("update-checked");
   if (!st) { cur.textContent = "fetching update information…"; return; }
   const run = st.running || {};
-  // The branch IS shown here: the list below only covers DEV + main, so
-  // when the bot runs a feature branch this line is the only place the
-  // branch name appears.  The commit stays on the highlighted row.
-  cur.textContent = "v" + (run.version || "?") +
-    (run.branch ? " · " + run.branch : "");
+  // Version only - the branch belongs on the highlighted row below, where
+  // it sits next to its commit and version.
+  cur.textContent = "v" + (run.version || "?");
   rows.innerHTML = "";
   const branches = st.branches || {};
   const rv = st.remote_versions || {};
@@ -385,14 +383,16 @@ function renderUpdatePopup(st) {
   }
   names.forEach((name) => {
     const isRunning = run.branch === name;
-    const newer = isRunning && st.update_available;
+    // "newer" is per-row: any branch whose remote version is greater than
+    // the running one - that row is the update target, click it.
+    const newer = !!(rv[name] && run.version && versionLess(run.version, rv[name]));
     const row = document.createElement("div");
     // The branch the bot runs gets a highlighted box (CSS .running).
     row.className = "update-branch" + (isRunning ? " running" : "");
     row.innerHTML = '<span class="ub-name">' + esc(name) + "</span>" +
       '<span class="ub-sha">' + esc(String(branches[name]).slice(0, 7)) +
       (rv[name] ? " (v" + esc(rv[name]) + ")" : "") +
-      (newer ? " ← newer" : "") + "</span>";
+      (newer ? " ← newer - click it to update" : "") + "</span>";
     makeRowClickable(row, name, run);
     rows.appendChild(row);
   });

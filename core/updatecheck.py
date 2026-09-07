@@ -285,10 +285,12 @@ class UpdateChecker:
         # the stamp knows it; otherwise look at DEV and main.
         branch = running_branch or "DEV"
         remote_sha = result["branches"].get(branch)
-        candidates = []
-        for name in ([running_branch] if running_branch else []) + ["DEV", "main"]:
-            if name in result["branches"] and name not in candidates:
-                candidates.append(name)
+        # Version numbers for EVERY remote branch (cheap: one small fetch
+        # per branch, cached for the check interval) - the popup then shows
+        # a version on each row and "newer" is decided from numbers.
+        candidates = list(result["branches"].keys())
+        if running_branch and running_branch not in candidates:
+            candidates.insert(0, running_branch)
         remote_versions = await self._branch_versions(candidates)
         result["remote_versions"] = remote_versions
         newer = newer_branch_from_versions(candidates, remote_versions,
