@@ -209,7 +209,13 @@ function renderUpdatePopup(st) {
   rows.innerHTML = "";
   const branches = st.branches || {};
   const rv = st.remote_versions || {};
-  Object.keys(branches).sort().forEach((name) => {
+  // Running branch first, then alphabetical - the important row is on top.
+  const names = Object.keys(branches).sort((a, b) => {
+    if (a === run.branch) return -1;
+    if (b === run.branch) return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  names.forEach((name) => {
     const isRunning = run.branch === name;
     const newer = isRunning && st.update_available;
     const row = document.createElement("div");

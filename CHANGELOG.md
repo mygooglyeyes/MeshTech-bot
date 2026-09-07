@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.070 - 2026-09-07
+
+Popup polish: the branch the bot runs now sorts to the top of the
+branch list (remaining branches alphabetical), so the row that
+matters is always the first one read. Dashboard-only.
+
 ## 0.0.069 - 2026-09-07
 
 Update popup readability, from Brett's first real-use feedback: the
