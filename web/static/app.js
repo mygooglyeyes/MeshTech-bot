@@ -199,9 +199,9 @@ function renderUpdatePopup(st) {
   const rows = $("update-branches");
   const note = $("update-note");
   const checked = $("update-checked");
-  if (!st) { cur.textContent = "running: loading…"; return; }
+  if (!st) { cur.textContent = "fetching update information…"; return; }
   const run = st.running || {};
-  let runTxt = "running: v" + (run.version || "?");
+  let runTxt = "v" + (run.version || "?");
   if (run.branch || run.commit) {
     runTxt += " · " + (run.branch ? run.branch + "@" : "") + (run.commit || "?");
   }
@@ -228,7 +228,7 @@ function renderUpdatePopup(st) {
     rows.appendChild(row);
   });
   note.classList.remove("hidden");
-  if (!st.checked) note.textContent = "No check has run yet - click Check now.";
+  if (!st.checked) note.textContent = "Fetching update information…";
   else if (st.error) note.textContent = "Last check failed: " + st.error;
   else if (st.update_available) {
     note.textContent = "A newer build is available on " +

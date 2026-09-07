@@ -292,10 +292,6 @@ input, select {
    running build is a header-style line; branch rows list the repo
    heads, with the running branch's whole box highlighted in the
    accent color. A newer head than the running build shows "← newer". */
-.update-running {
-  font-size: 0.875rem; font-weight: 600; color: var(--accent);
-  text-transform: uppercase; letter-spacing: .06em; margin: 0;
-}
 .update-subhead {
   font-size: 0.6875rem; color: var(--muted);
   text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 2px;
@@ -305,10 +301,12 @@ input, select {
   font-size: 0.8125rem; padding: 7px 10px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
 }
+/* The branch the bot runs gets the same green outline as the
+   "connected" chip - impossible to mistake for anything else. */
 .update-branch.running {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-  background: rgba(76, 194, 255, .08);
+  border-color: var(--ok);
+  box-shadow: 0 0 0 1px var(--ok);
+  background: rgba(62, 207, 142, .08);
 }
 .ub-name { color: var(--accent); min-width: 4ch; }
 .update-branch.running .ub-name { color: var(--text); font-weight: 600; }

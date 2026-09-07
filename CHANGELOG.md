@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.071 - 2026-09-07
+
+Second popup readability pass from Brett's feedback: "Running" is now
+a section title above a box holding the build details (mirroring the
+"Branches" title), the running branch's box uses the same green
+outline as the connected chip, and the placeholder text while a fresh
+check downloads is "Fetching update information…" - the old "click
+Check now" dead end is gone; opening the popup always fetches.
+Dashboard-only.
+
 ## 0.0.070 - 2026-09-07
 
 Popup polish: the branch the bot runs now sorts to the top of the
