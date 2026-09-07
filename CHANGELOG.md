@@ -9,6 +9,11 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.081 - 2026-09-07
+
+Cosmetic: the Branches title and its instruction are separated by a dash
+and spacing ("Branches — click a branch to switch...").
+
 ## 0.0.080 - 2026-09-07
 
 Fix: the "View changes since v0.0.063" button never appeared - the code
