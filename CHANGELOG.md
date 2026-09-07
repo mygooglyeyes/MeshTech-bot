@@ -50,6 +50,19 @@ points from the Text column, and cards widened further (48rem columns,
 maximum text size. The two-column stack breakpoint now scales with the
 text-size buttons too.
 
+## 0.0.061 - 2026-09-06
+
+The real root cause of the packet-header wrapping, found via
+screenshot: the browser viewport (at enlarged text) can't give the
+card its full target width, so percentage column widths came up short
+and the overflow wrapped. Meta columns are now sized in **ch units**
+(the width of a character, scaling exactly with the text buttons) and
+forbidden from wrapping - Type always holds RX_LOG_DATA on one line,
+When holds the full timestamp, Channel / sender holds its header and
+12-hex prefixes. Only message text wraps, by design. If the window is
+genuinely too narrow for all columns at the current text size, the
+table scrolls sideways instead - a header never wraps again.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a

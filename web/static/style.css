@@ -159,28 +159,32 @@ table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
 th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
 
-/* Message + packet tables: fixed layout so long text wraps inside the
-   card instead of pushing columns past the card edge. Meta columns get
-   set widths; the text column takes the rest and wraps anywhere
-   (long words/hex too).
-
-   Packet column widths are sized to the WIDEST VALUE each column can
-   hold, verified at both 100% and 160% text size:
-   When "5:15:16 PM" (15%), Type "RX_LOG_DATA" (16%),
-   Hops/Hash headers + "12.0" SNR (7% each), Channel names (11%). */
+/* Message + packet tables: fixed layout. Meta columns are sized in
+   ch units - the width of a "0" character - so they scale exactly
+   with the text-size buttons and always hold their widest value on
+   ONE line (Type fits RX_LOG_DATA, When fits 5:28:47 PM, Channel
+   fits "from 3cf3956e99b0" and its own header). Headers and meta
+   values never wrap; the Text column takes the rest and wraps
+   anywhere (long words/hex too). If the card is physically too
+   narrow for all meta columns at the current text size (viewport
+   caps the card), the whole table scrolls sideways instead. */
+#msg-list, #pkt-list { overflow-x: auto; }
 #msg-list table, #pkt-list table { table-layout: fixed; }
-#msg-list th:nth-child(1) { width: 14%; }
-#msg-list th:nth-child(2) { width: 6%; }
-#msg-list th:nth-child(3) { width: 12%; }
-#msg-list th:nth-child(4) { width: 7%; }
-#pkt-list th:nth-child(1) { width: 15%; }
-#pkt-list th:nth-child(2) { width: 6%; }
-#pkt-list th:nth-child(3) { width: 16%; }
-#pkt-list th:nth-child(4) { width: 7%; }
-#pkt-list th:nth-child(5) { width: 7%; }
-#pkt-list th:nth-child(6) { width: 7%; }
-#pkt-list th:nth-child(7) { width: 11%; }
-#msg-list td, #pkt-list td { overflow-wrap: anywhere; }
+#msg-list th, #pkt-list th, #msg-list td, #pkt-list td { white-space: nowrap; }
+#msg-list td:last-child, #pkt-list td:last-child { white-space: normal; overflow-wrap: anywhere; }
+#msg-list th:nth-child(1) { width: 22ch; }  /* locale date+time */
+#msg-list th:nth-child(2) { width: 4ch; }   /* in/out */
+#msg-list th:nth-child(3) { width: 18ch; }  /* channel or "from <prefix>" */
+#msg-list th:nth-child(4) { width: 5ch; }
+#msg-list th:nth-child(5) { width: 22ch; }  /* text gets the rest + floor */
+#pkt-list th:nth-child(1) { width: 11ch; }  /* 5:28:47 PM */
+#pkt-list th:nth-child(2) { width: 4ch; }   /* in/out */
+#pkt-list th:nth-child(3) { width: 13ch; }  /* ADVERTISEMENT */
+#pkt-list th:nth-child(4) { width: 5ch; }
+#pkt-list th:nth-child(5) { width: 5ch; }   /* 1B/2B/3B */
+#pkt-list th:nth-child(6) { width: 5ch; }   /* SNR 12.0 */
+#pkt-list th:nth-child(7) { width: 18ch; }  /* from <12-hex> / header */
+#pkt-list th:nth-child(8) { width: 22ch; }  /* text gets the rest + floor */
 td.node-block { width: 26px; padding-right: 0; }
 /* Per-node note editor: fixed-ish width, monospace, compact. */
 td.node-note { padding: 2px 6px; }
