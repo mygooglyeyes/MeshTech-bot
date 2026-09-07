@@ -38,6 +38,18 @@ apart). Card widths now scale with the text size (40rem columns,
 93.75rem page cap - identical at 100%), so every size bump widens the
 cards to match.
 
+## 0.0.060 - 2026-09-06
+
+The header-wrap fix, part two: card width alone wasn't enough because
+the packet table's **column percentages** left the Type column too
+narrow for its widest value (RX_LOG_DATA) and Channel / sender too
+narrow for its header. Columns are now sized to the widest value each
+can hold (verified at 100% and 160% text), the Type column gained 3
+points from the Text column, and cards widened further (48rem columns,
+112.5rem page) so the raw link profile line also fits on one line at
+maximum text size. The two-column stack breakpoint now scales with the
+text-size buttons too.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a
