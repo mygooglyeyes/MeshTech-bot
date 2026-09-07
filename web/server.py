@@ -131,9 +131,11 @@ def build_app(service) -> FastAPI:
         rows = store.list_nodes(limit=max(1, min(limit, 500)))
         blocked = store.blocked_prefixes()
         route_counts = store.route_counts()
+        activity = store.activity_counts(hours=24.0)
         for row in rows:
             row["blocked"] = row["prefix"] in blocked
             row["route_count"] = route_counts.get(row["prefix"], 0)
+            row["msg_count_24h"] = activity.get(row["prefix"], 0)
         return {"nodes": rows}
 
     @app.get("/api/nodes/{key}", dependencies=[Depends(require_auth)])

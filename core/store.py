@@ -363,6 +363,21 @@ class Store:
             sql += f" LIMIT {int(limit)}"
         return [dict(r) for r in self._conn.execute(sql).fetchall()]
 
+    def activity_counts(self, hours: float = 24.0) -> Dict[str, int]:
+        """Messages received per sender prefix over the last N hours.
+
+        Feeds the node table's activity column ("most active" sort).
+        Cheap: one grouped query over an indexed time range.
+        """
+        cutoff = time.time() - max(0.0, hours) * 3600.0
+        rows = self._conn.execute(
+            "SELECT sender_prefix, COUNT(*) AS n FROM messages "
+            "WHERE recv_ts >= ? AND sender_prefix != '' "
+            "GROUP BY sender_prefix",
+            (cutoff,),
+        ).fetchall()
+        return {r[0]: int(r[1]) for r in rows}
+
     def set_node_note(self, key_or_prefix: str, note: Optional[str]) -> bool:
         """Attach a free-text annotation to a node (dashboard note field).
 

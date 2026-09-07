@@ -321,6 +321,11 @@ input, select {
 .ub-name { color: var(--accent); min-width: 4ch; }
 .update-branch.running .ub-name { color: var(--text); font-weight: 600; }
 .ub-sha { color: var(--text); }
+/* Sortable column headers in the Nodes card */
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--accent); }
+th.sortable.sorted { color: var(--accent); }
+
 .update-note { font-size: 0.8125rem; }
 .update-checked { font-size: 0.6875rem; color: var(--muted); }
 a.btn { text-decoration: none; display: inline-block; }

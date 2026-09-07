@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.076 - 2026-09-07
+
+Node list sorting: click a column header to sort the Nodes card by name,
+last seen, SNR, route count, or activity; click again to reverse, and the
+choice is remembered. Sorting applies before the 150-row cut-off, so it
+also decides which nodes are visible. New Msgs column shows each node's
+message count for the last 24 hours ("most active" sorts by it).
+
 ## 0.0.075 - 2026-09-07
 
 Web-console updates (dashboard stage 2): click a branch in the Software

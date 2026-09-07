@@ -726,14 +726,44 @@ let nodeOrder = [];
 
 const NODE_MAX_ROWS = 150;
 
+// Node-list sorting: click a column header to sort by it, click again to
+// reverse. The choice is remembered across visits. Sorting happens before
+// the 150-row cut-off, so it also decides WHICH nodes are visible.
+const NODE_SORT_DEFAULT = { key: "seen", dir: "desc" };
+let nodeSort = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem("nodeSort") || "null");
+    if (saved && ["seen", "name", "snr", "route", "msgs"].includes(saved.key)
+        && ["asc", "desc"].includes(saved.dir)) return saved;
+  } catch (e) { /* corrupted - fall through to the default */ }
+  return NODE_SORT_DEFAULT;
+})();
+let nodeFilterText = "";
+
 async function refreshNodes(filterText) {
+  nodeFilterText = (filterText !== undefined) ? filterText : nodeFilterText;
   const data = await api("/api/nodes?limit=300");
   const nodes = data.nodes || [];
-  const filter = (filterText || "").toLowerCase();
+  const filter = (nodeFilterText || "").toLowerCase();
   const filtered = filter
     ? nodes.filter((n) =>
         ((n.name || "") + " " + (n.prefix || "")).toLowerCase().includes(filter))
     : nodes;
+
+  // Sort before the row cut-off (it decides which nodes make the cut).
+  const dir = nodeSort.dir === "asc" ? 1 : -1;
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
+  filtered.sort((a, b) => {
+    if (nodeSort.key === "name") {
+      const va = (a.name || "").toLowerCase();
+      const vb = (b.name || "").toLowerCase();
+      return dir * (va < vb ? -1 : va > vb ? 1 : 0);
+    }
+    if (nodeSort.key === "seen") return dir * (num(a.last_seen) - num(b.last_seen));
+    if (nodeSort.key === "snr") return dir * (num(a.last_snr) - num(b.last_snr));
+    if (nodeSort.key === "route") return dir * (num(a.route_count) - num(b.route_count));
+    return dir * (num(a.msg_count_24h) - num(b.msg_count_24h));   // msgs
+  });
   const wrap = $("node-list");
 
   if (!filtered.length) {
@@ -763,6 +793,7 @@ async function refreshNodes(filterText) {
       row.snrCell.textContent =
         (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-");
       row.routeCell.textContent = String(n.route_count || 0);
+      row.msgsCell.textContent = String(n.msg_count_24h || 0);
       // Never clobber text the user is currently typing into.
       if (document.activeElement !== row.noteInput) {
         row.noteInput.value = n.note || "";
@@ -775,7 +806,40 @@ async function refreshNodes(filterText) {
   wrap.innerHTML = "";
   const table = document.createElement("table");
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th></th><th>Name</th><th>Prefix</th><th>Seen</th><th>SNR</th><th>Route</th><th>Note</th></tr>";
+  const hrow = document.createElement("tr");
+  const cols = [
+    { label: "" },
+    { label: "Name",   key: "name",  defaultDir: "asc" },
+    { label: "Prefix" },
+    { label: "Seen",   key: "seen",  defaultDir: "desc" },
+    { label: "SNR",    key: "snr",   defaultDir: "desc" },
+    { label: "Route",  key: "route", defaultDir: "desc",
+      title: "Unique routes this node has used" },
+    { label: "Msgs",   key: "msgs",  defaultDir: "desc",
+      title: "Messages received in the last 24 h" },
+    { label: "Note" },
+  ];
+  cols.forEach((c) => {
+    const th = document.createElement("th");
+    if (!c.key) { th.textContent = c.label; hrow.appendChild(th); return; }
+    th.className = "sortable";
+    th.title = (c.title ? c.title + " - " : "") + "click to sort, click again to reverse";
+    th.textContent = c.label + (nodeSort.key === c.key
+      ? (nodeSort.dir === "asc" ? " \u25B2" : " \u25BC") : "");
+    if (nodeSort.key === c.key) th.classList.add("sorted");
+    th.addEventListener("click", () => {
+      if (nodeSort.key === c.key) {
+        nodeSort.dir = nodeSort.dir === "asc" ? "desc" : "asc";
+      } else {
+        nodeSort = { key: c.key, dir: c.defaultDir };
+      }
+      try { localStorage.setItem("nodeSort", JSON.stringify(nodeSort)); }
+      catch (e) { /* private mode - sorting still works this visit */ }
+      refreshNodes();   // reuses the current filter text
+    });
+    hrow.appendChild(th);
+  });
+  thead.appendChild(hrow);
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
   const nextRows = new Map();
@@ -790,7 +854,8 @@ async function refreshNodes(filterText) {
       "<td>" + ago(n.last_seen) + "</td>" +
       "<td>" + (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-") + "</td>" +
       "<td class='route-count' title='Unique routes this node has used - click for the route history'>" +
-      (n.route_count || 0) + "</td>";
+      (n.route_count || 0) + "</td>" +
+      "<td>" + (n.msg_count_24h || 0) + "</td>";
     // Inline note editor - saved on Enter/blur, never rebuilt (the periodic
     // refresh patches its value in place so typing is not interrupted).
     const tdNote = document.createElement("td");
@@ -847,7 +912,8 @@ async function refreshNodes(filterText) {
     tr.insertBefore(tdBlock, tr.firstChild);
     tr.addEventListener("click", () => openNodePopup(n.prefix, "traffic"));
     tbody.appendChild(tr);
-    // [0]=checkbox cell [1]=name [2]=prefix [3]=seen [4]=snr [5]=route [6]=note
+    // cells are snapshotted pre-checkbox-insert:
+    // [0]=name [1]=prefix [2]=seen [3]=snr [4]=route [5]=msgs [6]=note
     // The Route cell is its own click target: it opens the popup scrolled
     // to the route history (stopPropagation so the row handler stays out).
     const routeCell = cells[4];
@@ -858,7 +924,7 @@ async function refreshNodes(filterText) {
     });
     nextRows.set(n.prefix, {
       cb, nameCell: cells[0], seenCell: cells[2], snrCell: cells[3],
-      routeCell, noteInput,
+      routeCell, msgsCell: cells[5], noteInput,
     });
   });
   table.appendChild(tbody);
