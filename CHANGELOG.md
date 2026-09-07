@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.083 - 2026-09-07
+
+Docs: the branch workflow is now written down - feature branches are
+cut from DEV only, stay isolated from other feature branches, and flow
+back to DEV once approved (DEV > feature > DEV). Recorded in
+CONTRIBUTING.md and DEV-NOTES.md.
+
 ## 0.0.082 - 2026-09-07
 
 Developer mode: a checkbox in the update popup (off by default) widens

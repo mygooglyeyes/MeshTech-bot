@@ -15,6 +15,10 @@ when tested changes are released.
   only when the work is big, risky, long-running, or experimental.
   Merge it back into `DEV` when it's done and working, then delete the
   branch.
+- Feature branches stay **isolated from each other**: cut them from
+  `DEV` only, and never merge one feature branch into another. Work
+  flows `DEV` → feature → `DEV`, and `DEV` → `main` only when a batch
+  is approved for release.
 - Outside contributors: a branch in your fork plus a pull request to
   `DEV` already follows this policy — nothing extra to do.
 

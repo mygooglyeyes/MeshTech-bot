@@ -49,5 +49,9 @@ the next:
 - Each development branch keeps its running summary here, newest first.
 - Merges to main are always published as GitHub releases, with notes
   assembled from the changelog entries the batch contains.
+- Branch flow: new feature branches are cut from DEV only, stay
+  isolated from other feature branches, and merge back into DEV once
+  approved (DEV → feature → DEV). main receives only approved batches
+  from DEV.
 
 <!-- Older batches: see CHANGELOG.md - it is the complete record. -->
