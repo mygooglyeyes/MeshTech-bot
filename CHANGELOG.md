@@ -9,6 +9,17 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.066 - 2026-09-07
+
+Security-audit hardening for the new update checker (the first audit
+under the new audit-after-each-feature rule). Three defenses added,
+all small: a repository URL starting with a dash can no longer reach
+the git command line as an option (it falls back to the project
+default); every URL that reaches the browser is restricted to https
+(so a lookup can never turn into a javascript: link); and the Check
+now button gained a 10-second cooldown so it cannot be used to spam
+git processes. Three new tests (suite: 281).
+
 ## 0.0.065 - 2026-09-07
 
 Update checking, stage 1 (read-only): the bot compares its running

@@ -23,6 +23,7 @@ import time
 import urllib.request
 from typing import Any, Callable, Dict, Optional
 
+from core.config import DEFAULT_REPO_URL
 from core.version import version_stamp
 
 log = logging.getLogger("meshtech-bot.updatecheck")
@@ -31,6 +32,7 @@ LS_REMOTE_TIMEOUT = 20.0     # seconds before we give up on git ls-remote
 API_TIMEOUT = 10.0           # seconds for the GitHub releases lookup
 ERROR_CACHE_SECONDS = 300.0  # after a failed check, wait before re-trying
 LOOP_SLEEP_SECONDS = 1800.0  # how often the background loop re-evaluates
+FORCE_COOLDOWN_SECONDS = 10.0  # min gap between forced (Check now) runs
 
 _HEADS_PREFIX = "refs/heads/"
 
@@ -90,11 +92,24 @@ def _github_api_url(repo_url: str) -> Optional[str]:
                        1) + "/releases/latest"
 
 
+def https_only(url: Any) -> str:
+    """https URLs pass through untouched; anything else becomes empty.
+
+    Used for every URL that reaches the browser (it ends up in
+    ``link.href``), so a stray ``javascript:`` or ``data:`` value from a
+    lookup can never become a clickable link.
+    """
+    text = str(url or "")
+    return text if text.startswith("https://") else ""
+
+
 class UpdateChecker:
     """Cached, asynchronous update checks.  One instance per service."""
 
-    def __init__(self, settings_provider: Callable[[ ], Any]):
+    def __init__(self, settings_provider: Callable[[], Any],
+                 force_cooldown: float = FORCE_COOLDOWN_SECONDS):
         self._settings_provider = settings_provider
+        self._force_cooldown = force_cooldown
         self._last_result: Dict[str, Any] = {}
         self._last_attempt: float = 0.0
         self._task: Optional["asyncio.Task"] = None
@@ -117,8 +132,17 @@ class UpdateChecker:
         return max(0.25, hours) * 3600.0
 
     def repo_url(self) -> str:
+        """The repository to check, made safe for the git command line.
+
+        A URL starting with ``-`` would be parsed by git as an option
+        (e.g. ``--upload-pack``), so anything like that falls back to the
+        project default.  config.yaml validation already rejects these;
+        this is the belt to that suspenders.
+        """
         cfg = self._cfg()
         url = (getattr(cfg, "repo_url", "") or "").strip()
+        if not url or url.startswith("-"):
+            return DEFAULT_REPO_URL
         return url
 
     # ------------------------------------------------------------ lifecycle
@@ -159,6 +183,9 @@ class UpdateChecker:
                             and now - self._last_attempt < ERROR_CACHE_SECONDS)
             if fresh or recent_error:
                 return self.snapshot()
+        if force and self._last_result \
+                and now - self._last_attempt < self._force_cooldown:
+            return self.snapshot()      # cooldown: no git-process spamming
         self._last_attempt = now
         self._last_result = await self._run_check()
         return self.snapshot()
@@ -217,7 +244,8 @@ class UpdateChecker:
         rel = await self._latest_release()
         if rel:
             result["release"] = rel
-            result["release_url"] = rel.get("html_url", "")
+            # Only ever hand the browser an https link (see https_only).
+            result["release_url"] = https_only(rel.get("html_url", ""))
         web = repo_web_url(self.repo_url())
         result["commits_url"] = f"{web}/commits/{branch}" if branch else web
         return result
