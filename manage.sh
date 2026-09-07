@@ -178,6 +178,7 @@ do_configure() {
 do_update() {
   local runtime="$INSTALL_ROOT"
   local deploy="$runtime/deploy.sh"
+  local want_branch="${1:-}"
   # the clone belongs to the person at the keyboard (SUDO_USER when the
   # panel runs under sudo, otherwise the current user)
   local invoker="${SUDO_USER:-$(id -un)}"
@@ -195,7 +196,7 @@ do_update() {
   if [[ -f "$deploy" ]]; then
     log "Updating: pulling into $clone (as $invoker), applying to $runtime."
     if "$deploy" --clone "$clone" --runtime "$runtime" --user "$SERVICE_USER" \
-        --service "$SERVICE"; then
+        --service "$SERVICE" $([[ -n "$want_branch" ]] && echo "--branch $want_branch"); then
       log "Update complete: now running v$(version_line)."
     else
       warn "update failed - nothing was changed. Check the messages above."
@@ -273,8 +274,8 @@ ask_yes_no() {  # prompt, default(y|n)
 if [[ $# -gt 0 ]]; then
   case "$1" in
     update)
-      [[ "$(id -u)" -eq 0 ]] || { warn "update needs root - run:  sudo ./manage.sh update"; exit 1; }
-      do_update ;;
+      [[ "$(id -u)" -eq 0 ]] || { warn "update needs root - run:  sudo ./manage.sh update [branch]"; exit 1; }
+      do_update "${2:-}" ;;
     configure)
       [[ "$(id -u)" -eq 0 ]] || { warn "configure needs root - run:  sudo ./manage.sh configure"; exit 1; }
       do_configure ;;
@@ -284,12 +285,14 @@ if [[ $# -gt 0 ]]; then
     logs)
       journalctl -u "$SERVICE.service" -f --no-pager ;;
     -h|--help)
-      echo "Usage: sudo ./manage.sh [update|configure|restart|logs]"
+      echo "Usage: sudo ./manage.sh [update [branch]|configure|restart|logs]"
       echo "  With no arguments, opens the interactive menu."
-      echo "    update    pull the latest code and apply it (the one update command)"
-      echo "    configure edit the live config interactively"
-      echo "    restart   restart the service"
-      echo "    logs      follow the live log (Ctrl-C to stop)" ;;
+      echo "    update          pull + apply whatever branch the clone has checked out"
+      echo "    update DEV      switch the clone to DEV first, then pull + apply it"
+      echo "    update main     same, for the release branch (downgrades ask you to type yes)"
+      echo "    configure       edit the live config interactively"
+      echo "    restart         restart the service"
+      echo "    logs            follow the live log (Ctrl-C to stop)" ;;
     *)
       warn "unknown subcommand: $1 (try: sudo ./manage.sh help)"; exit 2 ;;
   esac
@@ -303,6 +306,7 @@ choose_option() {  # sets CHOICE; Esc/Cancel on the dialog means Quit
       --menu "status: $(status_line)   v$(version_line)" 0 0 0 \
         "1" "Configure the bot (repeater, channels, admins, hops)" \
         "2" "Update the bot software (pull + apply, the one update command)" \
+        "2d" "Update from a specific branch (DEV, main, feature/...)" \
         "3" "Uninstall (asks to back up your data first)" \
         "4" "Restart the service" \
         "5" "View live logs (Ctrl-C stops watching)" \
@@ -325,6 +329,11 @@ while true; do
   case "$CHOICE" in
     1) do_configure; paused ;;
     2) do_update;    paused ;;
+    2d)
+       read -r -p "  Branch to update from (e.g. DEV, main): " BR
+       BR="$(echo "$BR" | tr -d '[:space:]')"
+       [[ -n "$BR" ]] || { warn "no branch given"; paused; }
+       do_update "$BR"; paused ;;
     3) do_uninstall; paused ;;
     4) if systemctl restart "$SERVICE.service"; then
          log "Service restarted."

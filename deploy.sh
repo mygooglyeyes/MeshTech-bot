@@ -15,6 +15,8 @@
 #  Usage:
 #      ./deploy.sh                  # from your home clone (asks sudo once)
 #      sudo ./deploy.sh             # or under sudo (pull still runs as you)
+#      ./deploy.sh --branch DEV     # check the clone out onto a branch first,
+#                                   #   pull it, deploy it (e.g. DEV or main)
 #      ./deploy.sh --dry-run        # list what WOULD change in /opt (no sudo,
 #                                   #   no pull, nothing modified anywhere)
 #      deploy.sh --clone DIR --runtime DIR --no-restart
@@ -29,6 +31,8 @@ SERVICE="meshtech-bot"
 DO_RESTART=1
 DRY_RUN=0
 APPLY_TARBALL=""
+BRANCH=""
+ALLOW_DOWNGRADE=""
 
 log()  { printf '\033[1;32m[deploy]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[deploy]\033[0m WARNING: %s\n' "$*"; }
@@ -42,8 +46,10 @@ while [[ $# -gt 0 ]]; do
     --service)   SERVICE="$2"; shift 2 ;;
     --no-restart) DO_RESTART=0; shift ;;
     --dry-run|-n) DRY_RUN=1; shift ;;
+    --branch)    BRANCH="$2"; shift 2 ;;       # update a specific branch
+    --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;  # skip the typed-yes guard
     --apply)     APPLY_TARBALL="$2"; shift 2 ;;   # internal: sudo re-exec
-    -h|--help)   sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)   sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)"; exit 2 ;;
   esac
 done
@@ -136,6 +142,23 @@ if [[ ! -d "$CLONE/.git" ]]; then
 fi
 [[ -f "$CLONE/bot.py" ]] || die "$CLONE does not look like MeshTech-Bot"
 
+# ---- branch selection (optional): --branch checks the clone out first ------
+if [[ -n "$BRANCH" ]]; then
+  if ! "${PULL[@]:-git -C "$CLONE"}" rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1 \
+     && ! git -C "$CLONE" rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+    git -C "$CLONE" fetch origin --prune || die "could not reach GitHub to fetch branch '$BRANCH'"
+    git -C "$CLONE" rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1 \
+      || die "branch '$BRANCH' does not exist on GitHub (typo? try: DEV or main)"
+  fi
+  CUR="$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
+  if [[ "$CUR" != "$BRANCH" ]]; then
+    log "Switching the clone onto branch '$BRANCH' (was on '$CUR')..."
+    git -C "$CLONE" checkout "$BRANCH" 2>/dev/null \
+      || git -C "$CLONE" checkout -b "$BRANCH" "origin/$BRANCH" \
+      || die "could not check out branch '$BRANCH' (uncommitted changes in the clone?)"
+  fi
+fi
+
 if [[ "$(id -u)" -eq 0 && "$INVOKER" != "root" ]]; then
   PULL=(sudo -u "$INVOKER" git -C "$CLONE")
 else
@@ -158,6 +181,46 @@ else
   die "git pull failed (offline? upstream moved?) - nothing changed"
 fi
 
+# ---- say WHAT is being deployed: branch, commit, version -------------------
+DEP_BRANCH="$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
+DEP_VERSION="$(grep -oE '__version__ = "[^"]+"' "$CLONE/core/version.py" 2>/dev/null \
+  | head -1 | cut -d'"' -f2 || true)"
+RUN_VERSION=""
+RUN_STAMP=""
+if [[ -f "$RUNTIME/core/version.py" ]]; then
+  RUN_VERSION="$(grep -oE '__version__ = "[^"]+"' "$RUNTIME/core/version.py" 2>/dev/null \
+    | head -1 | cut -d'"' -f2 || true)"
+  RUN_STAMP="$(cat "$RUNTIME/.git-commit" 2>/dev/null || true)"
+fi
+log "Deploying branch $DEP_BRANCH @ ${STAMP:0:7} (v${DEP_VERSION:-unknown})"
+
+# ---- downgrade guard: deploying a version OLDER than the running one -------
+# needs a typed 'yes' (or --allow-downgrade for scripts). Compare the
+# dotted versions numerically component by component.
+ver_gt() {  # ver_gt A B -> true if A > B
+  [[ "$1" == "$2" ]] && return 1
+  local a1 a2 b1 b2
+  mapfile -t A < <(tr '.' '\n' <<< "$1"); mapfile -t B < <(tr '.' '\n' <<< "$2")
+  for i in 0 1 2; do
+    a1=${A[$i]:-0}; b1=${B[$i]:-0}
+    a1=$((10#$a1)); b1=$((10#$b1))
+    if (( a1 > b1 )); then return 0; fi
+    if (( a1 < b1 )); then return 1; fi
+  done
+  return 1
+}
+if [[ -n "$RUN_VERSION" && -n "${DEP_VERSION:-}" ]] \
+   && ver_gt "$RUN_VERSION" "$DEP_VERSION" \
+   && [[ "$RUN_STAMP" != "$STAMP" ]]; then
+  echo
+  warn "DOWNGRADE: the runtime is running v$RUN_VERSION but branch"
+  warn "  '$DEP_BRANCH' would install v$DEP_VERSION."
+  if [[ "$ALLOW_DOWNGRADE" != "1" && "$DRY_RUN" -ne 1 ]]; then
+    read -r -p "  Type 'yes' to go back to the older version: " REPLY
+    [[ "$REPLY" == "yes" ]] || die "downgrade refused - nothing was changed."
+  fi
+fi
+
 # ------------------------------------------------------------------------------
 # Dry-run: compare the freshly pulled clone against the runtime and list what
 # WOULD change.  Read-only: no sudo, nothing staged, nothing applied.
@@ -165,6 +228,7 @@ fi
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo
   log "DRY RUN - what would change in $RUNTIME (deploying $STAMP):"
+  log "Branch to deploy: $DEP_BRANCH (v${DEP_VERSION:-unknown})"
   if [[ ! -f "$RUNTIME/bot.py" ]]; then
     warn "  no runtime found at $RUNTIME - a deploy would create it fresh"
     exit 0

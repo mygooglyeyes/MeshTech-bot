@@ -74,6 +74,18 @@ the screen is full. On a smaller window the + ceiling lowers itself;
 resizing re-checks automatically. Packet/message tables keep the
 ch-unit no-wrap columns from 0.0.061.
 
+## 0.0.063 - 2026-09-06
+
+Branch-aware updates. `sudo ./manage.sh update <branch>` (or the new
+menu option 2d) switches the home clone onto the named branch first -
+`DEV` for testing builds, `main` for releases, any branch name works -
+then pulls, deploys, and prints exactly what it is deploying
+(`Deploying branch DEV @ 0a98711 (v0.0.062)`). A bare `update` still
+works but now also prints the branch, so a clone left on the wrong
+branch can never update silently again. Deploying a version OLDER than
+the one running (a downgrade) requires typing `yes`. Docs updated;
+no bot code changes.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a

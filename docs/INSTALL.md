@@ -287,6 +287,18 @@ That pulls the latest code into your clone (as you), applies it to
 be started from `/opt/meshtech-bot` — it always manages the runtime,
 never the folder it lives in.)
 
+Every update prints **which branch and version it is deploying**. To
+update from a specific branch, name it:
+
+- Development builds: `sudo ./manage.sh update DEV`
+- Release builds: `sudo ./manage.sh update main`
+- Menu: option **2d** asks for the branch.
+
+Without a branch, the update uses whatever the clone has checked out —
+check that with `git -C ~/meshtech-bot branch --show-current`. Going to
+an OLDER version than the one running (a downgrade, e.g. `main` right
+after a stretch of DEV testing) asks you to type `yes` first.
+
 Want to preview first? `./deploy.sh --dry-run` (from
 `~/meshtech-bot`) lists exactly which files would change in `/opt` —
 without changing anything.
