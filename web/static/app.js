@@ -205,6 +205,7 @@ function renderUpdatePopup(st) {
   cur.textContent = runTxt;
   rows.innerHTML = "";
   const branches = st.branches || {};
+  const rv = st.remote_versions || {};
   Object.keys(branches).sort().forEach((name) => {
     const isRunning = run.branch === name;
     const newer = isRunning && st.update_available;
@@ -212,6 +213,7 @@ function renderUpdatePopup(st) {
     row.className = "update-branch";
     row.innerHTML = '<span class="ub-name">' + esc(name) + "</span>" +
       '<span class="ub-sha">' + esc(String(branches[name]).slice(0, 7)) +
+      (rv[name] ? " (v" + esc(rv[name]) + ")" : "") +
       (newer ? " ← newer" : "") + "</span>" +
       (isRunning ? '<span class="ub-flag">running</span>' : "");
     rows.appendChild(row);
@@ -222,6 +224,9 @@ function renderUpdatePopup(st) {
   else if (st.update_available) {
     note.textContent = "A newer build is available on " +
       (st.newer_branch || "the repository") + ".";
+  } else if (st.version_check_ok === false) {
+    note.textContent = "Could not compare versions right now " +
+      "(GitHub unreachable?) - try Check now again.";
   } else note.textContent = "You are running the latest code on your branch.";
   if (st.checked) {
     const mins = Math.max(0, Math.round((st.age_seconds || 0) / 60));

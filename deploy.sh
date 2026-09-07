@@ -183,6 +183,11 @@ fi
 
 # ---- say WHAT is being deployed: branch, commit, version -------------------
 DEP_BRANCH="$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)"
+# Bake the branch into the stamp ("<sha> <branch>" on one line) so the
+# RUNNING bot knows its branch - the dashboard popup and the update
+# checker compare against the right branch. One line keeps the existing
+# stamp-equality check working unchanged.
+STAMP="$STAMP $DEP_BRANCH"
 DEP_VERSION="$(grep -oE '__version__ = "[^"]+"' "$CLONE/core/version.py" 2>/dev/null \
   | head -1 | cut -d'"' -f2 || true)"
 RUN_VERSION=""

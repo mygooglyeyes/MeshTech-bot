@@ -19,9 +19,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import urllib.request
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Iterable, Optional
 
 from core.config import DEFAULT_REPO_URL
 from core.version import version_stamp
@@ -90,6 +91,51 @@ def _github_api_url(repo_url: str) -> Optional[str]:
         return None  # custom git hosting: skip the releases lookup
     return web.replace("https://github.com/", "https://api.github.com/repos/",
                        1) + "/releases/latest"
+
+
+def _raw_version_url(repo_url: str, branch: str) -> Optional[str]:
+    web = repo_web_url(repo_url)
+    if not web.startswith("https://github.com/"):
+        return None
+    return (web.replace("https://github.com/",
+                        "https://raw.githubusercontent.com/", 1)
+            + f"/{branch}/core/version.py")
+
+
+def parse_version(text: str) -> str:
+    """Pull ``__version__ = "0.0.066"`` out of version.py file text."""
+    match = re.search(r'__version__\s*=\s*"([\d.]+)"', text or "")
+    return match.group(1) if match else ""
+
+
+def version_tuple(v: str) -> tuple:
+    """'0.0.066' -> (0, 0, 66) so versions compare numerically."""
+    text = str(v or "").strip()
+    if not text:
+        return ()
+    parts = []
+    for piece in text.split("."):
+        try:
+            parts.append(int(piece))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def newer_branch_from_versions(candidates: Iterable[str],
+                               remote_versions: Dict[str, str],
+                               running_version: str) -> str:
+    """First candidate branch whose remote VERSION exceeds ours.
+
+    Version numbers give direction; commit SHAs do not (a differing head
+    may be BEHIND us - DEV while we run an unmerged feature branch, for
+    example).  Unknown or unreadable versions never count as newer.
+    """
+    running = version_tuple(running_version)
+    for branch in candidates:
+        if version_tuple(remote_versions.get(branch, "")) > running:
+            return branch
+    return ""
 
 
 def https_only(url: Any) -> str:
@@ -199,7 +245,9 @@ class UpdateChecker:
             "checked_at": int(time.time()),
             "running": {"version": stamp.get("version") or "",
                         "commit": running_commit, "branch": running_branch},
-            "branches": {}, "update_available": False, "newer_branch": "",
+            "branches": {}, "remote_versions": {},
+            "version_check_ok": False,
+            "update_available": False, "newer_branch": "",
             "release": None, "release_url": "", "commits_url": "",
         }
         try:
@@ -231,13 +279,31 @@ class UpdateChecker:
         result["branches"] = parse_ls_remote(out.decode(errors="replace"))
         result["ok"] = True
 
-        # Compare against the running branch; fall back to DEV when the
-        # build stamp could not tell us the branch (containers etc.).
+        # Direction comes from VERSION NUMBERS, never from SHAs: a
+        # differing remote head might be BEHIND us (DEV while we run an
+        # unmerged feature branch, say).  Compare the running branch when
+        # the stamp knows it; otherwise look at DEV and main.
         branch = running_branch or "DEV"
         remote_sha = result["branches"].get(branch)
-        if is_newer_available(running_commit, remote_sha):
+        candidates = []
+        for name in ([running_branch] if running_branch else []) + ["DEV", "main"]:
+            if name in result["branches"] and name not in candidates:
+                candidates.append(name)
+        remote_versions = await self._branch_versions(candidates)
+        result["remote_versions"] = remote_versions
+        newer = newer_branch_from_versions(candidates, remote_versions,
+                                           stamp.get("version") or "")
+        if newer:
             result["update_available"] = True
-            result["newer_branch"] = branch
+            result["newer_branch"] = newer
+            result["version_check_ok"] = True
+        elif remote_versions:
+            result["version_check_ok"] = True
+        elif running_branch and is_newer_available(running_commit, remote_sha):
+            # Versions unreadable (offline to GitHub?) - same-branch SHA
+            # difference is still meaningful, so keep the old heuristic.
+            result["update_available"] = True
+            result["newer_branch"] = running_branch
 
         # Optional: newest published release, for the notes link.  Failure
         # here (offline, rate limit, non-GitHub hosting) is not fatal.
@@ -249,6 +315,35 @@ class UpdateChecker:
         web = repo_web_url(self.repo_url())
         result["commits_url"] = f"{web}/commits/{branch}" if branch else web
         return result
+
+    async def _branch_versions(self, branches) -> Dict[str, str]:
+        """Read each branch's version number from the raw file service.
+
+        raw.githubusercontent.com is a plain file fetch (no API rate
+        limit); any failure simply omits that branch, and the caller
+        decides what a missing version means.  Read-only, a few hundred
+        bytes per branch, once a day.
+        """
+        out: Dict[str, str] = {}
+
+        def _get(url: str) -> str:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "meshtech-bot"})
+            with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+
+        for branch in branches:
+            url = _raw_version_url(self.repo_url(), branch)
+            if not url:
+                continue
+            try:
+                version = parse_version(await asyncio.to_thread(_get, url))
+            except Exception as exc:
+                log.debug("version fetch failed for %s: %s", branch, exc)
+                continue
+            if version:
+                out[branch] = version
+        return out
 
     async def _latest_release(self) -> Optional[Dict[str, Any]]:
         api = _github_api_url(self.repo_url())

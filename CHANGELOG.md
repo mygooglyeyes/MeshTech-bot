@@ -9,6 +9,22 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.067 - 2026-09-07
+
+Fixes the false "newer build on DEV" warning Brett hit right after the
+first deploy of the update checker. The box runs a feature branch that
+is AHEAD of DEV, but the checker only compared commit SHAs - and a SHA
+difference cannot say which side is newer, so DEV (behind, at
+v0.0.064) was flagged as newer than the running v0.0.066. Three
+changes: comparisons now fetch each branch's real version number from
+its version.py (one small raw.githubusercontent.com read per branch)
+and only flag "newer" when the number is genuinely greater; the deploy
+stamp now carries the branch name ("sha branch") so the bot knows
+which branch it runs and the popup can say so; and the popup shows
+each branch's version number next to its commit, plus a clear message
+when versions cannot be read. Also found while testing: version.py
+now handles the two-line stamp format. 6 new tests (suite: 285).
+
 ## 0.0.066 - 2026-09-07
 
 Security-audit hardening for the new update checker (the first audit

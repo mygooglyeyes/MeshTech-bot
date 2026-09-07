@@ -32,7 +32,7 @@ _SHORT_LEN = 7
 # release candidate, and the dashboard chip + startup log make it obvious
 # which build a box is running).  The exact source of any running build is
 # still pinned by the commit stamp.
-__version__ = "0.0.066"
+__version__ = "0.0.067"
 
 
 def _short(sha: str) -> str:
@@ -129,10 +129,15 @@ def _resolve(root: Path) -> Dict[str, str]:
     baked = root / ".git-commit"
     try:
         if baked.is_file():
-            sha = baked.read_text(encoding="utf-8", errors="replace").strip()
-            if sha:
-                return {"version": __version__, "commit": _short(sha),
-                        "branch": "", "source": "file"}
+            # Format: "<sha>" (legacy deploys) or "<sha> <branch>" (the
+            # deploy script bakes both so the bot knows its branch).
+            parts = baked.read_text(encoding="utf-8",
+                                    errors="replace").split()
+            if parts:
+                return {"version": __version__,
+                        "commit": _short(parts[0]),
+                        "branch": parts[1] if len(parts) > 1 else "",
+                        "source": "file"}
     except OSError:
         pass
     stamp = _stamp_from_git(root)
