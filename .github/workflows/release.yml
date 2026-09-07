@@ -1,0 +1,34 @@
+# Publishes a GitHub Release automatically whenever a version tag is
+# pushed. The release notes come from the tag's own annotation - which
+# the release ritual writes from CHANGELOG.md - so the published notes
+# always match the changelog.
+#
+# This is what keeps the Releases page (and its "Latest" badge)
+# truthful: tags alone do NOT update the Releases page; this workflow
+# is the step that does.
+
+name: Publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish the release from the tag annotation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --notes-from-tag \
+          || gh release edit "$GITHUB_REF_NAME" --notes-from-tag

@@ -86,6 +86,14 @@ branch can never update silently again. Deploying a version OLDER than
 the one running (a downgrade) requires typing `yes`. Docs updated;
 no bot code changes.
 
+## 0.0.064 - 2026-09-07
+
+Releases now publish themselves: pushing a version tag to GitHub (step
+3 of the release ritual) triggers a small workflow that creates the
+GitHub Release from the tag's own annotation - so the Releases page
+and its Latest badge update with no manual step, and pushing to main
+without publishing becomes impossible to forget. No bot code changes.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a
