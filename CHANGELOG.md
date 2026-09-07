@@ -20,6 +20,15 @@ handlers/quake.py as the copy-me pattern; config.example.yaml documents
 !up / !down; and the changelog gained a batch summary of 0.0.027 →
 0.0.056. No code changes.
 
+## 0.0.058 - 2026-09-06
+
+Documentation restyled for easier following: every instruction section
+in the README, install guide, and feature guide is now a bulleted list
+- one instruction per bullet, with a step's sub-parts indented under it
+and each command in its own code block right where it belongs. Reference
+tables (settings, troubleshooting, test checklist) stay tabular. No code
+changes.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a

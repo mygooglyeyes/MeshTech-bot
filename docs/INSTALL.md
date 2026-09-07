@@ -32,13 +32,19 @@ The bot uses two locations, each with one job:
 | `~/meshtech-bot` | **Your clone** — all git activity happens here, as you |
 | `/opt/meshtech-bot` | **The runtime** — locked down; holds your `config.yaml` and `data/` |
 
-```bash
-sudo apt update
-sudo apt install -y git python3 python3-venv   # python3-venv not needed for Docker
+- Install the basics (skip `python3-venv` for Docker):
 
-git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot
-cd ~/meshtech-bot
-```
+  ```bash
+  sudo apt update
+  sudo apt install -y git python3 python3-venv
+  ```
+
+- Clone into your home folder and enter it:
+
+  ```bash
+  git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot
+  cd ~/meshtech-bot
+  ```
 
 Notes:
 
@@ -71,11 +77,14 @@ if it crashes.
 `config.yaml` is not shipped with the code (it would leak your passwords),
 so you make your own from the example:
 
-```bash
-cd /opt/meshtech-bot
-sudo cp config.example.yaml config.yaml
-sudo nano config.yaml    # save with Ctrl+O, exit with Ctrl+X
-```
+- Go to the runtime folder: `cd /opt/meshtech-bot`
+- Copy the example:
+
+  ```bash
+  sudo cp config.example.yaml config.yaml
+  ```
+
+- Edit it (`sudo nano config.yaml`; save with Ctrl+O, exit with Ctrl+X)
 
 Set at least these:
 
@@ -89,10 +98,11 @@ Set at least these:
 
 **A2. Run the installer**
 
-```bash
-cd /opt/meshtech-bot
-sudo ./install.sh
-```
+- From the runtime folder:
+
+  ```bash
+  sudo ./install.sh
+  ```
 
 The installer asks you to **choose a dashboard password** (type it twice).
 That is the only password you need to make up. The installer also offers
@@ -106,10 +116,11 @@ afterwards — the bot picks up the file on its own.
 
 **A3. Change the dashboard password later (one command)**
 
-```bash
-cd /opt/meshtech-bot
-sudo ./set-password.sh
-```
+- From the runtime folder:
+
+  ```bash
+  sudo ./set-password.sh
+  ```
 
 The password lives in its own file, not in `config.yaml`, so a leaked
 config can't unlock your dashboard. (Alternative: set the
@@ -117,19 +128,29 @@ config can't unlock your dashboard. (Alternative: set the
 
 **A4. Check it is running**
 
-```bash
-systemctl status meshtech-bot           # should say "active (running)"
-journalctl -u meshtech-bot -n 20        # recent logs; look for "Startup complete"
-curl -s http://127.0.0.1:8081/api/login # should reply {"auth_required":true}
-```
+- Service status — should say `active (running)`:
+
+  ```bash
+  systemctl status meshtech-bot
+  ```
+
+- Recent logs — look for `Startup complete`:
+
+  ```bash
+  journalctl -u meshtech-bot -n 20
+  ```
+
+- Dashboard reachable — should reply `{"auth_required":true}`:
+
+  ```bash
+  curl -s http://127.0.0.1:8081/api/login
+  ```
 
 Day-to-day commands:
 
-```bash
-sudo systemctl restart meshtech-bot
-sudo systemctl stop meshtech-bot
-sudo systemctl start meshtech-bot
-```
+- Restart: `sudo systemctl restart meshtech-bot`
+- Stop: `sudo systemctl stop meshtech-bot`
+- Start: `sudo systemctl start meshtech-bot`
 
 Tip: you do not have to remember any of those. `sudo /opt/meshtech-bot/manage.sh`
 opens a plain-text control panel that can configure the bot, update it,
@@ -159,52 +180,74 @@ Option A.
 
 Choose this if you already use Docker or want a self-contained install.
 
-**C1. Install Docker** (on Debian/Ubuntu/Raspberry Pi):
+**C1. Install Docker** (on Debian/Ubuntu/Raspberry Pi)
 
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# log out and back in so the group applies
-```
+- Run the installer script:
+
+  ```bash
+  curl -fsSL https://get.docker.com | sh
+  ```
+
+- Add yourself to the `docker` group:
+
+  ```bash
+  sudo usermod -aG docker $USER
+  ```
+
+- Log out and back in so the group applies
 
 **C2. Prepare config and data**
 
-```bash
-cd /opt/meshtech-bot
-cp config.example.yaml config.yaml
-sudo nano config.yaml                 # set host, port, channels, admin prefix
-mkdir -p data
-sudo chown 1001:1001 data             # the container runs as uid 1001
+- Go to the runtime folder and make your config:
 
-printf 'your-password\n' > data/.dashboard_password
-sudo chown 1001:1001 data/.dashboard_password
-sudo chmod 600 data/.dashboard_password
-```
+  ```bash
+  cd /opt/meshtech-bot
+  cp config.example.yaml config.yaml
+  sudo nano config.yaml        # set host, port, channels, admin prefix
+  ```
+
+- Prepare the data folder (the container runs as uid 1001):
+
+  ```bash
+  mkdir -p data
+  sudo chown 1001:1001 data
+  ```
+
+- Create the dashboard password file:
+
+  ```bash
+  printf 'your-password\n' > data/.dashboard_password
+  sudo chown 1001:1001 data/.dashboard_password
+  sudo chmod 600 data/.dashboard_password
+  ```
 
 **C3. Build and start**
 
-```bash
-docker compose up -d --build
-docker compose logs -f               # watch logs; Ctrl-C stops watching
-```
+- Build and start in the background:
+
+  ```bash
+  docker compose up -d --build
+  ```
+
+- Watch the logs (Ctrl-C stops watching, the bot keeps running):
+
+  ```bash
+  docker compose logs -f
+  ```
 
 Other useful commands:
 
-```bash
-docker compose down                  # stop
-docker compose up -d --build         # rebuild and restart
-```
+- Stop: `docker compose down`
+- Rebuild and restart: `docker compose up -d --build`
 
 ---
 
 ## 3. Test that it works
 
-**On the bot machine first:**
+**On the bot machine first**
 
-```bash
-systemctl status meshtech-bot
-journalctl -u meshtech-bot -n 20
-```
+- Check the service: `systemctl status meshtech-bot`
+- Recent logs: `journalctl -u meshtech-bot -n 20`
 
 **Then from your radio:**
 
@@ -235,6 +278,8 @@ cd ~/meshtech-bot
 sudo ./manage.sh update
 ```
 
+(That's the whole ritual — the panel finds everything else itself.)
+
 That pulls the latest code into your clone (as you), applies it to
 `/opt`, validates your config and restarts the service. Your
 `config.yaml`, `data/` and `.venv` are never touched. Prefer the menu?
@@ -260,28 +305,39 @@ With Docker, the update is `cd ~/meshtech-bot && git pull` and then
 
 Everything worth keeping is in two places:
 
-```bash
-sudo tar czf meshtech-backup-$(date +%F).tar.gz \
-  /opt/meshtech-bot/config.yaml /opt/meshtech-bot/data
-```
+- Back up config + data in one file:
 
-To restore, unpack the file over a fresh install before starting the service.
+  ```bash
+  sudo tar czf meshtech-backup-$(date +%F).tar.gz \
+    /opt/meshtech-bot/config.yaml /opt/meshtech-bot/data
+  ```
+
+- To restore: unpack the file over a fresh install before starting the service
 
 ---
 
 ## Uninstalling
 
-```bash
-cd /opt/meshtech-bot
-sudo ./install.sh --uninstall     # stops the service, keeps your data
-sudo rm -rf /opt/meshtech-bot     # delete the files too, when you are sure
-```
+- Stop the service, keep your data:
+
+  ```bash
+  cd /opt/meshtech-bot
+  sudo ./install.sh --uninstall
+  ```
+
+- Delete the files too, when you are sure:
+
+  ```bash
+  sudo rm -rf /opt/meshtech-bot
+  ```
 
 With Docker instead:
 
-```bash
-docker compose down && docker rmi meshtech-bot:latest
-```
+- Stop the container and remove the image:
+
+  ```bash
+  docker compose down && docker rmi meshtech-bot:latest
+  ```
 
 ---
 

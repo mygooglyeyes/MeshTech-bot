@@ -39,24 +39,47 @@ repeater is the bot's mesh identity.
 Pick one way — full step-by-step instructions live in
 **[docs/INSTALL.md](docs/INSTALL.md)**:
 
-1. **Native Linux (recommended)** — clone into your home folder, install
-   the runtime as a service that starts at boot:
-   `git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot`,
-   then `cd ~/meshtech-bot && sudo ./install.sh`. Updating later, from that
-   same folder: `sudo ./manage.sh update`.
-2. **Docker** — `cp config.example.yaml config.yaml`, edit it, then
-   `docker compose up -d --build`.
-3. **Quick local test** (any machine):
+- **Native Linux (recommended)**
+  - Clone into your home folder:
 
-   ```bash
-   git clone https://github.com/mygooglyeyes/MeshTech-bot.git && cd MeshTech-bot
-   python -m venv .venv
-   source .venv/bin/activate        # Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   cp config.example.yaml config.yaml
-   python bot.py --check
-   python bot.py
-   ```
+    ```bash
+    git clone https://github.com/mygooglyeyes/MeshTech-bot.git ~/meshtech-bot
+    ```
+
+  - Run the installer (it also creates the boot service):
+
+    ```bash
+    cd ~/meshtech-bot && sudo ./install.sh
+    ```
+
+  - Update later from that same folder: `sudo ./manage.sh update`
+
+- **Docker**
+  - Copy and edit the config: `cp config.example.yaml config.yaml`
+  - Build and start: `docker compose up -d --build`
+
+- **Quick local test** (any machine)
+  - Clone and enter the folder:
+
+    ```bash
+    git clone https://github.com/mygooglyeyes/MeshTech-bot.git && cd MeshTech-bot
+    ```
+
+  - Create a virtual environment and install:
+
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate        # Windows: .venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
+
+  - Copy the config, check it, run:
+
+    ```bash
+    cp config.example.yaml config.yaml
+    python bot.py --check
+    python bot.py
+    ```
 
 ## Configure
 
@@ -68,14 +91,14 @@ cp config.example.yaml config.yaml
 
 The settings that matter:
 
-1. `connection.host` — the IP of your openHop Repeater machine.
-2. `connection.port` — the companion `tcp_port` from the repeater's config (5000 by default).
-3. `channels` — the `#channel` names to listen on.
-4. `mesh.max_inbound_hops` — e.g. `3`: only answer messages that reached you within 3 hops.
-5. `mesh.channel_sender_name` — how much to trust the name embedded in channel
-   text (`"Name: message"`): `trust` (default), `smart`, or `off`.
-6. `dm.admin_pubkey_prefixes` — one line per admin node, using each node's 12-character hex prefix.
-7. `bot.answer_unknown_senders` — default `false`: stay silent when the sender can't be identified.
+- `connection.host` — the IP of your openHop Repeater machine.
+- `connection.port` — the companion `tcp_port` from the repeater's config (5000 by default).
+- `channels` — the `#channel` names to listen on.
+- `mesh.max_inbound_hops` — e.g. `3`: only answer messages that reached you within 3 hops.
+- `mesh.channel_sender_name` — how much to trust the name embedded in channel
+  text (`"Name: message"`): `trust` (default), `smart`, or `off`.
+- `dm.admin_pubkey_prefixes` — one line per admin node, using each node's 12-character hex prefix.
+- `bot.answer_unknown_senders` — default `false`: stay silent when the sender can't be identified.
 
 ## Set the dashboard password
 

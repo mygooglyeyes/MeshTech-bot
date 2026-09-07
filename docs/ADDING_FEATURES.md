@@ -41,12 +41,14 @@ is no other wiring.
 
 ### Step 1 — copy the template
 
-```bash
-cp handlers/_template.py handlers/joke.py
-```
+- Copy the template file to your new command's name:
 
-Files starting with an underscore (like `_template.py`) are templates and
-are never loaded as real features — only your renamed copy is.
+  ```bash
+  cp handlers/_template.py handlers/joke.py
+  ```
+
+- Files starting with an underscore (like `_template.py`) are templates
+  and are never loaded as real features — only your renamed copy is.
 
 ### Step 2 — what a "class" is
 
@@ -123,14 +125,14 @@ Return `None` to stay silent for a particular message.
 
 ### Step 6 — save, bump the version, reload
 
-Save the file, then open `core/version.py` and raise the version number
-by one (for example `0.0.005` becomes `0.0.006`). Every commit carries
-its own version number — see "Proposing a change" in `CONTRIBUTING.md`.
-
-Then restart the bot (`sudo systemctl restart meshtech-bot`) or send
-`!reload` from an admin node. The bot picks up the new handler — no
-other steps needed. The new number appears in the dashboard header and
-the startup log.
+- Save the file.
+- Open `core/version.py` and raise the version number by one (for
+  example `0.0.005` becomes `0.0.006`). Every commit carries its own
+  version number — see "Proposing a change" in `CONTRIBUTING.md`.
+- Restart the bot (`sudo systemctl restart meshtech-bot`) or send
+  `!reload` from an admin node. The bot picks up the new handler — no
+  other steps needed. The new number appears in the dashboard header
+  and the startup log.
 
 ### Rules of thumb
 
