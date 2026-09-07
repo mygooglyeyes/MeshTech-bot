@@ -188,6 +188,17 @@ do_update() {
   fi
   [[ -z "$uh" && -d "/home/$invoker" ]] && uh="/home/$invoker"
   local clone="${uh:-$HOME}/meshtech-bot"
+  # Self-heal: a past update run as root leaves root-owned files inside
+  # the user's clone (e.g. .git refs), which then breaks every later
+  # pull with "Permission denied". Under sudo we are allowed to fix it.
+  if [[ "$(id -u)" -eq 0 && -d "$clone" && -n "$invoker" \
+        && "$invoker" != "root" ]]; then
+    if [[ -n "$(find "$clone" ! -user "$invoker" -print -quit 2>/dev/null)" ]]; then
+      warn "found files in $clone not owned by $invoker (a past run as root?)"
+      chown -R "$invoker:" "$clone" \
+        && log "clone ownership repaired for $invoker."
+    fi
+  fi
   # prefer the clone's own deploy.sh (freshest update logic); the runtime's
   # copy is the fallback for panels started outside a clone
   if [[ -f "$clone/deploy.sh" ]]; then

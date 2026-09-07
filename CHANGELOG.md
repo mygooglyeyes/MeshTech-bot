@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.068 - 2026-09-07
+
+Self-healing update: a past update run as root can leave root-owned
+files inside the user's home clone (for example .git refs), and every
+later update then fails with "Permission denied". `manage.sh update`
+now checks the clone for files not owned by the person at the keyboard
+and repairs the ownership automatically before pulling, with a plain
+message about what it found and fixed. No bot code changed.
+
 ## 0.0.067 - 2026-09-07
 
 Fixes the false "newer build on DEV" warning Brett hit right after the
