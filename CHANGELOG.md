@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.072 - 2026-09-07
+
+Stale-tab cure: after a deploy, an open console tab used to keep
+running the old dashboard code until the user thought to refresh. The
+status poll now notices the running version changed, shows a small
+"Bot updated" banner, and reloads the page automatically a few
+seconds later (a Reload now button is there for the impatient).
+Logging in through the Unlock button also reloads into a fresh page.
+The popup's Running box now shows just the version number - branch
+and commit were redundant with the highlighted branch row.
+Dashboard-only.
+
 ## 0.0.071 - 2026-09-07
 
 Second popup readability pass from Brett's feedback: "Running" is now

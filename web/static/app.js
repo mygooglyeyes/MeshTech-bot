@@ -142,6 +142,25 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ------------------------------------------------------------------ reload
+// After a deploy the service restarts; an open tab keeps running the old
+// dashboard code (and browsers happily reconnect stale websockets). The
+// 3-second status poll notices the running version changed and reloads
+// the page automatically, so a user can never work in a stale console.
+let pageStamp = null;
+let reloadTimer = null;
+function noteServerStamp(st) {
+  const v = st.version || {};
+  const stamp = (v.version || "") + "@" + (v.commit || "");
+  if (!stamp || stamp === "@") return;
+  if (pageStamp === null) { pageStamp = stamp; return; }   // first sighting
+  if (stamp === pageStamp || reloadTimer) return;
+  // Deploy detected: banner first, automatic reload shortly after.
+  $("reload-banner").classList.remove("hidden");
+  reloadTimer = setTimeout(() => location.reload(), 8000);
+}
+$("btn-reload-now").addEventListener("click", () => location.reload());
+
 // ------------------------------------------------------------------ updates
 // Read-only: the bot checks the repo for newer code and this popup shows
 // the result. Nothing here downloads or restarts anything - the amber
@@ -201,11 +220,10 @@ function renderUpdatePopup(st) {
   const checked = $("update-checked");
   if (!st) { cur.textContent = "fetching update information…"; return; }
   const run = st.running || {};
-  let runTxt = "v" + (run.version || "?");
-  if (run.branch || run.commit) {
-    runTxt += " · " + (run.branch ? run.branch + "@" : "") + (run.commit || "?");
-  }
-  cur.textContent = runTxt;
+  // Branch + commit live on the highlighted branch row below; repeating
+  // them here is noise (Brett: "it is redundant with the information we
+  // are displaying").
+  cur.textContent = "v" + (run.version || "?");
   rows.innerHTML = "";
   const branches = st.branches || {};
   const rv = st.remote_versions || {};
@@ -281,11 +299,9 @@ $("login-form").addEventListener("submit", async (e) => {
     const data = await res.json();
     token = data.token || "";
     localStorage.setItem(TOKEN_KEY, token);
-    loggedOut = false;
-    showLogin(false);
-    refreshAll();
-    startPolling();  // timers are skipped at boot when login is required
-    connectWs();     // open the live feed - missed on first login (token was empty at boot)
+    // Fresh page, already authenticated via the saved token - this also
+    // guarantees the login never lands on stale dashboard code.
+    location.reload();
   } catch (err) {
     $("login-error").textContent = "Wrong password.";
   }
@@ -501,6 +517,7 @@ async function refreshStatus() {
   // Update-check state: amber chip + hint when the repo has newer code.
   vChip.classList.toggle("update-available", updateAvailable());
   if (updateAvailable()) vChip.title += "\nnewer build available - click for details";
+  noteServerStamp(st);
   $("chip-nodes").textContent = "nodes: " + (st.db ? st.db.nodes : "-");
   $("chip-msgs").textContent = "msgs: " + (st.db && st.db.messages ? st.db.messages : "-");
 

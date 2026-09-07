@@ -288,6 +288,16 @@ input, select {
 }
 .aboutbox .btn { align-self: flex-start; }
 
+/* Deploy banner: the status poll noticed the running version changed,
+   so this tab is stale. Shown briefly before the automatic reload. */
+.reload-banner {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 60; display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--ok);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 0.8125rem; color: var(--ok);
+}
+
 /* Software-updates popup: reuses the overlay + aboutbox shell. The
    running build is a header-style line; branch rows list the repo
    heads, with the running branch's whole box highlighted in the
