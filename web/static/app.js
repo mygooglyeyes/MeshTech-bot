@@ -223,19 +223,31 @@ function renderUpdatePopup(st) {
   const checked = $("update-checked");
   if (!st) { cur.textContent = "fetching update information…"; return; }
   const run = st.running || {};
-  // Branch + commit live on the highlighted branch row below; repeating
-  // them here is noise (Brett: "it is redundant with the information we
-  // are displaying").
-  cur.textContent = "v" + (run.version || "?");
+  // The branch IS shown here: the list below only covers DEV + main, so
+  // when the bot runs a feature branch this line is the only place the
+  // branch name appears.  The commit stays on the highlighted row.
+  cur.textContent = "v" + (run.version || "?") +
+    (run.branch ? " · " + run.branch : "");
   rows.innerHTML = "";
   const branches = st.branches || {};
   const rv = st.remote_versions || {};
-  // Running branch first, then alphabetical - the important row is on top.
+  // Running branch first (DEV + main alphabetical after it).  When the
+  // bot runs a branch that is not on the remote anymore - a merged
+  // feature branch, say - it still gets its own green row, built from
+  // the running stamp, so the popup ALWAYS shows where you are.
   const names = Object.keys(branches).sort((a, b) => {
     if (a === run.branch) return -1;
     if (b === run.branch) return 1;
     return a < b ? -1 : a > b ? 1 : 0;
   });
+  if (run.branch && !(run.branch in branches)) {
+    const row = document.createElement("div");
+    row.className = "update-branch running";
+    row.innerHTML = '<span class="ub-name">' + esc(run.branch) + "</span>" +
+      '<span class="ub-sha">' + esc(String(run.commit || "?")) +
+      (run.version ? " (v" + esc(run.version) + ")" : "") + "</span>";
+    rows.appendChild(row);
+  }
   names.forEach((name) => {
     const isRunning = run.branch === name;
     const newer = isRunning && st.update_available;

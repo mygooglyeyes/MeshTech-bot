@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.074 - 2026-09-07
+
+Update popup: the bot's own branch is always visible. When it runs a
+branch outside the DEV/main switcher - a feature branch being tested -
+that branch now gets its own green-highlighted row at the top of the
+list (built from the running stamp), and the RUNNING line shows the
+branch name again. Previously such a build showed no highlight at all,
+which read as "nothing selected". Dashboard-only.
+
 ## 0.0.073 - 2026-09-07
 
 Node-detail popup (chunk 2 of the analysis work): clicking a node's
