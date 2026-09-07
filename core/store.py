@@ -16,7 +16,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .airtime import airtime_from_settings
 from .models import MsgRecord
+
+import logging
+
+log = logging.getLogger("meshtech-bot.store")
 
 # Versioned migrations: (version, [sql statements]).
 _MIGRATIONS: List[tuple] = [
@@ -115,6 +120,37 @@ _MIGRATIONS: List[tuple] = [
         # Free-text annotation for a station, edited from the dashboard node
         # table ("note") - survives bot restarts like any other node data.
         "ALTER TABLE nodes ADD COLUMN note TEXT",
+    ]),
+    (6, [
+        # Route history per node: one row per DISTINCT route a node's
+        # traffic has been seen taking, with a use count and first/last
+        # observation.  route_key is the path hex (relay hashes joined);
+        # empty string means the direct (0-hop) case.
+        """
+        CREATE TABLE IF NOT EXISTS node_routes (
+            node_prefix TEXT NOT NULL,
+            route_key   TEXT NOT NULL,
+            hops        INTEGER,
+            uses        INTEGER NOT NULL DEFAULT 1,
+            first_seen  REAL NOT NULL,
+            last_seen   REAL NOT NULL,
+            PRIMARY KEY (node_prefix, route_key)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_node_routes_seen ON node_routes(node_prefix, last_seen)",
+        # Per-node per-day traffic rollup for the trend popup: packet count
+        # and estimated airtime (ms) bucketed by UTC day.  Small by design:
+        # one row per node per day, however chatty the mesh is.
+        """
+        CREATE TABLE IF NOT EXISTS node_traffic (
+            node_prefix TEXT NOT NULL,
+            day         TEXT NOT NULL,
+            packets     INTEGER NOT NULL DEFAULT 0,
+            airtime_ms  REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (node_prefix, day)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_node_traffic_day ON node_traffic(day)",
     ]),
 ]
 
@@ -737,6 +773,244 @@ class Store:
                 "DELETE FROM packets WHERE id <= (SELECT MAX(id) FROM packets) - ?",
                 (int(max_rows),),
             )
+
+    # ------------------------------------------------ node routes / traffic
+
+    def record_route_use(self, prefix: str, route_key: str,
+                         hops: Optional[int] = None,
+                         ts: Optional[float] = None) -> None:
+        """One observation of a node using a route.
+
+        Idempotent upsert: the first sighting creates the row, later ones
+        bump the use count and last-seen.  ``route_key`` is the path hex
+        (relay hashes joined) or the empty string for a direct (0-hop)
+        sighting.  Never raises - statistics must not break the bot.
+        """
+        prefix = (prefix or "").lower()
+        if not prefix:
+            return
+        now = ts if ts is not None else _now()
+        try:
+            with self._conn:
+                self._conn.execute(
+                    "INSERT INTO node_routes (node_prefix, route_key, hops, uses, "
+                    "first_seen, last_seen) VALUES (?,?,?,?,?,?) "
+                    "ON CONFLICT(node_prefix, route_key) DO UPDATE SET "
+                    "uses = uses + 1, "
+                    "last_seen = MAX(last_seen, excluded.last_seen), "
+                    "first_seen = MIN(first_seen, excluded.first_seen), "
+                    "hops = COALESCE(excluded.hops, hops)",
+                    (prefix, route_key or "", hops, 1, now, now),
+                )
+        except Exception as exc:
+            log.debug("record_route_use failed for %s: %s", prefix, exc)
+
+    def route_counts(self) -> Dict[str, int]:
+        """Unique-route count per node prefix - one query for the whole
+        Nodes card column."""
+        rows = self._conn.execute(
+            "SELECT node_prefix, COUNT(*) AS n FROM node_routes GROUP BY node_prefix"
+        ).fetchall()
+        return {r["node_prefix"]: r["n"] for r in rows}
+
+    def node_routes_detail(self, prefix: str,
+                           limit: int = 50) -> List[Dict[str, Any]]:
+        """A node's distinct routes, busiest first (uses, then recency)."""
+        return [dict(r) for r in self._conn.execute(
+            "SELECT route_key, hops, uses, first_seen, last_seen "
+            "FROM node_routes WHERE node_prefix = ? "
+            "ORDER BY uses DESC, last_seen DESC LIMIT ?",
+            ((prefix or "").lower(), int(limit)),
+        ).fetchall()]
+
+    def record_traffic(self, prefix: str, payload_bytes: int,
+                       ts: Optional[float] = None,
+                       radio: Optional[object] = None) -> None:
+        """One attributed inbound packet: bump the node's daily rollup.
+
+        ``payload_bytes`` feeds the estimated-airtime formula; the day
+        bucket is UTC (stable across reboots and DST).
+        """
+        prefix = (prefix or "").lower()
+        if not prefix:
+            return
+        now = ts if ts is not None else _now()
+        day = time.strftime("%Y-%m-%d", time.gmtime(now))
+        ms = airtime_from_settings(payload_bytes, radio)
+        try:
+            with self._conn:
+                self._conn.execute(
+                    "INSERT INTO node_traffic (node_prefix, day, packets, airtime_ms) "
+                    "VALUES (?,?,1,?) ON CONFLICT(node_prefix, day) DO UPDATE SET "
+                    "packets = packets + 1, airtime_ms = airtime_ms + excluded.airtime_ms",
+                    (prefix, day, ms),
+                )
+        except Exception as exc:
+            log.debug("record_traffic failed for %s: %s", prefix, exc)
+
+    def traffic_trend(self, prefix: str, days: int = 30,
+                      hours: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Buckets for the trend chart, oldest first, zero-filled.
+
+        ``hours`` (e.g. 24) switches to hourly buckets; otherwise daily
+        buckets for ``days`` days.
+        """
+        prefix = (prefix or "").lower()
+        now = time.time()
+        if hours:
+            # Hourly buckets come from the messages table (real timestamps,
+            # and it stores both the pubkey prefix and the embedded name, so
+            # name-attributed channel traffic counts too).  Airtime per hour
+            # is not stored per message, so hours mode reports counts only.
+            n = max(1, min(int(hours), 72))
+            start = now - n * 3600
+            node = self.get_node(prefix)
+            name = (node or {}).get("name") or ""
+            rows = self._conn.execute(
+                "SELECT CAST(recv_ts/3600 AS INTEGER)*3600 AS bucket, "
+                "COUNT(*) AS packets FROM messages "
+                "WHERE direction='in' AND (sender_prefix = ? "
+                "OR (? != '' AND sender_name = ?)) AND recv_ts >= ? "
+                "GROUP BY bucket",
+                (prefix, name, name, start),
+            ).fetchall()
+            by_bucket = {r["bucket"]: r["packets"] for r in rows}
+            series = []
+            for i in range(n - 1, -1, -1):
+                b = int((now - i * 3600) // 3600) * 3600
+                series.append({"bucket": b, "packets": by_bucket.get(b, 0),
+                               "airtime_ms": None})
+            return series
+        n = max(1, min(int(days), 90))
+        rows = self._conn.execute(
+            "SELECT day, packets, airtime_ms FROM node_traffic "
+            "WHERE node_prefix = ? AND day >= ? ORDER BY day",
+            (prefix, time.strftime("%Y-%m-%d", time.gmtime(now - n * 86400))),
+        ).fetchall()
+        by_day = {r["day"]: dict(r) for r in rows}
+        series = []
+        for i in range(n - 1, -1, -1):
+            day = time.strftime("%Y-%m-%d", time.gmtime(now - i * 86400))
+            r = by_day.get(day)
+            series.append({"day": day, "packets": r["packets"] if r else 0,
+                           "airtime_ms": round(r["airtime_ms"], 1) if r else 0.0})
+        return series
+
+    def traffic_totals(self, prefix: str, days: int = 30) -> Dict[str, float]:
+        """Totals for one node over the trailing window."""
+        cutoff = time.strftime("%Y-%m-%d",
+                               time.gmtime(time.time() - max(1, days) * 86400))
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(packets),0) AS packets, "
+            "COALESCE(SUM(airtime_ms),0.0) AS airtime_ms FROM node_traffic "
+            "WHERE node_prefix = ? AND day >= ?",
+            ((prefix or "").lower(), cutoff),
+        ).fetchone()
+        return {"packets": row["packets"], "airtime_ms": round(row["airtime_ms"], 1)}
+
+    def mesh_traffic_totals(self, days: int = 30) -> Dict[str, float]:
+        """All-node totals for the same window - the denominator for a
+        node's 'share of traffic' percentage."""
+        cutoff = time.strftime("%Y-%m-%d",
+                               time.gmtime(time.time() - max(1, days) * 86400))
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(packets),0) AS packets, "
+            "COALESCE(SUM(airtime_ms),0.0) AS airtime_ms FROM node_traffic "
+            "WHERE day >= ?",
+            (cutoff,),
+        ).fetchone()
+        return {"packets": row["packets"], "airtime_ms": round(row["airtime_ms"], 1)}
+
+    # ------------------------------------------------------------ backfill
+
+    def backfill_node_routes(self) -> int:
+        """One-time: seed node_routes from the legacy routes table.
+
+        The routes table stored every CHANGE in a node's contact-sync
+        snapshot; each row becomes one observation of that route.  Use
+        counts therefore start at their recorded minimum and grow with
+        live traffic from deploy day.  Guarded by a meta key so it runs
+        exactly once.
+        """
+        if self._meta_get("node_routes_backfilled"):
+            return 0
+        rows = self._conn.execute(
+            "SELECT node_prefix, summary, hops, observed_at FROM routes "
+            "WHERE summary IS NOT NULL AND summary != ''"
+        ).fetchall()
+        now = _now()
+        with self._conn:
+            for r in rows:
+                self._conn.execute(
+                    "INSERT INTO node_routes (node_prefix, route_key, hops, uses, "
+                    "first_seen, last_seen) VALUES (?,?,?,1,?,?) "
+                    "ON CONFLICT(node_prefix, route_key) DO UPDATE SET "
+                    "uses = uses + 1, "
+                    "last_seen = MAX(last_seen, excluded.last_seen), "
+                    "first_seen = MIN(first_seen, excluded.first_seen)",
+                    (r["node_prefix"].lower(), r["summary"], r["hops"],
+                     r["observed_at"], r["observed_at"]),
+                )
+            self._meta_set("node_routes_backfilled", str(now))
+        log.info("node_routes backfilled: %d snapshot(s) from the routes table", len(rows))
+        return len(rows)
+
+    def backfill_node_traffic(self, radio: Optional[object] = None) -> int:
+        """One-time: seed node_traffic from the messages table.
+
+        Every inbound message attributed to a node (DM: pubkey prefix,
+        solid; channel: embedded name resolved to a registry node) adds
+        one packet to its UTC day, with estimated airtime from the text
+        length.  Guarded by a meta key so it runs exactly once.
+        """
+        if self._meta_get("node_traffic_backfilled"):
+            return 0
+        rows = self._conn.execute(
+            "SELECT sender_prefix, sender_name, recv_ts, text FROM messages "
+            "WHERE direction = 'in'"
+        ).fetchall()
+        # Registry name -> prefix, so channel traffic attributes too.
+        name_to_prefix = {
+            (r["name"] or "").strip(): r["prefix"]
+            for r in self._conn.execute(
+                "SELECT prefix, name FROM nodes WHERE name IS NOT NULL")
+            if (r["name"] or "").strip()
+        }
+        per_day: Dict[tuple, list] = {}
+        for r in rows:
+            prefix = (r["sender_prefix"] or "").lower() \
+                or name_to_prefix.get((r["sender_name"] or "").strip(), "").lower()
+            if not prefix:
+                continue                      # unattributable - skip honestly
+            day = time.strftime("%Y-%m-%d", time.gmtime(r["recv_ts"]))
+            per_day.setdefault((prefix, day), []).append(r["text"] or "")
+        with self._conn:
+            for (prefix, day), texts in per_day.items():
+                ms = sum(airtime_from_settings(len(t.encode("utf-8", "ignore")) + 8,
+                                               radio)
+                         for t in texts)
+                self._conn.execute(
+                    "INSERT INTO node_traffic (node_prefix, day, packets, airtime_ms) "
+                    "VALUES (?,?,?,?) ON CONFLICT(node_prefix, day) DO UPDATE SET "
+                    "packets = packets + excluded.packets, "
+                    "airtime_ms = airtime_ms + excluded.airtime_ms",
+                    (prefix, day, len(texts), round(ms, 1)),
+                )
+            self._meta_set("node_traffic_backfilled", str(_now()))
+        log.info("node_traffic backfilled: %d node-day(s) from the messages table",
+                 len(per_day))
+        return len(per_day)
+
+    def _meta_get(self, key: str) -> Optional[str]:
+        row = self._conn.execute(
+            "SELECT v FROM meta WHERE k = ?", (key,)).fetchone()
+        return row["v"] if row else None
+
+    def _meta_set(self, key: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT INTO meta (k, v) VALUES (?,?) "
+            "ON CONFLICT(k) DO UPDATE SET v = excluded.v", (key, value))
+        self._conn.commit()
 
     def recent_packets(self, layer: Optional[str] = None,
                        limit: int = 50) -> List[Dict[str, Any]]:

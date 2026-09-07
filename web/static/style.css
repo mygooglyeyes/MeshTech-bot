@@ -325,6 +325,45 @@ input, select {
 .update-checked { font-size: 0.6875rem; color: var(--muted); }
 a.btn { text-decoration: none; display: inline-block; }
 
+/* Node-detail popup: Traffic on top (window switcher + bar chart),
+   route history below.  Route rows are chip chains: the node (source)
+   on the left, one chip per relay, the bot on the right. */
+.win-switch { margin-left: 8px; }
+.win-switch .btn.active { border-color: var(--accent); color: var(--accent); }
+.node-chart {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 90px; padding: 6px 4px 0;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  overflow-x: auto;
+}
+.chart-col {
+  flex: 1 0 auto; width: 10px; min-width: 6px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  align-items: center; height: 100%;
+}
+.chart-bar {
+  width: 100%; min-height: 2px;
+  background: var(--accent); border-radius: 2px 2px 0 0;
+}
+.chart-label { font-size: 0.5625rem; color: var(--muted); margin-top: 2px; }
+.route-row {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 6px 8px; margin-bottom: 4px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+}
+.route-row.stale { opacity: 0.45; }
+.route-chip {
+  border: 1px solid var(--accent); border-radius: 6px;
+  padding: 1px 6px; font-size: 0.75rem; color: var(--text);
+  background: var(--panel);
+}
+.route-meta {
+  margin-left: auto; font-size: 0.6875rem; color: var(--muted);
+  white-space: nowrap;
+}
+.route-count { cursor: pointer; }
+.route-count:hover { color: var(--accent); }
+
 .muted-note { color: var(--warn); font-weight: 600; }
 em { color: var(--muted); }
 

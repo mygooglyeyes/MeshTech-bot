@@ -92,6 +92,13 @@ async def _run(settings: Settings) -> None:
     from core.store import Store
 
     store = Store(settings.storage.db_path)
+    # One-time statistics backfills (each guarded by a meta key inside the
+    # store, so they run exactly once per database ever).
+    try:
+        store.backfill_node_routes()
+        store.backfill_node_traffic(radio=settings.radio)
+    except Exception as exc:
+        log.warning("statistics backfill failed (non-fatal): %s", exc)
     feed = FeedHub()
     service = BotService(settings, store, feed)
 

@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.073 - 2026-09-07
+
+Node-detail popup (chunk 2 of the analysis work): clicking a node's
+row - or its Route count - opens a popup with Traffic trends on top
+(a 24 h / 7 d / 30 d bar chart, the node's share of all packets and
+estimated airtime) and its route history below (one row per distinct
+route: the node on the left, one rounded chip per relay hop, the bot
+on the right, with use counts and last-seen; routes unused for a week
+dim). New `radio:` config section holds the repeater's LoRa settings
+so the airtime estimate matches your setup. Two small tables
+(node_routes, node_traffic) are backfilled from the existing route
+snapshots and message history on first start, so the popup has data on
+day one. Route paths for messages come from the raw radio log - keep
+raw capture on for the richest route data; advert paths arrive either
+way. The old inline node drill-down panel is replaced by this popup.
+Security-audited (parameterized SQL, auth-gated endpoints, escaped
+UI). 20 new tests (suite: 302).
+
 ## 0.0.072 - 2026-09-07
 
 Stale-tab cure: after a deploy, an open console tab used to keep

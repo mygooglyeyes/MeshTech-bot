@@ -104,7 +104,27 @@
       <h2>Nodes</h2>
       <input id="node-filter" type="search" placeholder="filter by name or prefix…">
       <div id="node-list"><em>loading…</em></div>
-      <div id="node-detail" class="detail hidden"></div>
+
+  <div id="node-overlay" class="overlay hidden">
+    <div class="aboutbox" role="dialog" aria-label="Node detail">
+      <h2 id="node-pop-title">Node</h2>
+      <div id="node-pop-sub" class="update-checked"></div>
+      <div class="update-subhead">Traffic
+        <span id="node-pop-windows" class="win-switch">
+          <button class="btn small" data-w="24h">24 h</button>
+          <button class="btn small" data-w="7d">7 d</button>
+          <button class="btn small" data-w="30d">30 d</button>
+        </span>
+      </div>
+      <div id="node-pop-chart" class="node-chart"></div>
+      <div id="node-pop-stats" class="update-note"></div>
+      <div class="update-subhead">Routes</div>
+      <div id="node-pop-routes"></div>
+      <div class="about-actions">
+        <button class="btn small" id="btn-node-pop-close">Close</button>
+      </div>
+    </div>
+  </div>
     </section>
 
     <section class="card collapsible" id="card-packets">

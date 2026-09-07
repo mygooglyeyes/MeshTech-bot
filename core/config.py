@@ -186,6 +186,21 @@ class WebCfg:
 
 
 @dataclass
+class RadioCfg:
+    """The node's LoRa radio settings - used only for the estimated
+    airtime statistics (how much of the air a node's traffic occupies).
+    These do NOT configure the radio; they must MATCH what the openHop
+    repeater is already using.  Defaults match the reference setup:
+    SF7, 62.5 kHz, 4/5, 32-symbol preamble.
+    """
+    spreading_factor: int = 7
+    bandwidth_khz: float = 62.5
+    # Coding rate as the LoRa index: 1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8.
+    coding_rate_index: int = 1
+    preamble_symbols: int = 32
+
+
+@dataclass
 class UpdatesCfg:
     """Read-only 'is there newer code?' checking for the dashboard.
 
@@ -223,9 +238,10 @@ class Settings:
     web: WebCfg
     logging: LogCfg
     modules: ModulesCfg
-    # Default keeps direct Settings(...) constructions (tests, tooling)
+    # Defaults keep direct Settings(...) constructions (tests, tooling)
     # working; load() always passes the parsed value explicitly.
     updates: UpdatesCfg = field(default_factory=UpdatesCfg)
+    radio: RadioCfg = field(default_factory=RadioCfg)
     config_path: str = "config.yaml"
     warnings: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -514,6 +530,27 @@ def load(config_path: str = "config.yaml") -> Settings:
             )
     modules = ModulesCfg(entries=module_entries)
 
+    # --- radio (must match the openHop repeater; used for estimated airtime) ---
+    radio_raw = _section(raw, "radio", errors)
+    sf = _int(radio_raw, "spreading_factor", 7, errors, "radio.spreading_factor")
+    if sf < 5 or sf > 12:
+        errors.append("radio.spreading_factor must be between 5 and 12 (found '" + str(sf) + "').")
+    bw = _float(radio_raw, "bandwidth_khz", 62.5, errors, "radio.bandwidth_khz")
+    if bw <= 0:
+        errors.append("radio.bandwidth_khz must be a positive number.")
+    cr = _int(radio_raw, "coding_rate_index", 1, errors, "radio.coding_rate_index")
+    if cr < 1 or cr > 4:
+        errors.append("radio.coding_rate_index must be 1 (4/5), 2 (4/6), 3 (4/7) or 4 (4/8).")
+    preamble = _int(radio_raw, "preamble_symbols", 32, errors, "radio.preamble_symbols")
+    if preamble < 6:
+        errors.append("radio.preamble_symbols must be at least 6.")
+    radio = RadioCfg(
+        spreading_factor=sf,
+        bandwidth_khz=bw,
+        coding_rate_index=cr,
+        preamble_symbols=preamble,
+    )
+
     # --- updates (optional; read-only version check for the dashboard) ---
     upd_raw = _section(raw, "updates", errors)
     check_hours = _float(upd_raw, "check_hours", 24.0, errors, "updates.check_hours")
@@ -565,6 +602,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         logging=log_cfg,
         modules=modules,
         updates=updates,
+        radio=radio,
         config_path=config_path,
         warnings=warnings,
         raw=raw,

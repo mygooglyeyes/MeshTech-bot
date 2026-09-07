@@ -316,6 +316,14 @@ class Router:
             sender_ts=msg.sender_ts, recv_ts=msg.recv_ts,
             hops=msg.hops, snr=msg.snr, sender_name=msg.sender_name,
         ))
+        # -- per-node statistics: traffic rollup + route history ----------
+        # Attribution matches the block list's trust level: DMs carry the
+        # pubkey prefix (solid); channel senders are the embedded name
+        # resolved to a registry node, skipped when unresolvable.
+        try:
+            self._record_node_stats(msg)
+        except Exception as exc:               # stats must never break traffic
+            log.debug("node-stats recording failed: %s", exc)
         self.service.feed.publish("message_in", {
             "kind": msg.kind,
             "channel": msg.channel_name,
@@ -532,6 +540,31 @@ class Router:
             raise
 
     # ------------------------------------------------------------------ guards
+
+    def _record_node_stats(self, msg: InboundMessage) -> None:
+        """Feed the node-detail popup: daily traffic rollup + route use.
+
+        Route source, best available: the raw radio log's relay chain for
+        this message (when raw capture has the frame), else hops-only for
+        direct traffic.  See core/store.record_route_use.
+        """
+        store = self.service.store
+        prefix = msg.sender_prefix
+        if not prefix and msg.sender_name:
+            node = store.find_node(msg.sender_name)
+            prefix = node["prefix"] if node else None
+        if not prefix:
+            return                              # unattributable - skip
+        store.record_traffic(
+            prefix, len((msg.text or "").encode("utf-8", "ignore")) + 8,
+            msg.recv_ts, radio=self.service.settings.radio)
+        hops = msg.hops
+        route_key = ""                          # direct (0-hop) route
+        if hops:
+            copies = store.rxlog_copies(msg.recv_ts, hops)
+            if copies:
+                route_key = copies[0].get("path") or ""
+        store.record_route_use(prefix, route_key, hops, msg.recv_ts)
 
     def _channel_sender_identity(self, msg: InboundMessage) -> Optional[str]:
         """Best-effort stable identity of a channel sender, for per-sender

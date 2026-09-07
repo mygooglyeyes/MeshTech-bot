@@ -25,6 +25,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .auth import Auth, LoginThrottle
+from core.airtime import radio_summary
 from core.version import version_stamp
 
 log = logging.getLogger("meshtech-bot.web")
@@ -129,8 +130,10 @@ def build_app(service) -> FastAPI:
     async def nodes(limit: int = 100):
         rows = store.list_nodes(limit=max(1, min(limit, 500)))
         blocked = store.blocked_prefixes()
+        route_counts = store.route_counts()
         for row in rows:
             row["blocked"] = row["prefix"] in blocked
+            row["route_count"] = route_counts.get(row["prefix"], 0)
         return {"nodes": rows}
 
     @app.get("/api/nodes/{key}", dependencies=[Depends(require_auth)])
@@ -139,13 +142,48 @@ def build_app(service) -> FastAPI:
         if node is None:
             return json_error("Node not found", 404)
         prefix = node["prefix"]
+        routes_detail = store.node_routes_detail(prefix)
         return {
             "node": node,
             "blocked": store.is_blocked(prefix),
             "routes": store.route_history(prefix, limit=12),
+            "routes_detail": routes_detail,
+            "route_count": len(routes_detail),
             "link_history": store.link_history(prefix, limit=30),
             "stats": store.propagation_stats(prefix=prefix),
             "recent_messages": _messages_from_node(store, prefix),
+            "radio": radio_summary(service.settings.radio),
+        }
+
+    @app.get("/api/nodes/{key}/traffic", dependencies=[Depends(require_auth)])
+    async def node_traffic(key: str, days: int = 30, hours: Optional[int] = None):
+        """Trend + totals for the node-detail popup's Traffic section.
+
+        ``hours=24`` switches to hourly buckets (packet counts from the
+        messages table); otherwise daily buckets for ``days`` days with
+        estimated airtime from the node_traffic rollup.
+        """
+        node = store.find_node(key)
+        if node is None:
+            return json_error("Node not found", 404)
+        prefix = node["prefix"]
+        window_days = max(1, min(int(days or 30), 90))
+        trend = store.traffic_trend(prefix, days=window_days, hours=hours)
+        totals = store.traffic_totals(prefix, days=window_days)
+        mesh = store.mesh_traffic_totals(days=window_days)
+        share = (totals["packets"] / mesh["packets"] * 100.0) \
+            if mesh["packets"] else 0.0
+        airtime_share = (totals["airtime_ms"] / mesh["airtime_ms"] * 100.0) \
+            if mesh["airtime_ms"] else 0.0
+        return {
+            "node": node["name"] or prefix,
+            "window": {"days": None if hours else window_days, "hours": hours},
+            "trend": trend,
+            "totals": totals,
+            "mesh_totals": mesh,
+            "share_packets_pct": round(share, 1),
+            "share_airtime_pct": round(airtime_share, 1),
+            "radio": radio_summary(service.settings.radio),
         }
 
     @app.post("/api/nodes/{key}/block", dependencies=[Depends(require_auth)])

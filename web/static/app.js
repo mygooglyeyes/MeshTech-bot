@@ -140,6 +140,9 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("update-overlay").classList.contains("hidden")) {
     $("update-overlay").classList.add("hidden");
   }
+  if (e.key === "Escape" && !$("node-overlay").classList.contains("hidden")) {
+    $("node-overlay").classList.add("hidden");
+  }
 });
 
 // ------------------------------------------------------------------ reload
@@ -600,8 +603,7 @@ async function refreshNodes(filterText) {
       row.seenCell.textContent = ago(n.last_seen);
       row.snrCell.textContent =
         (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-");
-      row.routeCell.textContent =
-        (n.route_hops === null || n.route_hops === undefined ? "?" : n.route_hops);
+      row.routeCell.textContent = String(n.route_count || 0);
       // Never clobber text the user is currently typing into.
       if (document.activeElement !== row.noteInput) {
         row.noteInput.value = n.note || "";
@@ -628,7 +630,8 @@ async function refreshNodes(filterText) {
       "<td>" + esc(n.prefix || "") + "</td>" +
       "<td>" + ago(n.last_seen) + "</td>" +
       "<td>" + (n.last_snr !== null && n.last_snr !== undefined ? n.last_snr.toFixed(0) : "-") + "</td>" +
-      "<td>" + (n.route_hops === null || n.route_hops === undefined ? "?" : n.route_hops) + "</td>";
+      "<td class='route-count' title='Unique routes this node has used - click for the route history'>" +
+      (n.route_count || 0) + "</td>";
     // Inline note editor - saved on Enter/blur, never rebuilt (the periodic
     // refresh patches its value in place so typing is not interrupted).
     const tdNote = document.createElement("td");
@@ -683,12 +686,20 @@ async function refreshNodes(filterText) {
     });
     tdBlock.appendChild(cb);
     tr.insertBefore(tdBlock, tr.firstChild);
-    tr.addEventListener("click", () => showNodeDetail(n.prefix));
+    tr.addEventListener("click", () => openNodePopup(n.prefix, "traffic"));
     tbody.appendChild(tr);
     // [0]=checkbox cell [1]=name [2]=prefix [3]=seen [4]=snr [5]=route [6]=note
+    // The Route cell is its own click target: it opens the popup scrolled
+    // to the route history (stopPropagation so the row handler stays out).
+    const routeCell = cells[4];
+    routeCell.classList.add("route-count");
+    routeCell.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openNodePopup(n.prefix, "routes");
+    });
     nextRows.set(n.prefix, {
       cb, nameCell: cells[0], seenCell: cells[2], snrCell: cells[3],
-      routeCell: cells[4], noteInput,
+      routeCell, noteInput,
     });
   });
   table.appendChild(tbody);
@@ -697,47 +708,158 @@ async function refreshNodes(filterText) {
   nodeOrder = order;
 }
 
-async function showNodeDetail(prefix) {
-  const detail = $("node-detail");
-  detail.classList.remove("hidden");
-  detail.innerHTML = "<em>loading…</em>";
-  try {
-    const data = await api("/api/nodes/" + encodeURIComponent(prefix));
-    const n = data.node;
-    const s = data.stats || {};
-    const link = data.link_history || [];
-    let html = "<h3>" + esc(n.name || prefix) + " <span class='chip'>" + esc(n.prefix) + "</span></h3>";
-    html += "<dl>" +
-      "<dt>first seen</dt><dd>" + ago(n.first_seen) + "</dd>" +
-      "<dt>last seen</dt><dd>" + ago(n.last_seen) + "</dd>" +
-      "<dt>last SNR</dt><dd>" + (n.last_snr != null ? n.last_snr.toFixed(1) + " dB" : "?") + "</dd>" +
-      "<dt>route hops</dt><dd>" + (n.route_hops == null ? "?" : n.route_hops) + "</dd>" +
-      "<dt>messages</dt><dd>" + (s.count || 0) + "</dd>" +
-      "<dt>delay avg</dt><dd>" + fmtDelay(s.delay_avg) + "</dd>" +
-      "<dt>delay min/max</dt><dd>" + fmtDelay(s.delay_min) + " / " + fmtDelay(s.delay_max) + "</dd>" +
-      (n.note ? "<dt>note</dt><dd>" + esc(n.note) + "</dd>" : "") +
-      "</dl>";
-    if (link.length) {
-      html += "<h3>Link quality history</h3>";
-      html += "<table><tr><th>When</th><th>Hops</th><th>SNR</th><th>Source</th></tr>";
-      link.forEach((r) => {
-        const src = r.source === "advert" ? "advert" :
-                    r.source === "dm" ? "DM" : "channel";
-        html += "<tr><td>" + new Date(r.ts * 1000).toLocaleString() + "</td><td>" +
-                (r.hops == null ? "-" : r.hops) + "</td><td>" +
-                (r.snr == null ? "-" : r.snr.toFixed(1) + " dB") + "</td><td>" +
-                src + "</td></tr>";
-      });
-      html += "</table>";
-    } else {
-      html += "<p><em>no link-quality observations yet - they build up as this node " +
-              "talks (DM/channel) or advertises</em></p>";
+// ---------------------------------------------------------- node popup
+// One popup per node: Traffic trends on top (24 h / 7 d / 30 d), route
+// history below - green-boxed chips, source on the left, bot on the
+// right.  Opened by clicking the node's name row or its Route count.
+let nodePopPrefix = null;
+let nodePopWindow = "30d";   // "24h" | "7d" | "30d"
+
+function openNodePopup(prefix, section) {
+  nodePopPrefix = prefix;
+  $("node-overlay").classList.remove("hidden");
+  $("node-pop-title").textContent = "loading…";
+  $("node-pop-sub").textContent = "";
+  $("node-pop-chart").innerHTML = "";
+  $("node-pop-stats").textContent = "";
+  $("node-pop-routes").innerHTML = "<em>loading…</em>";
+  markWindowButtons();
+  loadNodeDetail().then(() => {
+    if (section === "routes") {
+      const el = $("node-pop-routes");
+      if (el) el.scrollIntoView({ block: "start" });
     }
-    detail.innerHTML = html;
+  });
+}
+
+function markWindowButtons() {
+  const btns = $("node-pop-windows").querySelectorAll("button[data-w]");
+  btns.forEach((b) => b.classList.toggle("active", b.dataset.w === nodePopWindow));
+}
+
+async function loadNodeDetail() {
+  const prefix = nodePopPrefix;
+  try {
+    const trafficQ = nodePopWindow === "24h" ? "?hours=24"
+      : "?days=" + (nodePopWindow === "7d" ? "7" : "30");
+    const [detail, traffic] = await Promise.all([
+      api("/api/nodes/" + encodeURIComponent(prefix)),
+      api("/api/nodes/" + encodeURIComponent(prefix) + "/traffic" + trafficQ),
+    ]);
+    if (nodePopPrefix !== prefix) return;   // switched nodes mid-load
+    const n = detail.node || {};
+    $("node-pop-title").textContent = n.name || prefix;
+    $("node-pop-sub").textContent =
+      "prefix " + (n.prefix || "?") + " · first seen " + ago(n.first_seen) +
+      " · last seen " + ago(n.last_seen) +
+      (n.last_snr != null ? " · " + n.last_snr.toFixed(1) + " dB" : "");
+    renderTraffic(traffic);
+    renderRouteRows(detail);
   } catch (e) {
-    detail.innerHTML = "<em>failed to load detail</em>";
+    $("node-pop-title").textContent = "failed to load";
   }
 }
+
+function renderTraffic(traffic) {
+  const chart = $("node-pop-chart");
+  const stats = $("node-pop-stats");
+  const trend = traffic.trend || [];
+  const hoursMode = !!(traffic.window && traffic.window.hours);
+  chart.innerHTML = "";
+  if (!trend.length || !trend.some((t) => t.packets > 0)) {
+    chart.innerHTML = "<em>no traffic in this window yet</em>";
+  } else {
+    const max = Math.max(...trend.map((t) => t.packets), 1);
+    trend.forEach((t) => {
+      const col = document.createElement("div");
+      col.className = "chart-col";
+      const bar = document.createElement("div");
+      bar.className = "chart-bar";
+      bar.style.height = Math.max(3, Math.round(t.packets / max * 100)) + "%";
+      bar.title = (hoursMode
+        ? new Date(t.bucket * 1000).toLocaleTimeString([], { hour: "2-digit" })
+        : t.day) + ": " + t.packets + " packet(s)";
+      col.appendChild(bar);
+      const lbl = document.createElement("div");
+      lbl.className = "chart-label";
+      lbl.textContent = hoursMode
+        ? new Date(t.bucket * 1000).getHours()
+        : (t.day || "").slice(5);
+      col.appendChild(lbl);
+      chart.appendChild(col);
+    });
+  }
+  const t = traffic.totals || {};
+  const bits = [t.packets + " packet(s)"];
+  if (traffic.share_packets_pct != null) {
+    bits.push(traffic.share_packets_pct + "% of all traffic");
+  }
+  if (!hoursMode && t.airtime_ms != null) {
+    bits.push("est. airtime " + fmtAirtime(t.airtime_ms) +
+      (traffic.share_airtime_pct != null
+        ? " (" + traffic.share_airtime_pct + "% of air)" : ""));
+  }
+  stats.textContent = bits.join(" · ");
+}
+
+function fmtAirtime(ms) {
+  if (ms == null) return "-";
+  if (ms < 1000) return Math.round(ms) + " ms";
+  const s = ms / 1000;
+  return s < 90 ? s.toFixed(1) + " s" : Math.round(s / 60) + " min";
+}
+
+function renderRouteRows(detail) {
+  const wrap = $("node-pop-routes");
+  const rows = detail.routes_detail || [];
+  const n = detail.node || {};
+  wrap.innerHTML = "";
+  if (!rows.length) {
+    wrap.innerHTML = "<em>no routes recorded yet - they build up as this " +
+      "node's traffic arrives (advert paths now; message paths when raw " +
+      "capture is on)</em>";
+    return;
+  }
+  const now = Date.now() / 1000;
+  rows.forEach((r) => {
+    const stale = (now - (r.last_seen || 0)) > 7 * 86400;
+    const row = document.createElement("div");
+    row.className = "route-row" + (stale ? " stale" : "");
+    row.appendChild(routeChip(n.prefix || "?", "this node (source)"));
+    (r.route_key || "").match(/.{1,4}/g).forEach((pair) => {
+      row.appendChild(routeChip(pair, null));   // relay node, 2 bytes
+    });
+    row.appendChild(routeChip("bot", "the bot (destination)"));
+    const meta = document.createElement("span");
+    meta.className = "route-meta";
+    meta.textContent = "×" + (r.uses || 1) + " · " + ago(r.last_seen) +
+      (r.hops != null ? " · " + r.hops + " hop(s)" : "");
+    row.appendChild(meta);
+    wrap.appendChild(row);
+  });
+}
+
+function routeChip(text, title) {
+  const chip = document.createElement("span");
+  chip.className = "route-chip";
+  chip.textContent = text;
+  if (title) chip.title = title;
+  return chip;
+}
+
+$("node-pop-windows").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-w]");
+  if (!b) return;
+  nodePopWindow = b.dataset.w;
+  markWindowButtons();
+  loadNodeDetail();
+});
+$("btn-node-pop-close").addEventListener("click", () => $("node-overlay").classList.add("hidden"));
+$("node-overlay").addEventListener("click", (e) => {
+  if (e.target === $("node-overlay")) $("node-overlay").classList.add("hidden");
+});
+
+
 
 $("node-filter").addEventListener("input", (e) => refreshNodes(e.target.value));
 

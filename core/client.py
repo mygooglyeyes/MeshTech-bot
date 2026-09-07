@@ -452,6 +452,10 @@ class RadioClient:
                            else (",".join(str(p) for p in path) if isinstance(path, list) else None))
                 if hops is not None or summary:
                     self.store.add_route(key[:12], hops, summary, snr=contact_snr)
+                    # Every sync observation counts toward per-route use
+                    # statistics (the changes-only add_route above feeds
+                    # the link-quality timeline instead).
+                    self.store.record_route_use(key[:12], summary or "", hops)
             count += 1
         self._last_advert_sync = time.time()
         if count:

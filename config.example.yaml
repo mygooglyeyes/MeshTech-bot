@@ -191,6 +191,16 @@ web:
   # travels with config.yaml and the bot warns about it:
   # password: "change-me"
 
+# --- Radio settings (for estimated-airtime statistics) --------------
+# These must MATCH what your openHop repeater already uses - they do NOT
+# configure the radio. They drive the estimated-airtime numbers in the
+# node detail popup ("how much of the air this node's traffic occupies").
+radio:
+  spreading_factor: 7
+  bandwidth_khz: 62.5
+  coding_rate_index: 1       # 1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8
+  preamble_symbols: 32
+
 # --- Update check -------------------------------------------------
 # The dashboard's version chip turns amber when newer code exists on the
 # repository, and clicking it shows what's available. This is READ-ONLY:
