@@ -59,7 +59,9 @@ main {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
-  max-width: 1500px;
+  /* rem, not px: grows with the text-size buttons so cards keep
+     fitting their content at large font scales (1500px at 100%). */
+  max-width: 93.75rem;
   margin: 0 auto;
 }
 
@@ -67,13 +69,15 @@ main {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 640px;
+  /* 40rem = 640px at 100% text size, scaling with the font buttons
+     so table headers stop wrapping when text is enlarged. */
+  width: 40rem;
   min-width: 0;
 }
 
 @media (max-width: 1340px) {
   main { flex-direction: column; align-items: center; }
-  .col { width: 100%; max-width: 640px; }
+  .col { width: 100%; max-width: 40rem; }
 }
 
 .card {

@@ -29,6 +29,15 @@ and each command in its own code block right where it belongs. Reference
 tables (settings, troubleshooting, test checklist) stay tabular. No code
 changes.
 
+## 0.0.059 - 2026-09-06
+
+Fixed: dashboard cards kept a fixed pixel width when the text-size
+buttons were used, so at large text the packet table's header wrapped
+(Hops/Hash/SNR crowding onto one line, "Channel / sender" breaking
+apart). Card widths now scale with the text size (40rem columns,
+93.75rem page cap - identical at 100%), so every size bump widens the
+cards to match.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a
