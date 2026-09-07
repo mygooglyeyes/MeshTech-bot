@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.082 - 2026-09-07
+
+Developer mode: a checkbox in the update popup (off by default) widens
+the clickable branches from DEV/main/running to ANY branch, so a
+contributor can resume work on any feature branch and merge it later.
+The flag lives in config.yaml (web.developer_mode), is toggled from the
+dashboard without a restart, and every other guard - branch-name
+validation, single-flight, the sudo whitelist, the explicit downgrade
+warning - is unchanged.
+
 ## 0.0.081 - 2026-09-07
 
 Cosmetic: the Branches title and its instruction are separated by a dash

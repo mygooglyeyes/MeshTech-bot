@@ -90,6 +90,59 @@ def splice_module(text: str, name: str, enabled: bool,
     return text[:section.end()] + new_body + text[body_end:]
 
 
+def set_web_flag(config_path: str, key: str, value: bool) -> None:
+    """Set a boolean flag inside the ``web:`` section of config.yaml.
+
+    Same safety contract as save_module_settings: splice, validate, and
+    only then replace the live file (restoring the original on failure).
+    Used for web.developer_mode - a dashboard-managed boolean that must
+    not require a hand edit of the config file.
+    """
+    from .config import load as load_config, ConfigError
+
+    path = Path(config_path)
+    original = path.read_text(encoding="utf-8") if path.is_file() else ""
+    text = original
+    line = f"{key}: {'true' if value else 'false'}"
+
+    section = re.search(r"(?m)^web:[ \t]*(?:#.*)?$", text)
+    if section is None:
+        text = text.rstrip("\n") + f"\n\nweb:\n  {line}\n"
+    else:
+        rest = text[section.end():]
+        nxt = re.search(r"(?m)^\S", rest)
+        body_end = section.end() + (nxt.start() if nxt else len(rest))
+        body = text[section.end():body_end]
+        entry = re.search(
+            rf"(?m)^(?P<indent>[ \t]+){re.escape(key)}:[ \t]*\S.*(?:#.*)?$",
+            body)
+        if entry:
+            indent = entry.group("indent")
+            new_body = (body[:entry.start()] + f"{indent}{line}\n"
+                        + body[entry.end():].lstrip("\n"))
+            if new_body and not new_body.endswith("\n"):
+                new_body += "\n"
+        else:
+            new_body = body.rstrip("\n")
+            if new_body:
+                new_body += "\n"
+            new_body += f"  {line}\n"
+        text = text[:section.end()] + new_body + text[body_end:]
+
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        load_config(tmp_name)          # validate BEFORE replacing
+        os.replace(tmp_name, str(path))
+    except (ConfigError, OSError):
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def save_module_settings(config_path: str, name: str, enabled: bool,
                          settings: Dict[str, Any]) -> Dict[str, Any]:
     """Splice + write + re-validate. Returns the fresh settings for the

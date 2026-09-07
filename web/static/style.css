@@ -332,6 +332,12 @@ a.btn { text-decoration: none; display: inline-block; }
 /* Branch rows switch the bot to that branch when web updates are
    enabled - say so on hover, and confirm before doing anything. */
 .update-hint { font-size: 0.6875rem; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.update-devmode {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.75rem; color: var(--muted); margin-top: 10px;
+  cursor: pointer;
+}
+.update-devmode input { accent-color: var(--accent); }
 .update-branch.clickable { cursor: pointer; }
 .update-branch.clickable:hover {
   border-color: var(--accent);

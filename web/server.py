@@ -315,6 +315,8 @@ def build_app(service) -> FastAPI:
         from core.version import version_stamp
         out = updater.status()
         out["enabled"] = _self_update_enabled()
+        out["dev_mode"] = bool(getattr(service.settings.web,
+                                        "developer_mode", False))
         out["running_branch"] = version_stamp().get("branch", "")
         return out
 
@@ -330,11 +332,35 @@ def build_app(service) -> FastAPI:
                               "in config.yaml (see the install guide)")
         from core.version import version_stamp
         running_branch = version_stamp().get("branch", "")
+        # Developer mode widens the allowlist to any branch (contributor
+        # workflow: resume work on any feature branch). The strict branch
+        # NAME check and every other guard stay exactly as they were.
+        allow_any = bool(getattr(service.settings.web, "developer_mode", False))
         result = await updater.request_update(
-            str(payload.get("branch", "")), running_branch)
+            str(payload.get("branch", "")), running_branch,
+            allow_any=allow_any)
         if "error" in result:
             return json_error(result["error"], 409)
         return result
+
+    @app.post("/api/update/devmode", dependencies=[Depends(require_auth)])
+    async def update_devmode(payload: Dict[str, Any]):
+        """Toggle web.developer_mode in config.yaml (validated write).
+
+        Admin-only by construction: the dashboard login is the gate, and
+        the flag only widens which branches the popup offers - every
+        other guard (branch-name shape, single-flight, sudo whitelist)
+        is unchanged.
+        """
+        from core.config import ConfigError
+        from core.persist import set_web_flag
+        on = bool(payload.get("enabled", False))
+        try:
+            set_web_flag(service.settings.config_path, "developer_mode", on)
+        except (ConfigError, OSError) as exc:
+            return json_error(f"could not save the setting: {exc}")
+        service.settings.web.developer_mode = on      # live, no restart
+        return {"ok": True, "developer_mode": on}
 
     # ------------------------------------------------------------- modules
 

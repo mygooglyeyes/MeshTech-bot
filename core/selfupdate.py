@@ -40,8 +40,17 @@ OK_MARKER = "=== update finished OK"
 FAIL_MARKER = "=== UPDATE FAILED"
 
 
-def branch_allowed(branch: str, running_branch: str = "") -> bool:
-    """True when the dashboard may switch to this branch."""
+def branch_allowed(branch: str, running_branch: str = "",
+                   allow_any: bool = False) -> bool:
+    """True when the dashboard may switch to this branch.
+
+    Default: DEV, main, and the branch already running. Developer mode
+    (allow_any=True, set only from config) widens this to any branch so a
+    contributor can resume work anywhere - the strict branch-name shape
+    check still applies before this is consulted.
+    """
+    if allow_any:
+        return branch != ""
     return branch in ALLOWED_BRANCHES or (branch != "" and branch == running_branch)
 
 
@@ -58,14 +67,16 @@ class SelfUpdater:
 
     # ---- launching ------------------------------------------------------
 
-    async def request_update(self, branch: str, running_branch: str = "") -> dict:
+    async def request_update(self, branch: str, running_branch: str = "",
+                             allow_any: bool = False) -> dict:
         """Validate and start an update.  Returns a JSON-shaped dict."""
         branch = str(branch or "").strip()
         if not _BRANCH_RE.match(branch):
             return {"error": f"'{branch}' is not a valid branch name"}
-        if not branch_allowed(branch, running_branch):
+        if not branch_allowed(branch, running_branch, allow_any):
             return {"error": "only DEV and main may be selected "
-                             "(plus the branch you are running)"}
+                             "(plus the branch you are running) - "
+                             "enable web.developer_mode for any branch"}
         if not self.trigger_path.is_file():
             return {"error": "the update script is missing on this machine - "
                              "reinstall or update the bot"}

@@ -183,6 +183,11 @@ class WebCfg:
     # ``password`` above still works but warns: a copied or leaked config
     # would otherwise expose the dashboard password.
     password_file: str = ""
+    # Developer mode: when true, the update popup lets the operator click
+    # ANY branch (feature branches included) so a contributor can resume
+    # work anywhere. Off by default: ordinary users see only DEV, main,
+    # and the running branch - the safe view.
+    developer_mode: bool = False
 
 
 @dataclass
@@ -496,6 +501,8 @@ def load(config_path: str = "config.yaml") -> Settings:
         password=str(web_raw.get("password", "") or ""),
         password_file=_text(web_raw, "password_file", "", errors,
                             "web.password_file"),
+        developer_mode=_bool(web_raw, "developer_mode", False, errors,
+                             "web.developer_mode"),
     )
     web.password = _effective_web_password(web, warnings)
     if web.enabled and web.host not in ("127.0.0.1", "localhost", "::1"):

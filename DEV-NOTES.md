@@ -11,6 +11,12 @@ Newest entries first within each branch.
 
 ## feature/branch-switcher (current work - contains the node-popup stack)
 
+- **v0.0.082** - Developer mode: a checkbox in the update popup widens
+  clickable branches from DEV/main/running to any branch (contributor
+  workflow). Off by default; toggled live from the dashboard; stored as
+  web.developer_mode in config.yaml.
+- **v0.0.081** - Cosmetic: dash + spacing between the Branches title
+  and its instruction.
 - **v0.0.080** - Fixed the release-notes button: it read the release tag
   under the wrong dictionary key, so "View changes since ..." never
   appeared. Regression test added.

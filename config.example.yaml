@@ -190,6 +190,11 @@ web:
   # LEGACY alternative - password stored in this file. Still works, but it
   # travels with config.yaml and the bot warns about it:
   # password: "change-me"
+  # Developer mode: lets the dashboard's update popup click ANY branch
+  # (feature branches included) - for contributors resuming work.
+  # Default false: users see only DEV, main, and the running branch.
+  # Toggle it in the update popup (no restart needed) or set it here:
+  developer_mode: false
 
 # --- Radio settings (for estimated-airtime statistics) --------------
 # These must MATCH what your openHop repeater already uses - they do NOT

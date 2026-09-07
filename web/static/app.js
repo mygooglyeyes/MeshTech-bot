@@ -244,6 +244,38 @@ function updatesEnabled() {
   return !!(jobState && jobState.enabled);
 }
 
+function devMode() {
+  return !!(jobState && jobState.dev_mode);
+}
+
+// The toggle's checked state is server truth (config.yaml), re-read on
+// every popup render - the checkbox only sends requests.
+function syncDevModeToggle() {
+  const row = $("update-devmode-row");
+  const box = $("update-devmode");
+  if (!row || !box) return;
+  row.classList.toggle("hidden", !updatesEnabled());
+  box.checked = devMode();
+}
+
+async function setDevMode(on) {
+  const box = $("update-devmode");
+  box.disabled = true;
+  try {
+    await api("/api/update/devmode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: on }),
+    });
+    if (jobState) jobState.dev_mode = on;   // re-render with the new truth
+    renderUpdatePopup(updateState);
+  } catch (e) {
+    box.checked = !on;                      // revert on failure
+  }
+  box.disabled = false;
+}
+$("update-devmode").addEventListener("change", (e) => setDevMode(e.target.checked));
+
 function versionLess(a, b) {   // "0.0.063" < "0.0.074" ?
   const pa = String(a || "").split(".").map((n) => parseInt(n, 10) || 0);
   const pb = String(b || "").split(".").map((n) => parseInt(n, 10) || 0);
@@ -256,7 +288,8 @@ function versionLess(a, b) {   // "0.0.063" < "0.0.074" ?
 
 function makeRowClickable(row, name, run) {
   if (!updatesEnabled()) return;
-  if (!(name === "DEV" || name === "main" || name === run.branch)) return;
+  const allowed = (name === "DEV" || name === "main" || name === run.branch);
+  if (!allowed && !devMode()) return;   // developer mode unlocks any branch
   row.classList.add("clickable");
   row.title = "Click to switch to " + name + " and update";
   row.addEventListener("click", () => showUpdateConfirm(name));
@@ -415,6 +448,7 @@ function renderUpdatePopup(st) {
   } else {
     checked.textContent = "";
   }
+  syncDevModeToggle();
   const link = $("btn-release-notes");
   // Prefer the RUNNING branch's changes: ahead of the last published
   // release, the interesting notes are what this branch changed since it.
