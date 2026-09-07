@@ -17,6 +17,9 @@
 #      sudo ./deploy.sh             # or under sudo (pull still runs as you)
 #      ./deploy.sh --branch DEV     # check the clone out onto a branch first,
 #                                   #   pull it, deploy it (e.g. DEV or main)
+#      ./deploy.sh --no-pull        # deploy the clone exactly as it stands
+#                                   #   (for scripts that already pulled - the
+#                                   #   web-console updater does this)
 #      ./deploy.sh --dry-run        # list what WOULD change in /opt (no sudo,
 #                                   #   no pull, nothing modified anywhere)
 #      deploy.sh --clone DIR --runtime DIR --no-restart
@@ -30,6 +33,7 @@ SERVICE_GROUP="meshtech"
 SERVICE="meshtech-bot"
 DO_RESTART=1
 DRY_RUN=0
+NO_PULL=0
 APPLY_TARBALL=""
 BRANCH=""
 ALLOW_DOWNGRADE=""
@@ -47,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --no-restart) DO_RESTART=0; shift ;;
     --dry-run|-n) DRY_RUN=1; shift ;;
     --branch)    BRANCH="$2"; shift 2 ;;       # update a specific branch
+    --no-pull)   NO_PULL=1; shift ;;             # clone is already up to date
     --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;  # skip the typed-yes guard
     --apply)     APPLY_TARBALL="$2"; shift 2 ;;   # internal: sudo re-exec
     -h|--help)   sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -84,7 +89,9 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   find "$RUNTIME" -type f -exec chmod 640 {} \;
   chmod 755 "$RUNTIME/bot.py" "$RUNTIME/install.sh" "$RUNTIME/deploy.sh" \
             "$RUNTIME/set-password.sh" "$RUNTIME/manage.sh" \
-            "$RUNTIME/scripts/configure_bot.py" 2>/dev/null || true
+            "$RUNTIME/scripts/configure_bot.py" \
+            "$RUNTIME/scripts/update-trigger.sh" \
+            "$RUNTIME/scripts/update-runner.sh" 2>/dev/null || true
   if [[ -d "$RUNTIME/.venv" ]]; then
     find "$RUNTIME/.venv" -type d -exec chmod 755 {} \;
     find "$RUNTIME/.venv" -type f -exec chmod 755 {} \; 2>/dev/null || true
@@ -143,7 +150,8 @@ fi
 [[ -f "$CLONE/bot.py" ]] || die "$CLONE does not look like MeshTech-Bot"
 
 # ---- branch selection (optional): --branch checks the clone out first ------
-if [[ -n "$BRANCH" ]]; then
+# (skipped with --no-pull: the caller put the clone on the right branch)
+if [[ -n "$BRANCH" && "$NO_PULL" -eq 0 ]]; then
   if ! "${PULL[@]:-git -C "$CLONE"}" rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1 \
      && ! git -C "$CLONE" rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
     git -C "$CLONE" fetch origin --prune || die "could not reach GitHub to fetch branch '$BRANCH'"
@@ -165,20 +173,25 @@ else
   PULL=(git -C "$CLONE")
 fi
 
-if ! "${PULL[@]}" diff --quiet || ! "${PULL[@]}" diff --cached --quiet; then
-  die "your clone has uncommitted changes - inspect them first:  cd $CLONE && git status"
-fi
-log "Pulling the latest code into $CLONE ..."
-STAMP=""
-if "${PULL[@]}" pull --ff-only; then
+if [[ "$NO_PULL" -eq 1 ]]; then
+  log "--no-pull: deploying the clone as it stands (caller already pulled)"
   STAMP="$("${PULL[@]}" rev-parse HEAD)"
-  log "Pulled: $STAMP"
-elif [[ "$DRY_RUN" -eq 1 ]]; then
-  warn "could not pull (offline? no upstream?) - comparing the clone's"
-  warn "  CURRENT state against the runtime instead."
-  STAMP="$("${PULL[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
 else
-  die "git pull failed (offline? upstream moved?) - nothing changed"
+  if ! "${PULL[@]}" diff --quiet || ! "${PULL[@]}" diff --cached --quiet; then
+    die "your clone has uncommitted changes - inspect them first:  cd $CLONE && git status"
+  fi
+  log "Pulling the latest code into $CLONE ..."
+  STAMP=""
+  if "${PULL[@]}" pull --ff-only; then
+    STAMP="$("${PULL[@]}" rev-parse HEAD)"
+    log "Pulled: $STAMP"
+  elif [[ "$DRY_RUN" -eq 1 ]]; then
+    warn "could not pull (offline? no upstream?) - comparing the clone's"
+    warn "  CURRENT state against the runtime instead."
+    STAMP="$("${PULL[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
+  else
+    die "git pull failed (offline? upstream moved?) - nothing changed"
+  fi
 fi
 
 # ---- say WHAT is being deployed: branch, commit, version -------------------

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import signal
 import sys
+from pathlib import Path
 
 from core.config import ConfigError, Settings, load
 
@@ -128,6 +129,15 @@ async def _run(settings: Settings) -> None:
     # chip and update popup.  It only reads - never downloads or restarts.
     from core.updatecheck import UpdateChecker
     service.update_checker = UpdateChecker(lambda: service.settings)
+
+    # Web-console updater (opt-in via updates.clone_path): validates the
+    # request and launches the ONE sudo-whitelisted trigger script.  The
+    # real work runs detached, so it survives the restart it causes.
+    from core.selfupdate import SelfUpdater
+    service.self_updater = SelfUpdater(
+        Path(settings.storage.db_path).parent,
+        Path(__file__).resolve().parent / "scripts" / "update-trigger.sh",
+    )
 
     tasks = [
         asyncio.create_task(client.run(), name="radio"),

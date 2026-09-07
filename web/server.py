@@ -298,6 +298,42 @@ def build_app(service) -> FastAPI:
             return json_error("Update checking is not available", 404)
         return await checker.check(force=True)
 
+    # ------------------------------------------------- updates (web updater)
+
+    def _self_update_enabled() -> bool:
+        return bool(getattr(service.settings.updates, "clone_path", ""))
+
+    @app.get("/api/update/job", dependencies=[Depends(require_auth)])
+    async def update_job_status():
+        """Live state of a web-console update: running/finished plus the
+        tail of the update log, so the popup can show it streaming."""
+        updater = getattr(service, "self_updater", None)
+        if updater is None:
+            return {"enabled": False}
+        from core.version import version_stamp
+        out = updater.status()
+        out["enabled"] = _self_update_enabled()
+        out["running_branch"] = version_stamp().get("branch", "")
+        return out
+
+    @app.post("/api/update/run", dependencies=[Depends(require_auth)])
+    async def update_run(payload: Dict[str, Any]):
+        """Switch branch and update, exactly as 'sudo ./manage.sh update
+        <branch>' would - via the one sudo-whitelisted trigger script."""
+        updater = getattr(service, "self_updater", None)
+        if updater is None or not updater.trigger_path.is_file():
+            return json_error("Updates are not available on this install", 404)
+        if not _self_update_enabled():
+            return json_error("Web updates are disabled - set updates.clone_path "
+                              "in config.yaml (see the install guide)")
+        from core.version import version_stamp
+        running_branch = version_stamp().get("branch", "")
+        result = await updater.request_update(
+            str(payload.get("branch", "")), running_branch)
+        if "error" in result:
+            return json_error(result["error"], 409)
+        return result
+
     # ------------------------------------------------------------- modules
 
     @app.get("/api/modules", dependencies=[Depends(require_auth)])

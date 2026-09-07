@@ -138,7 +138,7 @@ document.addEventListener("keydown", (e) => {
     $("about-overlay").classList.add("hidden");
   }
   if (e.key === "Escape" && !$("update-overlay").classList.contains("hidden")) {
-    $("update-overlay").classList.add("hidden");
+    closeUpdates();
   }
   if (e.key === "Escape" && !$("node-overlay").classList.contains("hidden")) {
     $("node-overlay").classList.add("hidden");
@@ -169,6 +169,13 @@ $("btn-reload-now").addEventListener("click", () => location.reload());
 // the result. Nothing here downloads or restarts anything - the amber
 // version chip is purely an indicator.
 let updateState = null;
+// Web-console updater (stage 2): click-a-branch state.
+let jobState = null;           // last /api/update/job answer
+let jobTimer = null;           // poll interval while an update runs
+let pendingBranch = null;      // branch awaiting confirmation
+let updateStartedHere = false; // an update was started from this popup
+let updateFailedSeen = false;  // the log showed a failure
+let jobJustFinished = false;   // reload once, then stop polling
 
 function updateAvailable() {
   return !!(updateState && updateState.checked && updateState.update_available);
@@ -181,6 +188,7 @@ function openUpdates() {
   // (the 10 s server-side cooldown quietly answers from cache if the
   // popup is reopened quickly).
   forceUpdateCheck();
+  refreshJobStatus().then(() => renderUpdatePopup(updateState));
 }
 
 async function refreshUpdateStatus() {
@@ -216,6 +224,132 @@ function renderUpdateChipFlags() {
   if (chip) chip.classList.toggle("update-available", updateAvailable());
 }
 
+// ---- click-a-branch web updates (dashboard stage 2) ---------------------
+// Enabled only when updates.clone_path is set on the bot.  Clicking a
+// branch asks one confirmation, then runs exactly what a human would run
+// from the shell; the popup streams the updater's own output, rides out
+// the service restart, and lands the browser on the new build.
+async function refreshJobStatus() {
+  try {
+    jobState = await api("/api/update/job");
+  } catch (e) { jobState = null; }
+  if (jobState && jobState.running
+      && $("update-confirm").classList.contains("hidden")
+      && $("update-job").classList.contains("hidden")) {
+    showJobView();               // popup reopened mid-update: live log
+  }
+}
+
+function updatesEnabled() {
+  return !!(jobState && jobState.enabled);
+}
+
+function versionLess(a, b) {   // "0.0.063" < "0.0.074" ?
+  const pa = String(a || "").split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || "").split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) < (pb[i] || 0)) return true;
+    if ((pa[i] || 0) > (pb[i] || 0)) return false;
+  }
+  return false;
+}
+
+function makeRowClickable(row, name, run) {
+  if (!updatesEnabled()) return;
+  if (!(name === "DEV" || name === "main" || name === run.branch)) return;
+  row.classList.add("clickable");
+  row.title = "Click to switch to " + name + " and update";
+  row.addEventListener("click", () => showUpdateConfirm(name));
+}
+
+function showUpdateConfirm(branch) {
+  pendingBranch = branch;
+  const st = updateState || {};
+  const run = st.running || {};
+  const target = (st.remote_versions || {})[branch] || "";
+  let text = branch === run.branch
+    ? "Update to the latest build on " + branch + " now?"
+    : "Switch to " + branch + " and update now?";
+  if (target) text += " That installs v" + esc(target) + ".";
+  if (target && run.version && versionLess(target, run.version)) {
+    text += " NOTE: this is a DOWNGRADE from the running v" + esc(run.version) + ".";
+  }
+  text += " The bot restarts and is unreachable for about half a minute.";
+  $("update-confirm-text").textContent = text;
+  $("update-confirm-error").classList.add("hidden");
+  $("update-main").classList.add("hidden");
+  $("update-confirm").classList.remove("hidden");
+}
+
+function hideUpdateConfirm() {
+  if (updateStartedHere) return;   // never bounce back while a job runs
+  $("update-confirm").classList.add("hidden");
+  $("update-main").classList.remove("hidden");
+}
+
+async function startUpdate() {
+  const branch = pendingBranch;
+  if (!branch) return;
+  const btn = $("btn-update-yes");
+  btn.disabled = true;
+  btn.textContent = "starting…";
+  try {
+    await api("/api/update/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch }),
+    });
+    updateStartedHere = true;
+    showJobView();
+  } catch (e) {
+    let msg = String(e.message || "update failed to start");
+    try { msg = JSON.parse(msg).error || msg; } catch (err) { /* raw text */ }
+    $("update-confirm-error").textContent = msg;
+    $("update-confirm-error").classList.remove("hidden");
+  }
+  btn.disabled = false;
+  btn.textContent = "Update now";
+}
+
+function showJobView() {
+  $("update-confirm").classList.add("hidden");
+  $("update-main").classList.add("hidden");
+  $("update-job").classList.remove("hidden");
+  if (!jobTimer) jobTimer = setInterval(pollJob, 1500);
+  pollJob();
+}
+
+function pollJob() {
+  // Tolerates the server vanishing mid-update: the restart kills the web
+  // server for a few seconds and this keeps asking until it is back.
+  api("/api/update/job").then((job) => {
+    jobState = job;
+    $("update-log").textContent = job.log || "";
+    $("update-log").scrollTop = $("update-log").scrollHeight;
+    const status = $("update-job-status");
+    if (job.finished && !job.running) {
+      if (job.success) {
+        status.textContent = "Update finished OK - reloading this console…";
+        if (!jobJustFinished) {
+          jobJustFinished = true;
+          clearInterval(jobTimer); jobTimer = null;
+          setTimeout(() => location.reload(), 2500);
+        }
+      } else {
+        status.textContent =
+          "UPDATE FAILED - the old code is still running; read the log above.";
+        updateFailedSeen = true;
+        clearInterval(jobTimer); jobTimer = null;
+      }
+    } else {
+      status.textContent = "Updating… the bot restarts when it is done.";
+    }
+  }).catch(() => {
+    $("update-job-status").textContent =
+      "Service restarting - waiting for it to come back…";
+  });
+}
+
 function renderUpdatePopup(st) {
   const cur = $("update-running");
   const rows = $("update-branches");
@@ -246,6 +380,7 @@ function renderUpdatePopup(st) {
     row.innerHTML = '<span class="ub-name">' + esc(run.branch) + "</span>" +
       '<span class="ub-sha">' + esc(String(run.commit || "?")) +
       (run.version ? " (v" + esc(run.version) + ")" : "") + "</span>";
+    makeRowClickable(row, run.branch, run);
     rows.appendChild(row);
   }
   names.forEach((name) => {
@@ -258,6 +393,7 @@ function renderUpdatePopup(st) {
       '<span class="ub-sha">' + esc(String(branches[name]).slice(0, 7)) +
       (rv[name] ? " (v" + esc(rv[name]) + ")" : "") +
       (newer ? " ← newer" : "") + "</span>";
+    makeRowClickable(row, name, run);
     rows.appendChild(row);
   });
   note.classList.remove("hidden");
@@ -294,11 +430,22 @@ function renderUpdatePopup(st) {
 
 $("chip-version").addEventListener("click", openUpdates);
 $("btn-update-check").addEventListener("click", forceUpdateCheck);
-$("btn-update-close").addEventListener("click", () => $("update-overlay").classList.add("hidden"));
+function closeUpdates() {
+  $("update-overlay").classList.add("hidden");
+  hideUpdateConfirm();
+  // Refresh after an update was started here, so the tab lands on the
+  // new build instead of waiting for the version watchdog.  A FAILED
+  // update keeps the page as-is: the log the user is reading is gone
+  // after a reload, and the old code is still running anyway.
+  if (updateStartedHere && !updateFailedSeen) location.reload();
+}
+$("btn-update-close").addEventListener("click", closeUpdates);
 // Click on the dark backdrop (outside the box) closes the dialog.
 $("update-overlay").addEventListener("click", (e) => {
-  if (e.target === $("update-overlay")) $("update-overlay").classList.add("hidden");
+  if (e.target === $("update-overlay")) closeUpdates();
 });
+$("btn-update-yes").addEventListener("click", startUpdate);
+$("btn-update-no").addEventListener("click", hideUpdateConfirm);
 
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();

@@ -170,7 +170,9 @@ find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
 chmod 755 "$INSTALL_DIR/bot.py" "$INSTALL_DIR/install.sh" \
          "$INSTALL_DIR/deploy.sh" "$INSTALL_DIR/set-password.sh" \
          "$INSTALL_DIR/manage.sh" \
-         "$INSTALL_DIR/scripts/configure_bot.py" 2>/dev/null || true
+         "$INSTALL_DIR/scripts/configure_bot.py" \
+         "$INSTALL_DIR/scripts/update-trigger.sh" \
+         "$INSTALL_DIR/scripts/update-runner.sh" 2>/dev/null || true
 
 # --- record which code this runtime carries --------------------------------------------
 # No .git in the runtime (the checkout lives in ~), so bake the commit into a
@@ -277,6 +279,22 @@ systemctl daemon-reload
 systemctl enable meshtech-bot.service
 systemctl restart meshtech-bot.service
 
+# --- web-console updates (one narrowly-whitelisted sudoers rule) -------------
+# Lets the bot run exactly ONE script - its own update trigger, by exact
+# path, with no arguments - as root.  Nothing else.  The dashboard's
+# click-a-branch updater depends on it; without the rule that feature
+# simply reports "not enabled" and everything else works as normal.
+SUDOERS_FILE="/etc/sudoers.d/meshtech-bot-update"
+log "Writing the web-update sudoers rule $SUDOERS_FILE"
+printf '%s ALL=(root) NOPASSWD: %s/scripts/update-trigger.sh\n' \
+  "$SERVICE_USER" "$INSTALL_DIR" > "$SUDOERS_FILE"
+chown root:root "$SUDOERS_FILE"
+chmod 440 "$SUDOERS_FILE"
+if command -v visudo >/dev/null 2>&1 && ! visudo -cf "$SUDOERS_FILE" >/dev/null; then
+  rm -f "$SUDOERS_FILE"
+  warn "sudoers rule failed validation - web-console updates left DISABLED"
+fi
+
 # --- done -----------------------------------------------------------------------------------
 echo
 echo "=============================================================================="
@@ -295,5 +313,7 @@ echo "    2. Set the dashboard password (if you skipped the installer's question
 echo "       sudo $INSTALL_DIR/set-password.sh"
 echo "       (config edits auto-reload; the dashboard password needs a restart)."
 echo "    3. Open the dashboard:  http://127.0.0.1:8081"
-echo "    4. Install docs + troubleshooting: $INSTALL_DIR/docs/INSTALL.md"
+echo "    4. Optional - update the bot from the dashboard's version popup:"
+echo "       set  updates: clone_path: /home/YOU/meshtech-bot  in config.yaml"
+echo "    5. Install docs + troubleshooting: $INSTALL_DIR/docs/INSTALL.md"
 echo "=============================================================================="

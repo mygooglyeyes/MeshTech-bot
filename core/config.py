@@ -202,18 +202,22 @@ class RadioCfg:
 
 @dataclass
 class UpdatesCfg:
-    """Read-only 'is there newer code?' checking for the dashboard.
+    """'Is there newer code?' checking plus optional web-console updates.
 
-    The bot compares its running commit against the repository's branch
-    heads once a day (configurable) and the dashboard version chip turns
-    amber when a newer build exists.  Checking only ever READS - it never
-    downloads code, restarts, or changes anything.
+    The check half only ever READS - it never downloads code, restarts, or
+    changes anything.  The update half (stage 2) is opt-in: set clone_path
+    to your home clone and the dashboard's version popup can run the same
+    update a human would (pull the clone, apply to the runtime, restart),
+    through one narrowly-whitelisted script.
     """
     check_enabled: bool = True
     # How often to look, in hours (minimum 0.25 = every 15 minutes).
     check_hours: float = 24.0
     # Which repository to check. Point this at your own fork if you run one.
     repo_url: str = DEFAULT_REPO_URL
+    # Absolute path of YOUR git clone (e.g. /home/you/meshtech-bot).
+    # Empty = web-console updates disabled (checking still works).
+    clone_path: str = ""
 
 
 @dataclass
@@ -562,10 +566,15 @@ def load(config_path: str = "config.yaml") -> Settings:
         repo_url += ".git"
     if repo_url and not (repo_url.startswith("https://") or repo_url.startswith("git@")):
         errors.append("updates.repo_url must be a git URL (https://... or git@...).")
+    clone_path = _text(upd_raw, "clone_path", "", errors, "updates.clone_path").strip()
+    if clone_path and not clone_path.startswith("/") and not clone_path.startswith("~/"):
+        errors.append("updates.clone_path must be an absolute path "
+                      "(e.g. /home/you/meshtech-bot) or empty to disable web updates.")
     updates = UpdatesCfg(
         check_enabled=_bool(upd_raw, "check_enabled", True, errors, "updates.check_enabled"),
         check_hours=check_hours,
         repo_url=repo_url,
+        clone_path=clone_path,
     )
 
     # --- logging ---

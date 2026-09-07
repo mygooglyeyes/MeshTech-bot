@@ -281,6 +281,29 @@ ask_yes_no() {  # prompt, default(y|n)
   [[ "$raw" == "y" || "$raw" == "yes" ]]
 }
 
+do_webupdates() {
+  # Write the ONE sudoers rule that lets the bot run its own update
+  # trigger as root: exact path, no arguments, nothing else.  Without it
+  # the dashboard's click-a-branch update says "not enabled".
+  local SUDOERS_FILE="/etc/sudoers.d/meshtech-bot-update"
+  if [[ ! -f "$INSTALL_ROOT/scripts/update-trigger.sh" ]]; then
+    warn "scripts/update-trigger.sh not found in $INSTALL_ROOT - update the bot first"
+    return 1
+  fi
+  printf '%s ALL=(root) NOPASSWD: %s/scripts/update-trigger.sh\n' \
+    "$SERVICE_USER" "$INSTALL_ROOT" > "$SUDOERS_FILE"
+  chown root:root "$SUDOERS_FILE"
+  chmod 440 "$SUDOERS_FILE"
+  if command -v visudo >/dev/null 2>&1 && ! visudo -cf "$SUDOERS_FILE" >/dev/null; then
+    rm -f "$SUDOERS_FILE"
+    warn "sudoers validation failed - web updates left DISABLED"
+    return 1
+  fi
+  log "Web-console updates ENABLED ($SUDOERS_FILE)."
+  log "Last step: make sure 'updates: clone_path:' in config.yaml points at"
+  log "your home clone (e.g. /home/$SUDO_USER/meshtech-bot), then restart."
+}
+
 # --- direct subcommands (no menu): manage.sh update|configure|restart|logs ----
 if [[ $# -gt 0 ]]; then
   case "$1" in
@@ -293,6 +316,9 @@ if [[ $# -gt 0 ]]; then
     restart)
       [[ "$(id -u)" -eq 0 ]] || { warn "restart needs root - run:  sudo ./manage.sh restart"; exit 1; }
       systemctl restart "$SERVICE.service" && log "Service restarted." ;;
+    webupdates)
+      [[ "$(id -u)" -eq 0 ]] || { warn "webupdates needs root - run:  sudo ./manage.sh webupdates"; exit 1; }
+      do_webupdates ;;
     logs)
       journalctl -u "$SERVICE.service" -f --no-pager ;;
     -h|--help)
@@ -321,6 +347,7 @@ choose_option() {  # sets CHOICE; Esc/Cancel on the dialog means Quit
         "3" "Uninstall (asks to back up your data first)" \
         "4" "Restart the service" \
         "5" "View live logs (Ctrl-C stops watching)" \
+        "6" "Enable web-console updates (let the dashboard switch branches)" \
         "q" "Quit" 3>&1 1>&2 2>&3)" || CHOICE="q"
   else
     show_header
@@ -357,6 +384,7 @@ while true; do
        journalctl -u "$SERVICE.service" -f --no-pager || true
        trap - INT
        paused ;;
+    6) do_webupdates; paused ;;
     q|Q) echo "  73!"; exit 0 ;;
     *) echo "  Unknown option: $CHOICE" ; sleep 1 ;;
   esac

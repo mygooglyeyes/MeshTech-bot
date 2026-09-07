@@ -210,6 +210,12 @@ updates:
   check_hours: 24            # how often to look (minimum 0.25 = 15 min)
   # repo_url: "https://github.com/mygooglyeyes/MeshTech-bot.git"
   #                          ^ point at your own fork if you run one
+  # Web-console updates: set clone_path to YOUR git clone (the folder you
+  # run 'git pull' in, e.g. /home/pi/meshtech-bot) and the dashboard's
+  # version popup can switch branches and update for you. Empty = off;
+  # the check above still works. Also needs the one-command enable:
+  #   sudo ./manage.sh   -> option 6  (writes a single sudoers rule)
+  # clone_path: "/home/pi/meshtech-bot"
 
 # --- Logging ----------------------------------------------------
 # With the systemd service, leave file empty and watch logs with:

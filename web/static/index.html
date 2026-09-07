@@ -172,12 +172,29 @@
   <div id="update-overlay" class="overlay hidden">
     <div class="aboutbox" role="dialog" aria-label="Software updates">
       <h2>Software updates</h2>
-      <div class="update-subhead">Running</div>
-      <div id="update-running" class="about-version">fetching update information…</div>
-      <div class="update-subhead">Branches</div>
-      <div id="update-branches"></div>
-      <div id="update-note" class="update-note hidden"></div>
-      <div id="update-checked" class="update-checked"></div>
+      <div id="update-main">
+        <div class="update-subhead">Running</div>
+        <div id="update-running" class="about-version">fetching update information…</div>
+        <div class="update-subhead">Branches
+          <span class="update-hint">click a branch to switch to it and update</span></div>
+        <div id="update-branches"></div>
+        <div id="update-note" class="update-note hidden"></div>
+        <div id="update-checked" class="update-checked"></div>
+      </div>
+      <div id="update-confirm" class="hidden">
+        <div class="update-subhead">Confirm</div>
+        <div id="update-confirm-text" class="update-note"></div>
+        <div id="update-confirm-error" class="update-note warn-text hidden"></div>
+        <div class="about-actions">
+          <button class="btn small" id="btn-update-yes">Update now</button>
+          <button class="btn small" id="btn-update-no">Cancel</button>
+        </div>
+      </div>
+      <div id="update-job" class="hidden">
+        <div class="update-subhead">Update in progress</div>
+        <div id="update-job-status" class="update-note"></div>
+        <pre id="update-log" class="update-log"></pre>
+      </div>
       <div class="about-actions">
         <button class="btn small" id="btn-update-check">Check now</button>
         <a class="btn small" id="btn-release-notes" href="#" target="_blank"

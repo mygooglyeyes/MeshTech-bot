@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.075 - 2026-09-07
+
+Web-console updates (dashboard stage 2): click a branch in the Software
+Updates popup to switch to it and update - no shell needed. One plain
+confirmation first (downgrades are called out explicitly), then the
+popup streams the updater's own output live, rides out the service
+restart, and reloads the console onto the new build when you close it.
+Behind the scenes the bot may run exactly ONE whitelisted script by
+exact path with no arguments (sudoers rule written by install.sh, or
+`sudo ./manage.sh webupdates` on existing installs); the real work runs
+detached as a transient systemd unit, pulls as the clone's owner, and
+applies through the same battle-tested deploy.sh path. Opt-in per bot:
+set `updates: clone_path:` to your home clone.
+
 ## 0.0.074 - 2026-09-07
 
 Update popup: the bot's own branch is always visible. When it runs a

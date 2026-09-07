@@ -324,6 +324,18 @@ input, select {
 .update-note { font-size: 0.8125rem; }
 .update-checked { font-size: 0.6875rem; color: var(--muted); }
 a.btn { text-decoration: none; display: inline-block; }
+/* Branch rows switch the bot to that branch when web updates are
+   enabled - say so on hover, and confirm before doing anything. */
+.update-hint { font-size: 0.6875rem; color: var(--muted); font-weight: 400; }
+.update-branch.clickable { cursor: pointer; }
+.update-branch.clickable:hover { border-color: var(--accent); }
+.warn-text { color: var(--warn); }
+.update-log {
+  max-height: 260px; overflow-y: auto; font-size: 0.6875rem;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px;
+  white-space: pre-wrap; word-break: break-word;
+}
 
 /* Node-detail popup: Traffic on top (window switcher + bar chart),
    route history below.  Route rows are chip chains: the node (source)
