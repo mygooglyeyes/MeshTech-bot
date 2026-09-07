@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.079 - 2026-09-07
+
+The release-notes button now shows the RUNNING branch's changes: when
+your build is ahead of the last published release it opens GitHub's
+compare view ("View changes since v0.0.063") instead of the old
+release page. Also adds DEV-NOTES.md, a running per-branch summary of
+work in progress and done, maintained alongside the changelog.
+
 ## 0.0.078 - 2026-09-07
 
 Fix: the update popup could show the WRONG version for a branch (a

@@ -416,13 +416,19 @@ function renderUpdatePopup(st) {
     checked.textContent = "";
   }
   const link = $("btn-release-notes");
-  const url = st.release_url || st.commits_url || "";
-  if (url) {
+  // Prefer the RUNNING branch's changes: ahead of the last published
+  // release, the interesting notes are what this branch changed since it.
+  const compare = st.compare_url || "";
+  const url = compare || st.release_url || st.commits_url || "";
+  if (url && url.indexOf("https://") === 0) {
     link.style.display = "";
     link.href = url;
-    link.textContent = st.release_url
-      ? ("View release notes" + (st.release && st.release.tag ? " (" + st.release.tag + ")" : ""))
-      : "View commit history";
+    const tag = st.release && st.release.tag ? st.release.tag : "";
+    link.textContent = compare
+      ? ("View changes since " + (tag || "the last release"))
+      : st.release_url
+        ? ("View release notes" + (tag ? " (" + tag + ")" : ""))
+        : "View commit history";
   } else {
     link.style.display = "none";
   }

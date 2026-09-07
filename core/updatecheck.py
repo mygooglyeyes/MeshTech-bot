@@ -130,6 +130,22 @@ def version_tuple(v: str) -> tuple:
     return tuple(parts)
 
 
+def compare_url_for(web: str, release_tag: str, branch: str,
+                    running_version: str) -> str:
+    """URL of the running branch's changes since a published release.
+
+    Empty unless the RUNNING version is genuinely newer than the release:
+    then GitHub's compare view is the honest "release notes for the branch
+    we are on".  At or below the release, there is nothing to compare.
+    """
+    if not (web and release_tag and branch and running_version):
+        return ""
+    tag_version = str(release_tag).strip().lstrip("vV")
+    if not version_tuple(running_version) > version_tuple(tag_version):
+        return ""
+    return https_only(f"{web}/compare/{release_tag}...{branch}")
+
+
 def newer_branch_from_versions(candidates: Iterable[str],
                                remote_versions: Dict[str, str],
                                running_version: str) -> str:
@@ -315,12 +331,18 @@ class UpdateChecker:
 
         # Optional: newest published release, for the notes link.  Failure
         # here (offline, rate limit, non-GitHub hosting) is not fatal.
+        web = repo_web_url(self.repo_url())
         rel = await self._latest_release()
         if rel:
             result["release"] = rel
             # Only ever hand the browser an https link (see https_only).
             result["release_url"] = https_only(rel.get("html_url", ""))
-        web = repo_web_url(self.repo_url())
+            # Running code AHEAD of the last published release: the notes
+            # button shows what THIS branch changed since it (the user's
+            # "release notes for the branch we are in"), not the old page.
+            result["compare_url"] = compare_url_for(
+                web, str(rel.get("tag_name") or ""), branch,
+                stamp.get("version") or "")
         result["commits_url"] = f"{web}/commits/{branch}" if branch else web
         return result
 
