@@ -72,18 +72,11 @@ main {
   /* 48rem = 768px at 100% text size, scaling with the font buttons.
      Sized so the packet table's widest content (the raw link profile
      line, the RX_LOG_DATA frame type, full timestamps) fits on one
-     line even at the 160% maximum text size. */
+     line even at the 160% maximum text size. Columns stay side by
+     side at EVERY size (no stacking): on a narrow window they shrink
+     to fit, and the text-size buttons stop growing before that point. */
   width: 48rem;
   min-width: 0;
-}
-
-/* Stack breakpoint in rem, not px: it must scale with the text-size
-   buttons too. 98.75rem = the two 48rem columns + gap + page padding
-   at 100%; at 160% text the same rem value is proportionally larger,
-   so the columns stack before they would ever be squeezed. */
-@media (max-width: 98.75rem) {
-  main { flex-direction: column; align-items: center; }
-  .col { width: 100%; max-width: 48rem; }
 }
 
 .card {

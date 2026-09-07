@@ -10,19 +10,35 @@ let lastStatus = null;
 
 // Font-size control: one root font-size scale (percent), persisted.
 // All dashboard text is sized against rem, so a single root change
-// rescales every card uniformly.
+// rescales every card uniformly. The two columns NEVER stack - the
+// maximum scale is the largest that still fits two full columns in
+// the window's inner width (col 48rem x2 + gap + padding + a margin
+// = ~99rem of layout; 145% keeps ~5% headroom under that). If the
+// saved scale is larger than the window allows (smaller window),
+// applyFontScale clamps it visually without losing the saved value.
 const FONT_SCALE_KEY = "mcb_font_scale";
+const FONT_MAX = 145;
+const FONT_MIN = 70;
 let fontScale = parseInt(localStorage.getItem(FONT_SCALE_KEY), 10);
 if (!Number.isFinite(fontScale)) fontScale = 100;
 
+function windowMaxScale() {
+  // 99rem of two-column layout needs innerWidth >= 99 * root px.
+  // Root px = 14 (0.875rem body) * scale/100. Solve for the scale
+  // whose layout just fits, then keep 4% headroom.
+  const inner = window.innerWidth || 1600;
+  const s = Math.floor((inner / (99 * 14)) * 100 * 0.96);
+  return Math.max(FONT_MIN, Math.min(FONT_MAX, s));
+}
 function applyFontScale() {
-  document.documentElement.style.fontSize = fontScale + "%";
+  document.documentElement.style.fontSize = Math.min(fontScale, windowMaxScale()) + "%";
 }
 function changeFontScale(delta) {
-  fontScale = Math.min(160, Math.max(70, fontScale + delta));
+  fontScale = Math.min(windowMaxScale(), Math.max(FONT_MIN, fontScale + delta));
   localStorage.setItem(FONT_SCALE_KEY, String(fontScale));
   applyFontScale();
 }
+window.addEventListener("resize", applyFontScale);
 
 const $ = (id) => document.getElementById(id);
 

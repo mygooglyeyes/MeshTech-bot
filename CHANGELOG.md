@@ -63,6 +63,17 @@ When holds the full timestamp, Channel / sender holds its header and
 genuinely too narrow for all columns at the current text size, the
 table scrolls sideways instead - a header never wraps again.
 
+## 0.0.062 - 2026-09-06
+
+Dashboard layout policy, per operator decision: the two columns
+**never stack** - they stay side by side at every window and text
+size. The text-size + button now stops at the largest scale that
+still fits two full columns in the window (calculated from the
+window's inner width, with headroom), so growth ends exactly when
+the screen is full. On a smaller window the + ceiling lowers itself;
+resizing re-checks automatically. Packet/message tables keep the
+ch-unit no-wrap columns from 0.0.061.
+
 ## Batch summary: 0.0.027 → 0.0.056 (the modules era)
 
 Thirty releases that turned the bot from a passive answerer into a
