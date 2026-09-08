@@ -11,6 +11,11 @@ Newest entries first within each branch.
 
 ## feature/mesh-health (current work)
 
+- **v0.0.085 (in review)** - DM delivery fix: chunk gap 0.2 s -> 1.2 s
+  (limits.dm_chunk_gap_seconds) after a real-mesh test lost 5 of 6 DM
+  chunks to self-collision; DM extended help now a compact list (4
+  chunks, not the 6-chunk wide table).
+
 - **v0.0.084 (in review)** - Mesh health chunk: name-only registry for
   talk-only stations (3+ msgs/24 h), flood scoring (burst / share /
   repeat, components visible), Mesh Health card with block checkbox

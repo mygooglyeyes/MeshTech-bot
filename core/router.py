@@ -687,6 +687,12 @@ class Router:
             return
         sent = 0
         dm_target = None
+        # Inter-chunk gap: consecutive packets need real airtime spacing or
+        # they self-collide (LBT + repeater buffers). A 0.2 s gap burst lost
+        # 5 of 6 chunks on a real mesh - the LAST chunk arrived, the earlier
+        # ones were still in the air. 1.2 s = several airtime cycles at
+        # SF7/62.5 kHz; the config can tune it (limits.dm_chunk_gap_seconds).
+        gap = max(0.2, float(getattr(settings.limits, "dm_chunk_gap_seconds", 1.2)))
         if force_dm:
             # The sender of a channel message is identified by the embedded
             # name - resolve it to a registry node prefix to address the DM.
@@ -701,18 +707,18 @@ class Router:
             for message in messages:
                 if await client.send_dm(dm_target, message):
                     sent += 1
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(gap)
         elif ctx.msg.kind == "channel":
             idx = ctx.msg.channel_idx
             for message in messages:
                 if await client.send_channel(idx, message):
                     sent += 1
-                    await asyncio.sleep(0.4)  # small gap between chunks on air
+                    await asyncio.sleep(gap)  # same physics for channel bursts
         else:
             for message in messages:
                 if await client.send_dm(ctx.msg.sender_prefix, message):
                     sent += 1
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(gap)
         if sent:
             now = time.time()
             self._last_reply_at = now

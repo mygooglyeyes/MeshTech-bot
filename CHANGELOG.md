@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.085 - 2026-09-07
+
+Fix: multi-chunk replies self-collided on air - a 0.2 s gap lost 5 of 6
+DM chunks in real testing (only the last arrived). The inter-chunk gap
+is now 1.2 s (configurable: limits.dm_chunk_gap_seconds) for both DM
+and channel bursts, and extended help over DM renders as a compact
+list (4 chunks instead of the wide table's 6).
+
 ## 0.0.084 - 2026-09-07
 
 Mesh health (chunk 4): persistent talk-only stations (channel senders

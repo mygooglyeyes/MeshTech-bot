@@ -126,6 +126,10 @@ class HelpHandler(Handler):
             data = format_brief_help(command_words, canned_list, admin_hint)
             return HandlerResult(kind="text", data=data)
 
+        # DM extended help: a tight list, NOT the wide table - the table
+        # costs 6 LoRa packets over DM and multi-packet bursts self-collide
+        # on air (5 of 6 chunks were lost in real testing). Fewer, smaller
+        # chunks survive. Channels keep the table (single flood, no loss).
         rows = []
         for handler, kw, scope, access in sorted(pairs, key=lambda p: p[0].priority):
             where = ("DM only" if scope == "dm" else
@@ -133,6 +137,11 @@ class HelpHandler(Handler):
             if access == "admin":
                 where += " (admin)"
             rows.append(["!" + kw, handler.description, where])
+        if kind == "dm":
+            lines = ["!" + kw + " - " + handler.description
+                     for _, kw, _, _ in sorted(pairs, key=lambda p: p[0].priority)]
+            lines.append("x = more | words: " + canned_words)
+            return HandlerResult(kind="text", data="\n".join(lines))
         table = fmt_table(["Command", "What it does", "Where"], rows,
                           col_caps=[16, 46, 10])
         lines = list(table)
