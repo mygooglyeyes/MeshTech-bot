@@ -399,6 +399,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .route-count:hover { color: var(--accent); }
 
 .muted-note { color: var(--warn); font-weight: 600; }
+.muted { color: var(--muted); font-size: 0.75rem; }
+
+/* Mesh Health card: score column goes warn-colored when hot */
+#health-list table { width: 100%; }
+#health-list td, #health-list th { padding: 4px 8px; }
 em { color: var(--muted); }
 
 /* Collapsible cards: the caret lives in the section h2; clicking it (or the

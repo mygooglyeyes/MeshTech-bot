@@ -276,6 +276,17 @@ def build_app(service) -> FastAPI:
         hours = max(0.2, min(hours, 24 * 7))
         return {"analysis": store.packet_analysis(hours=hours)}
 
+    @app.get("/api/meshhealth", dependencies=[Depends(require_auth)])
+    async def mesh_health_endpoint():
+        """Flood-score ranking of recent senders (surface-only: the card
+        informs the operator; nothing here blocks anyone)."""
+        from core.meshhealth import mesh_health
+        out = mesh_health(store, limit=10)
+        blocked = store.blocked_prefixes()
+        for row in out.get("senders", []):
+            row["blocked"] = bool(row.get("prefix")) and row["prefix"] in blocked
+        return out
+
     @app.get("/api/config", dependencies=[Depends(require_auth)])
     async def config_view():
         return {"config": service.config_snapshot(),

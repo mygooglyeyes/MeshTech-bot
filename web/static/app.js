@@ -1130,6 +1130,67 @@ $("node-filter").addEventListener("input", (e) => refreshNodes(e.target.value));
 
 // ------------------------------------------------------------------ messages
 
+// Mesh Health card: flood-score ranking of recent senders (surface-only:
+// informs the operator; nothing is blocked automatically).
+async function refreshHealth() {
+  let data;
+  try {
+    data = await api("/api/meshhealth");
+  } catch (e) {
+    return;                       // keep the last view; next poll retries
+  }
+  const sum = $("health-summary");
+  const wrap = $("health-list");
+  if (!sum || !wrap) return;
+  sum.textContent = "traffic in the last hour: " +
+    (data.total_msgs_hour || 0) + " message(s)";
+  const rows = data.senders || [];
+  wrap.innerHTML = "";
+  if (!rows.length) {
+    const em = document.createElement("em");
+    em.textContent = "no traffic scored yet";
+    wrap.appendChild(em);
+    return;
+  }
+  const table = document.createElement("table");
+  table.innerHTML = "<thead><tr><th>Node</th><th>Score</th><th>Msgs/10m</th><th>Share</th><th>Repeat</th><th></th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    const who = r.prefix || r.name || "?";
+    tr.innerHTML =
+      "<td>" + esc(r.name || "-") +
+        (r.prefix ? "" : " <span class='muted'>(name-only)</span>") + "</td>" +
+      "<td" + (r.score >= 50 ? " class='warn-text'" : "") + ">" +
+        r.score + "/100</td>" +
+      "<td>" + r.burst.per_min + "/min</td>" +
+      "<td>" + r.share.pct + "%</td>" +
+      "<td>" + (r.repeat.count ? r.repeat.count + "x" : "-") + "</td>";
+    const tdAct = document.createElement("td");
+    if (r.prefix) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.title = "Ignore all messages from this node";
+      cb.checked = !!r.blocked;
+      cb.addEventListener("change", async () => {
+        cb.disabled = true;
+        try {
+          await api("/api/nodes/" + encodeURIComponent(r.prefix) + "/block",
+                    { method: cb.checked ? "POST" : "DELETE" });
+        } catch (e) {
+          cb.checked = !cb.checked;
+        }
+        cb.disabled = false;
+      });
+      tdAct.appendChild(cb);
+    }
+    tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
 async function refreshMessages() {
   const channel = $("msg-channel").value;
   const kind = $("msg-kind").value;
@@ -1683,7 +1744,7 @@ const COLLAPSE_KEY = "mcb_col_";
 // State is remembered per section in localStorage, so the big lists (nodes,
 // packets) can stay closed between visits. Until the visitor has expressed a
 // choice, the tallest sections start collapsed for a cleaner landing view.
-const DEFAULT_COLLAPSED = new Set(["card-nodes", "card-packets"]);
+const DEFAULT_COLLAPSED = new Set(["card-nodes", "card-packets", "card-health"]);
 
 function setupCollapsibleSections() {
   document.querySelectorAll("main section.card.collapsible").forEach((card) => {
@@ -1990,6 +2051,7 @@ function startPolling() {
   setInterval(() => { refreshNodes($("node-filter").value).catch(() => {}); }, 30000);
   setInterval(() => { refreshPackets().catch(() => {}); }, 30000);
   setInterval(() => { refreshAnalysis().catch(() => {}); }, 30000);
+  setInterval(() => { refreshHealth().catch(() => {}); }, 30000);
   // Update check status changes slowly; refresh the chip every 10 min
   // (the bot itself re-checks on its own schedule).
   setInterval(() => { refreshUpdateStatus().catch(() => {}); }, 600000);

@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.084 - 2026-09-07
+
+Mesh health (chunk 4): persistent talk-only stations (channel senders
+that never advertise) are now registered as name-only entries after 3
+messages in 24 h, so their traffic counts. New Mesh Health card ranks
+senders by a visible flood score (burst rate, share of traffic, repeat
+text) and carries a block checkbox - report only, nothing is ever
+blocked automatically. New admin DM command !health returns the top 3
+offenders in one packet.
+
 ## 0.0.083 - 2026-09-07
 
 Docs: the branch workflow is now written down - feature branches are

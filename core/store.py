@@ -331,6 +331,50 @@ class Store:
                  route_hops, route_summary),
             )
 
+    def upsert_name_only_node(self, name: str, ts: Optional[float] = None,
+                              min_messages: int = 3,
+                              window_hours: float = 24.0) -> Optional[Dict[str, Any]]:
+        """Register a talk-only station from its embedded channel name.
+
+        A station that transmits channel messages but never advertises
+        (no pubkey) is invisible to the registry - and therefore to all
+        statistics.  Once a name proves PERSISTENT (>= ``min_messages``
+        messages in the trailing window), create a synthetic registry
+        entry keyed by the name itself so traffic/routes/trends attribute
+        to it.  One-off name collisions never create junk rows.
+
+        Returns the node row when present (existing registry entry OR a
+        newly created name-only entry), else None.
+        """
+        name = (name or "").strip()
+        if not name:
+            return None
+        existing = self.find_node(name)
+        if existing is not None:
+            return existing
+        cutoff = (ts if ts is not None else _now()) - window_hours * 3600.0
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE sender_name = ? "
+            "AND direction='in' AND recv_ts >= ?",
+            (name, cutoff),
+        ).fetchone()
+        if not row or row[0] < min_messages:
+            return None
+        synthetic = "name-only:" + name.lower()
+        self.upsert_node(pubkey=synthetic, name=name, source="name-only", ts=ts)
+        node = self.get_node(synthetic)
+        log.info("Registered talk-only station '%s' from channel traffic "
+                 "(%d messages in %dh) - name-only entry.",
+                 name, row[0], int(window_hours))
+        self.service_feed_note(name, row[0])
+        return node
+
+    def service_feed_note(self, name: str, count: int) -> None:
+        """Optional feed note; wired to the feed hub by the router layer
+        (the store has no feed reference).  Kept as a no-op hook so the
+        registration path stays quiet in tests and CLI tools."""
+        return None
+
     def get_node(self, key_or_prefix: str) -> Optional[Dict[str, Any]]:
         key = key_or_prefix.lower()
         row = self._conn.execute(
@@ -935,6 +979,46 @@ class Store:
             (cutoff,),
         ).fetchone()
         return {"packets": row["packets"], "airtime_ms": round(row["airtime_ms"], 1)}
+
+    # ---------------------------------------------------------- mesh health
+
+    def sender_windows(self, burst_minutes: float = 10.0,
+                       share_minutes: float = 60.0,
+                       repeat_minutes: float = 10.0) -> Dict[str, Dict[str, Any]]:
+        """Per-sender traffic signals for flood scoring, from the message
+        log we already keep (no new tables, Pi-friendly).
+
+        One grouped query per window over an indexed time range:
+          burst  - messages per sender in the last ~10 minutes
+          share  - messages per sender in the last ~60 minutes
+          repeat - identical-text repeats per sender in the last ~10 min
+        """
+        now = time.time()
+        out: Dict[str, Dict[str, Any]] = {}
+
+        def _rows(sql: str, cutoff: float, group_extra: str = ""):
+            return self._conn.execute(sql.format(extra=group_extra),
+                                      (cutoff,)).fetchall()
+
+        base = ("SELECT COALESCE(NULLIF(sender_prefix,''), 'name:' || sender_name) "
+                "AS who{extra}, COUNT(*) AS n FROM messages "
+                "WHERE direction='in' AND recv_ts >= ? AND sender_name != '' "
+                "GROUP BY who")
+        for r in _rows(base.format(extra=""), now - burst_minutes * 60.0):
+            out.setdefault(r[0], {})['burst'] = int(r[1])
+        for r in _rows(base.format(extra=""), now - share_minutes * 60.0):
+            out.setdefault(r[0], {})['share'] = int(r[1])
+        repeat_sql = ("SELECT COALESCE(NULLIF(sender_prefix,''), 'name:' || sender_name) "
+                      "AS who, text, COUNT(*) AS n FROM messages "
+                      "WHERE direction='in' AND recv_ts >= ? AND sender_name != '' "
+                      "GROUP BY who, text HAVING COUNT(*) >= 2")
+        repeats: Dict[str, int] = {}
+        for r in self._conn.execute(repeat_sql, (now - repeat_minutes * 60.0,)):
+            repeats[r[0]] = max(repeats.get(r[0], 0), int(r[2]))
+        for who, n in repeats.items():
+            out.setdefault(who, {})['repeat'] = n
+        total_share = sum(v.get('share', 0) for v in out.values()) or 1
+        return {"senders": out, "total_share": total_share}
 
     # ------------------------------------------------------------ backfill
 

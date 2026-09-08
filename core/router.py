@@ -552,6 +552,16 @@ class Router:
         prefix = msg.sender_prefix
         if not prefix and msg.sender_name:
             node = store.find_node(msg.sender_name)
+            if node is None:
+                # Talk-only station (never advertises): once its embedded
+                # name proves persistent, register a name-only entry so
+                # traffic/routes/trends can attribute to it.
+                node = store.upsert_name_only_node(msg.sender_name,
+                                                   ts=msg.recv_ts)
+                if node is not None:
+                    self.service.feed.publish("notice", {
+                        "text": f"Registered talk-only station '{msg.sender_name}' "
+                                f"(name-only, from channel traffic)"})
             prefix = node["prefix"] if node else None
         if not prefix:
             return                              # unattributable - skip

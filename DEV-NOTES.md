@@ -9,7 +9,15 @@ Newest entries first within each branch.
 
 ---
 
-## feature/branch-switcher (current work - contains the node-popup stack)
+## feature/mesh-health (current work)
+
+- **v0.0.084 (in review)** - Mesh health chunk: name-only registry for
+  talk-only stations (3+ msgs/24 h), flood scoring (burst / share /
+  repeat, components visible), Mesh Health card with block checkbox
+  (surface-only), admin !health DM command. Design confirmed with the
+  user before building; commit pending user review of the diff.
+
+## feature/branch-switcher (merged into DEV)
 
 - **v0.0.082** - Developer mode: a checkbox in the update popup widens
   clickable branches from DEV/main/running to any branch (contributor
