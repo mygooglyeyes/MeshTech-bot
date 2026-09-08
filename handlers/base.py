@@ -40,6 +40,7 @@ class Handler:
     # Optional per-keyword overrides for handlers exposing several commands:
     keyword_scope: Dict[str, str] = {}    # keyword -> scope override
     keyword_access: Dict[str, str] = {}   # keyword -> access override
+    keyword_description: Dict[str, str] = {}  # keyword -> help text override
     require_prefix: bool = True    # !<keyword> unless False (plain word match)
     priority: int = 100            # lower runs first
 

@@ -26,7 +26,7 @@ from .base import Handler
 class AdminHandler(Handler):
     name = "admin"
     keywords = ["diag", "reload", "shutdown", "up", "down"]
-    description = "Bot administration (diag/reload/shutdown/up/down)"
+    description = "Bot admin"
     scope = "dm"
     access = "admin"
     priority = 50

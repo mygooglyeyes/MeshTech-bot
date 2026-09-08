@@ -10,6 +10,11 @@ Newest entries first within each branch.
 ---
 
 ## feature/mesh-health (current work)
+## feature/mesh-health (current work)
+
+- **v0.0.088 (in review)** - DM help slimmed 6 -> 3 chunks: per-keyword
+  descriptions, shared-description grouping (one admin: line), footer
+  only when needed.
 
 - **v0.0.087 (in review)** - Export upgrade for DM-loss analysis:
   messages.csv (full message log) and summary_dms.csv (per-burst chunk

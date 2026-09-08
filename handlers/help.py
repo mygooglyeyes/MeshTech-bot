@@ -89,7 +89,7 @@ def format_brief_help(command_words: str, canned_words: str,
 class HelpHandler(Handler):
     name = "help"
     keywords = ["help"]
-    description = "List commands and usage"
+    description = "short list of commands"
     scope = "both"
     access = "public"
     priority = 90
@@ -126,24 +126,56 @@ class HelpHandler(Handler):
             data = format_brief_help(command_words, canned_list, admin_hint)
             return HandlerResult(kind="text", data=data)
 
-        # DM extended help: a tight list, NOT the wide table - the table
-        # costs 6 LoRa packets over DM and multi-packet bursts self-collide
-        # on air (5 of 6 chunks were lost in real testing). Fewer, smaller
-        # chunks survive. Channels keep the table (single flood, no loss).
+        # DM extended help: a compact grouped list, NOT the wide table -
+        # the table costs 6 LoRa packets over DM and multi-packet bursts
+        # self-collide on air (5 of 6 chunks were lost in real testing).
+        # Fewer, smaller chunks survive. Channels keep the table (single
+        # flood, no loss).
         rows = []
         for handler, kw, scope, access in sorted(pairs, key=lambda p: p[0].priority):
             where = ("DM only" if scope == "dm" else
                      "channel/DM" if scope == "both" else "channel")
             if access == "admin":
                 where += " (admin)"
-            rows.append(["!" + kw, handler.description, where])
+            desc = handler.keyword_description.get(kw, handler.description)
+            rows.append(["!" + kw, desc, where])
         if kind == "dm":
-            # One line per command - h is THIS row's handler (the loop
-            # variable from the table build must not leak in here; reusing
-            # it labelled every command with the last handler's text).
-            lines = ["!" + kw + " - " + h.description
-                     for h, kw, _, _ in sorted(pairs, key=lambda p: p[0].priority)]
-            lines.append("x = more | words: " + canned_words)
+            # Grouped compact list: line 1 is the bare keyword list (fast
+            # scan); then keywords SHARING one description collapse onto a
+            # single line; admin commands get their own line, admin-only.
+            # Footer only when there is actually more to say.
+            ordered = sorted(pairs, key=lambda p: p[0].priority)
+            visible = [(h, kw) for h, kw, _, access in ordered
+                       if access != "admin"]
+            admin_pairs = [(h, kw) for h, kw, _, access in ordered
+                           if access == "admin"]
+            # Keywords sharing one description collapse onto a single line
+            # (the admin commands all share one text -> one grouped line).
+            def _grouped(cmd_pairs):
+                groups: list = []
+                for h, kw in cmd_pairs:
+                    desc = h.keyword_description.get(kw, h.description)
+                    if groups and groups[-1][1] == desc:
+                        groups[-1][0].append(kw)
+                    else:
+                        groups.append([[kw], desc])
+                return groups
+            lines = []
+            for kws, desc in _grouped(visible):
+                lines.append(" ".join("!" + k for k in kws) + " - " + desc)
+            if admin_pairs:
+                admin_kws = [kw for _, kw in admin_pairs]
+                admin_descs = {h.keyword_description.get(kw, h.description)
+                               for h, kw in admin_pairs}
+                if len(admin_descs) == 1:
+                    lines.append("admin: !" + " !".join(admin_kws)
+                                 + " - " + admin_descs.pop())
+                else:
+                    for kws, desc in _grouped(admin_pairs):
+                        lines.append(" ".join("!" + k for k in kws)
+                                     + " - " + desc)
+            if canned_words != "(none)":
+                lines.append("words: " + canned_words)
             return HandlerResult(kind="text", data="\n".join(lines))
         table = fmt_table(["Command", "What it does", "Where"], rows,
                           col_caps=[16, 46, 10])

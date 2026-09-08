@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.088 - 2026-09-07
+
+DM extended help slimmed from 6 packets to 3: short per-command
+descriptions in Brett's wording, commands sharing a description
+collapsed onto one line (all five admin commands become a single
+"Bot admin" line), and the "x = more" footer only appears when there
+is actually more to say. Channel help keeps the full table.
+
+
 ## 0.0.087 - 2026-09-07
 
 The packet export now includes the message log (messages.csv: every
