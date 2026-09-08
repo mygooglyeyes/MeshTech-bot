@@ -138,8 +138,11 @@ class HelpHandler(Handler):
                 where += " (admin)"
             rows.append(["!" + kw, handler.description, where])
         if kind == "dm":
-            lines = ["!" + kw + " - " + handler.description
-                     for _, kw, _, _ in sorted(pairs, key=lambda p: p[0].priority)]
+            # One line per command - h is THIS row's handler (the loop
+            # variable from the table build must not leak in here; reusing
+            # it labelled every command with the last handler's text).
+            lines = ["!" + kw + " - " + h.description
+                     for h, kw, _, _ in sorted(pairs, key=lambda p: p[0].priority)]
             lines.append("x = more | words: " + canned_words)
             return HandlerResult(kind="text", data="\n".join(lines))
         table = fmt_table(["Command", "What it does", "Where"], rows,

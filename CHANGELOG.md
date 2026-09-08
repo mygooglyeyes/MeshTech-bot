@@ -9,6 +9,12 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.086 - 2026-09-07
+
+Fix: DM extended help listed every command with the *weather* handler's
+description - a loop variable leaked into the one-line-per-command
+build. Each line now shows its own command's description.
+
 ## 0.0.085 - 2026-09-07
 
 Fix: multi-chunk replies self-collided on air - a 0.2 s gap lost 5 of 6
