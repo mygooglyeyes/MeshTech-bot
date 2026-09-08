@@ -185,7 +185,7 @@ def format_forecast(place: str,
 
 class WeatherModule(ModuleSpec):
     name = "weather"
-    description = "current weather AND FORECAST FOR <zip>"
+    description = "current wx and forecast for <zip>"
     keywords = ["weather", "wx"]
     scope = "both"
     access = "public"

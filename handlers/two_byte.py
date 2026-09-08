@@ -74,7 +74,7 @@ def format_2byte_report(stats: dict) -> str:
 class TwoByteHandler(Handler):
     name = "2byte"
     keywords = ["2byte"]
-    description = "Share of nodes using 2-byte path hashes (ASCII bar)"
+    description = "% of nodes on 2-byte PFX"
     scope = "both"
     access = "public"
     priority = 96

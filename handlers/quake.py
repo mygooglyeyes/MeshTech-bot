@@ -87,7 +87,7 @@ class QuakeModule(WeatherModule):
     """Shares the weather module's geocoder and HTTP timing."""
     name = "quake"
     keywords = ["quake"]
-    description = "Recent earthquakes near an area (USGS)"
+    description = "latest USGS report"
     scope = "both"
     access = "public"
     require_prefix = True

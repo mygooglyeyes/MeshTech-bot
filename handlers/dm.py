@@ -18,7 +18,7 @@ from .base import Handler
 class DmHandler(Handler):
     name = "dm"
     keywords = ["dm"]
-    description = "Have the bot DM you back (starts a DM thread)"
+    description = "bot starts DM with you"
     scope = "both"
     access = "public"
     priority = 97

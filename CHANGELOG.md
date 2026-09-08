@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.089 - 2026-09-08
+
+Remaining DM help descriptions shortened to Brett's wording
+(!quake - latest USGS report, !alerts - wx alerts for <zip>,
+!2byte - % of nodes on 2-byte PFX, !dm - bot starts DM with you,
+!weather !wx - current wx and forecast for <zip>, !health - Msh
+health / offendrs). DM extended help now fits 4 chunks.
+
+
 ## 0.0.088 - 2026-09-07
 
 DM extended help slimmed from 6 packets to 3: short per-command

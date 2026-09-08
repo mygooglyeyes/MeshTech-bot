@@ -18,7 +18,7 @@ from .base import Handler
 class MeshHealthHandler(Handler):
     name = "meshhealth"
     keywords = ["health"]
-    description = "Mesh health: top flood-score offenders"
+    description = "Msh health / offendrs"
     scope = "dm"
     access = "admin"
     priority = 80
