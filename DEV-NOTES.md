@@ -11,6 +11,13 @@ Newest entries first within each branch.
 
 ## feature/mesh-health (current work)
 
+- **v0.0.087 (in review)** - Export upgrade for DM-loss analysis:
+  messages.csv (full message log) and summary_dms.csv (per-burst chunk
+  gaps and sizes) ship with every export, so send-side timing can be
+  correlated with which chunks actually arrive on the handheld.
+- **v0.0.086 (in review)** - Fix: DM help descriptions leaked the
+  weather handler's text onto every command line.
+
 - **v0.0.085 (in review)** - DM delivery fix: chunk gap 0.2 s -> 1.2 s
   (limits.dm_chunk_gap_seconds) after a real-mesh test lost 5 of 6 DM
   chunks to self-collision; DM extended help now a compact list (4

@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.087 - 2026-09-07
+
+The packet export now includes the message log (messages.csv: every
+channel and DM message with direction, sender, timing and text) and a
+per-burst DM delivery summary (summary_dms.csv): for each multi-chunk
+outgoing DM reply it records the chunk count, the gaps between sends,
+and each chunk's size - the raw material for correlating which chunks
+die on air with how the burst was sent.
+
 ## 0.0.086 - 2026-09-07
 
 Fix: DM extended help listed every command with the *weather* handler's

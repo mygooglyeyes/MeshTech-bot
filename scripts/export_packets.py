@@ -5,18 +5,21 @@ Every run writes into a fresh timestamped folder (default:
 ``data/exports/packets-<YYYYmmdd-HHMMSS>/``):
 
   packets.csv              - every captured frame, one row per frame
+  messages.csv             - the message log (channel + DM, in and out)
   summary_hourly.csv       - frames per hour (decoded / raw / total)
   summary_frame_types.csv  - frame-type mix per layer (count + %)
   summary_hops.csv         - hop distribution of decoded frames
   summary_path_hash.csv    - path-hash size mix (1-byte / 2-byte / 3+ byte)
   summary_snr.csv          - average / min / max SNR per hour
   summary_senders.csv      - most active senders
+  summary_dms.csv          - per-DM-conversation chunk/timing analysis
 
 The CSV files open straight in Excel / LibreOffice / Numbers and are easy
 to load in pandas:
 
     import pandas as pd
     pkts = pd.read_csv("packets.csv")
+    msgs = pd.read_csv("messages.csv")
 
 Usage:
     python scripts/export_packets.py                  # everything, from config.yaml's db
@@ -32,6 +35,7 @@ import argparse
 import csv
 import io
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -52,7 +56,14 @@ _PACKET_COLUMNS = ["id", "ts_iso", "ts", "layer", "direction", "frame_type",
 # the captured wire bytes for raw-layer frames (empty for decoded rows).
 _CSV_TEXT_COLUMNS = _PACKET_COLUMNS + ["raw_hex"]
 
+_MESSAGE_COLUMNS = ["id", "ts_iso", "ts", "kind", "direction", "channel_name",
+                    "sender", "hops", "snr", "text"]
+
 _HOP_BUCKETS: List[Any] = [0, 1, 2, 3, "4+"]
+
+# Chunk marker the router puts on every part of a multi-message reply:
+# "[3/6] rest of text". Only replies that needed splitting carry it.
+_CHUNK_RE = re.compile(r"^\[(\d+)/(\d+)\]\s*")
 
 # CSV cells starting with these characters are interpreted as formulas by
 # Excel/LibreOffice/Google Sheets. Mesh traffic (message text, sender
@@ -84,6 +95,154 @@ def _hour_key(ts: Optional[float]) -> str:
         return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:00")
     except (OverflowError, OSError, ValueError):
         return ""
+
+
+def _chunk_index(text: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    """Extract (index, total) from a '[2/6] ...' reply chunk, else (None, None)."""
+    if not text:
+        return None, None
+    match = _CHUNK_RE.match(text)
+    if not match:
+        return None, None
+    return int(match.group(1)), int(match.group(2))
+
+
+def export_messages(db_path: str, out_dir: str,
+                    hours: Optional[float] = None,
+                    limit: Optional[int] = None) -> Dict[str, Any]:
+    """Dump the message log (channel + DM) to ``messages.csv``.
+
+    One row per message with direction (in/out), sender, timing and text -
+    the raw material for DM delivery analysis (which chunks were sent,
+    when, and how far apart).
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    where: List[str] = []
+    params: List[Any] = []
+    if hours is not None:
+        where.append("recv_ts >= ?")
+        params.append(datetime.now().timestamp() - float(hours) * 3600)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    if limit:
+        params.append(int(limit))
+        order_sql = ("SELECT * FROM (SELECT %s FROM messages%s "
+                     "ORDER BY recv_ts DESC, id DESC LIMIT ?) "
+                     "ORDER BY recv_ts ASC, id ASC")
+    else:
+        order_sql = "SELECT %s FROM messages%s ORDER BY recv_ts ASC, id ASC"
+
+    select_cols = ["id", "kind", "direction", "channel_name",
+                   "sender_prefix", "sender_name", "recv_ts AS ts",
+                   "hops", "snr", "text"]
+    sql = order_sql % (", ".join(select_cols), where_sql)
+
+    path = out / "messages.csv"
+    rows_written = 0
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        with open(path, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(_MESSAGE_COLUMNS)
+            for row in conn.execute(sql, params):
+                # Build the row explicitly - the select carries both
+                # sender_prefix and sender_name, and the output column
+                # "sender" is their resolved combination.
+                writer.writerow([
+                    _csv_cell(v) for v in (
+                        row["id"], _iso(row["ts"]), row["ts"],
+                        row["kind"], row["direction"], row["channel_name"],
+                        row["sender_prefix"] or row["sender_name"] or "",
+                        row["hops"], row["snr"], row["text"])])
+                rows_written += 1
+    finally:
+        conn.close()
+    return {"rows": rows_written, "files": [str(path)]}
+
+
+def dm_delivery_summary(db_path: str,
+                        hours: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Group outgoing DM replies into bursts and time each chunk.
+
+    A burst is a run of consecutive outgoing DM rows to the same sender
+    whose texts carry [i/n] chunk markers. For each burst the summary
+    reports: chunk count, first-to-last span, the gaps BETWEEN chunks
+    (the on-air spacing we control), and the size of each chunk. Losses
+    on the receiving side then correlate against these numbers.
+    """
+    where = ["kind = 'dm'", "direction = 'out'"]
+    params: List[Any] = []
+    if hours is not None:
+        where.append("recv_ts >= ?")
+        params.append(datetime.now().timestamp() - float(hours) * 3600)
+    sql = ("SELECT sender_prefix, text, recv_ts FROM messages WHERE "
+           + " AND ".join(where) + " ORDER BY recv_ts ASC, id ASC")
+
+    bursts: List[Dict[str, Any]] = []
+    current: List[Dict[str, Any]] = []
+    current_key: Optional[tuple] = None
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = [dict(r) for r in conn.execute(sql, params)]
+    finally:
+        conn.close()
+
+    def flush() -> None:
+        if len(current) < 2:
+            current.clear()
+            return
+        idxs = [c["idx"] for c in current]
+        totals = {c["total"] for c in current}
+        gaps = [round(current[i + 1]["ts"] - current[i]["ts"], 3)
+                for i in range(len(current) - 1)]
+        bursts.append({
+            "sender": current[0]["sender"] or "",
+            "started": _iso(current[0]["ts"]),
+            "chunks_sent": len(current),
+            "chunk_total": totals.pop() if len(totals) == 1 else "?",
+            "sequence_ok": idxs == list(range(1, len(current) + 1)),
+            "span_s": round(current[-1]["ts"] - current[0]["ts"], 3),
+            "gaps_s": " ".join(f"{g:.1f}" for g in gaps),
+            "chunk_bytes": " ".join(str(c["bytes"]) for c in current),
+        })
+        current.clear()
+
+    for row in rows:
+        idx, total = _chunk_index(row["text"])
+        key = (row["sender_prefix"], total)
+        if idx is not None and (current and key == current_key
+                                and idx == current[-1]["idx"] + 1):
+            current.append({"idx": idx, "total": total, "ts": row["recv_ts"],
+                            "bytes": len((row["text"] or "").encode("utf-8")),
+                            "sender": row["sender_prefix"]})
+        else:
+            flush()
+            current_key = key if idx is not None else None
+            if idx is not None:
+                current.append({"idx": idx, "total": total, "ts": row["recv_ts"],
+                                "bytes": len((row["text"] or "").encode("utf-8")),
+                                "sender": row["sender_prefix"]})
+    flush()
+    return bursts
+
+
+def _write_dm_summary(out_dir: str, bursts: List[Dict[str, Any]]) -> str:
+    path = Path(out_dir) / "summary_dms.csv"
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["sender", "started", "chunks_sent", "chunk_total",
+                         "sequence_ok", "span_s", "gaps_s", "chunk_bytes"])
+        for burst in bursts:
+            writer.writerow([_csv_cell(burst["sender"]), burst["started"],
+                             burst["chunks_sent"], burst["chunk_total"],
+                             burst["sequence_ok"], burst["span_s"],
+                             burst["gaps_s"], burst["chunk_bytes"]])
+    return str(path)
 
 
 def export_packets(db_path: str, out_dir: str,
@@ -187,10 +346,18 @@ def export_packets(db_path: str, out_dir: str,
     finally:
         conn.close()
 
-    if not include_summaries:
-        return {"rows": rows_written, "files": [str(packet_path)]}
+    # The message log ships alongside the packets in every export - the DM
+    # analysis below reads it, and having both in one folder keeps the
+    # radio-side and message-side views of the same test together.
+    msg_result = export_messages(db_path, out_dir, hours=hours)
+    files: List[str] = [str(packet_path), str(msg_result["files"][0])]
+    rows_total = rows_written + msg_result["rows"]
 
-    files: List[str] = [str(packet_path)]
+    if not include_summaries:
+        return {"rows": rows_total, "files": files}
+
+    files.append(_write_dm_summary(out_dir,
+                                   dm_delivery_summary(db_path, hours=hours)))
 
     # --- frames per hour --------------------------------------------------
     summary_path = out / "summary_hourly.csv"
@@ -263,7 +430,7 @@ def export_packets(db_path: str, out_dir: str,
                              round(100.0 * count / (hash_frames or 1), 1)])
     files.append(str(summary_path))
 
-    return {"rows": rows_written, "files": files}
+    return {"rows": rows_total, "files": files}
 
 
 def packets_csv_text(db_path: str, layer: Optional[str] = None,
@@ -327,11 +494,11 @@ def _cli(db_path: str, out_dir: str, hours: Optional[float],
         db_path=db_path, out_dir=out_dir, hours=hours, layer=layer,
         limit=limit, include_payload=include_payload,
         include_summaries=include_summaries)
-    print(f"Exported {result['rows']} frames into {out_dir}:")
+    print(f"Exported {result['rows']} rows into {out_dir}:")
     for path in result["files"]:
         print(f"  - {Path(path).name}")
     if result["rows"] == 0:
-        print("(no frames matched - check --hours / --layer / --limit)")
+        print("(no rows matched - check --hours / --layer / --limit)")
         return 1
     return 0
 
