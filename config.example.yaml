@@ -229,3 +229,26 @@ logging:
   level: INFO                # DEBUG, INFO, WARNING, ERROR
   file: ""                   # e.g. "data/bot.log" - empty = console only
   timezone: local            # local | utc | IANA name such as "Europe/London"
+
+# --- MCP radio (the bot's own SPI radio) ------------------------
+# When enabled, the bot OWNS the PiMesh-1W v2 radio on this machine's
+# SPI pins and no longer talks to an openHop companion. Pin wiring is
+# built in for the PiMesh-1W v2 (hard-coded; do not edit here).
+mcp:
+  enabled: false            # <-- true = the bot owns the radio
+  frequency_hz: 910525000   # US 915MHz band center used by this network
+  tx_power_dbm: 20          # hard ceiling: 20 (set lower per your local rules)
+  spreading_factor: 7
+  bandwidth_khz: 62.5
+  coding_rate_index: 1      # 1 = 4/5
+
+# --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
+# Pushes a copy of every packet the radio hears (and every packet the
+# bot sends) to meshtech-modem's feed port, so openHop's packet log
+# stays complete. The token lives in its own protected file (first line
+# = password, chmod 600) - NEVER in this file.
+modem_feed:
+  enabled: false
+  host: "127.0.0.1"         # same box as meshtech-modem
+  port: 5056                # the modem's FEED port (5055 is openHop's)
+  token_file: "data/.modem_feed_token"

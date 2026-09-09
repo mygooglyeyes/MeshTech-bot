@@ -699,6 +699,24 @@ async function refreshStatus() {
   }
   // Build stamp: release version + the git commit it runs (v0.0.1).
   // Hover shows the full detail (version, branch, commit, source).
+  // MCP radio mode chip: radio + modem feed at a glance. Hidden when
+  // the MCP is off (companion mode shows the connection chip above).
+  const mcpChip = $("chip-mcp");
+  if (st.mcp) {
+    const m = st.mcp;
+    const f = m.feed;
+    mcpChip.hidden = false;
+    mcpChip.textContent = "radio: " + (m.radio_up ? "up" : "down") +
+      (f ? " · feed: " + (f.connected ? "live" : "down") : "");
+    mcpChip.className = "chip " + (m.radio_up && (!f || f.connected) ? "ok" : "bad");
+    mcpChip.title = "MCP owns the radio (SPI).\n" +
+      "heard: " + (m.rx_count || 0) + " packets\n" +
+      "sent: " + (m.tx_count || 0) + " packets" +
+      (f ? "\nfeed pushed: " + (f.pushed || 0) +
+        "\nfeed dropped (queue full): " + (f.dropped || 0) : "");
+  } else {
+    mcpChip.hidden = true;
+  }
   // The openHop companion we talk through, next to the bot's name in
   // the title bar ("MeshTech-Bot · LoganBot🤖").
   const comp = (st.companion_name || "").trim();

@@ -9,6 +9,27 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.092 - 2026-09-08
+
+- Added: the MCP radio module (`core/mcp.py`) - the bot OWNS the
+  PiMesh-1W v2 over SPI (pin profile from openHop's own settings,
+  hard-coded). Enabled with `mcp: enabled: true`. When on, the bot
+  no longer talks to an openHop companion at all.
+- Added: every packet the radio hears is split - the bot handles it
+  AND a copy goes to the modem feed; every packet the bot sends is
+  looped back to the feed so openHop's log stays complete.
+- Added: rebuilt modem feed client (`core/modemfeed.py`) speaking the
+  modem's verified wire protocol (token -> 0x01/0x00 handshake, then
+  push frames). Password comes from a protected token file, never
+  from config.yaml (a leftover `modem_feed.token` key is ignored with
+  a warning).
+- Added: config sections `mcp:` and `modem_feed:` (see
+  config.example.yaml); dashboard shows a `radio:`/`feed:` chip in
+  MCP mode.
+- New branch `feature/spi-radio`, built from DEV. (The old
+  `feature/modem-feed` branch was deleted by request; its wire
+  protocol knowledge was re-derived from the modem's source.)
+
 ## 0.0.083 - 2026-09-07
 
 Docs: the branch workflow is now written down - feature branches are

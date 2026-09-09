@@ -206,6 +206,38 @@ class RadioCfg:
 
 
 @dataclass
+class McpCfg:
+    """The MCP radio module: the bot OWNS the PiMesh-1W v2 over SPI.
+
+    Pin profile is hard-coded (board-specific, from openHop's own
+    radio-settings.json) - only the radio settings live in config.
+    """
+    enabled: bool = False
+    frequency_hz: int = 910525000
+    tx_power_dbm: int = 20
+    spreading_factor: int = 7
+    bandwidth_khz: float = 62.5
+    # Coding rate index: 1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8.
+    coding_rate_index: int = 1
+
+
+@dataclass
+class ModemFeedCfg:
+    """Push every radio packet to meshtech-modem's feed port (localhost).
+
+    The token NEVER lives in this file - token_file points at a mode-600
+    file whose first line is the password (same pattern as web.password_file).
+    """
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 5056
+    token_file: str = "data/.modem_feed_token"
+    # Bounded queue between radio RX and the feed pump: a slow modem must
+    # never back-pressure the radio. Overflow drops feed packets only.
+    queue_size: int = 200
+
+
+@dataclass
 class UpdatesCfg:
     """'Is there newer code?' checking plus optional web-console updates.
 
@@ -251,6 +283,8 @@ class Settings:
     # working; load() always passes the parsed value explicitly.
     updates: UpdatesCfg = field(default_factory=UpdatesCfg)
     radio: RadioCfg = field(default_factory=RadioCfg)
+    mcp: McpCfg = field(default_factory=McpCfg)
+    modem_feed: ModemFeedCfg = field(default_factory=ModemFeedCfg)
     config_path: str = "config.yaml"
     warnings: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -600,6 +634,51 @@ def load(config_path: str = "config.yaml") -> Settings:
     if log_cfg.level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         errors.append(f"logging.level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL (found '{log_cfg.level}').")
 
+    # --- mcp (the bot's own SPI radio; off = old companion mode) ---
+    mcp_raw = _section(raw, "mcp", errors)
+    freq = _int(mcp_raw, "frequency_hz", 910525000, errors, "mcp.frequency_hz")
+    if not 300_000_000 <= freq <= 1_000_000_000:
+        errors.append("mcp.frequency_hz must be between 300000000 and 1000000000.")
+    power = _int(mcp_raw, "tx_power_dbm", 20, errors, "mcp.tx_power_dbm")
+    if power < -9 or power > 20:
+        errors.append("mcp.tx_power_dbm must be between -9 and 20 (hard legal ceiling).")
+    mcp_sf = _int(mcp_raw, "spreading_factor", 7, errors, "mcp.spreading_factor")
+    if mcp_sf < 5 or mcp_sf > 12:
+        errors.append("mcp.spreading_factor must be between 5 and 12.")
+    mcp_bw = _float(mcp_raw, "bandwidth_khz", 62.5, errors, "mcp.bandwidth_khz")
+    if mcp_bw <= 0:
+        errors.append("mcp.bandwidth_khz must be a positive number.")
+    mcp_cr = _int(mcp_raw, "coding_rate_index", 1, errors, "mcp.coding_rate_index")
+    if mcp_cr < 1 or mcp_cr > 4:
+        errors.append("mcp.coding_rate_index must be 1 (4/5), 2 (4/6), 3 (4/7) or 4 (4/8).")
+    mcp = McpCfg(
+        enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
+        frequency_hz=freq,
+        tx_power_dbm=power,
+        spreading_factor=mcp_sf,
+        bandwidth_khz=mcp_bw,
+        coding_rate_index=mcp_cr,
+    )
+
+    # --- modem_feed (push radio packets to meshtech-modem port 5056) ---
+    mf_raw = _section(raw, "modem_feed", errors)
+    mf_host = _text(mf_raw, "host", "127.0.0.1", errors, "modem_feed.host")
+    mf_port = _int(mf_raw, "port", 5056, errors, "modem_feed.port")
+    if mf_port < 1 or mf_port > 65535:
+        errors.append("modem_feed.port must be between 1 and 65535.")
+    mf_token = _text(mf_raw, "token_file", "data/.modem_feed_token", errors,
+                     "modem_feed.token_file")
+    if _text(mf_raw, "token", "", errors, "modem_feed.token"):
+        warnings.append("modem_feed.token inside config.yaml is IGNORED for safety "
+                        "- put the password in modem_feed.token_file instead.")
+    modem_feed = ModemFeedCfg(
+        enabled=_bool(mf_raw, "enabled", False, errors, "modem_feed.enabled"),
+        host=mf_host,
+        port=mf_port,
+        token_file=mf_token,
+        queue_size=max(10, _int(mf_raw, "queue_size", 200, errors, "modem_feed.queue_size")),
+    )
+
     if errors:
         pretty = "\n".join(f"  - {e}" for e in errors)
         raise ConfigError(f"config.yaml has {len(errors)} problem(s):\n{pretty}")
@@ -619,6 +698,8 @@ def load(config_path: str = "config.yaml") -> Settings:
         modules=modules,
         updates=updates,
         radio=radio,
+        mcp=mcp,
+        modem_feed=modem_feed,
         config_path=config_path,
         warnings=warnings,
         raw=raw,
@@ -803,4 +884,11 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
         "logging": {"level": settings.logging.level, "file": settings.logging.file,
                     "timezone": settings.logging.timezone,
                     "tz_iana": settings.logging.tz_iana},
+        "mcp": {"enabled": settings.mcp.enabled,
+                "frequency_hz": settings.mcp.frequency_hz,
+                "tx_power_dbm": settings.mcp.tx_power_dbm},
+        "modem_feed": {"enabled": settings.modem_feed.enabled,
+                       "host": settings.modem_feed.host,
+                       "port": settings.modem_feed.port,
+                       "token": "set" if settings.modem_feed.token_file else ""},
     }

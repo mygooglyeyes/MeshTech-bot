@@ -32,6 +32,8 @@ class BotService:
         self.client = None            # set by bot.py (core.client.RadioClient)
         self.router = None            # set by bot.py (core.router.Router)
         self.capture = None           # set by bot.py (core.capture.PacketCapture)
+        self.mcp = None               # set by bot.py when mcp.enabled (core.mcp.Mcp)
+        self.modem_feed = None        # set by bot.py when modem_feed.enabled
         self.registry: List = []      # sorted handler instances
         self.started_at: float = time.time()
         self.stop_requested = False
@@ -479,9 +481,24 @@ class BotService:
         companion = ""
         if self.client is not None:
             companion = (getattr(self.client, "own_name", "") or "").strip(" \x00")
+        # MCP radio mode: report the SPI radio + modem feed state instead.
+        mcp_state = None
+        if self.mcp is not None:
+            mf = self.modem_feed
+            mcp_state = {
+                "radio_up": bool(self.mcp.is_running),
+                "rx_count": self.mcp.stats.rx_count,
+                "tx_count": self.mcp.stats.tx_count,
+                "feed": ({
+                    "connected": bool(mf.connected),
+                    "pushed": mf.stats.pushed,
+                    "dropped": mf.stats.dropped,
+                } if mf is not None else None),
+            }
         return {
             "bot_name": "meshtech-bot",
             "companion_name": companion,
+            "mcp": mcp_state,
             "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),
             "config_file": self.settings.config_path,
