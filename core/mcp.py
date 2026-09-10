@@ -306,19 +306,24 @@ def _secret_bytes(secret: str) -> bytes:
 
 
 def derive_channel_keys(secret: str) -> tuple[int, bytes, bytes]:
-    """(channel_hash, aes_key, hmac_key) - same derivation as the firmware
-    and openHop's GroupTextHandler._derive_channel_keys."""
+    """(channel_hash, aes_key, hmac_key) - the firmware's group-text scheme
+    (PacketBuilder.create_group_text_packet / GroupTextHandler's decrypt
+    path), proven against live on-air traffic: AES key = the secret itself
+    (first 16 bytes after zero-padding to 32), HMAC key = the full
+    zero-padded 32 bytes, and the 1-byte channel hash is sha256 of the
+    secret with the firmware's 128-bit rule: a secret whose second half is
+    all zeros (e.g. the well-known sha256("#name")[:16] keys) hashes only
+    its first 16 bytes."""
     import hashlib
 
     raw = _secret_bytes(secret)
-    # MeshCore firmware convention (openHop _secret_bytes_for_hash): a 32-byte
-    # secret whose SECOND HALF is all zeros is really a 128-bit key - hash
-    # only the first 16 bytes. Checked on the ORIGINAL secret bytes, before
-    # any padding, so a short text secret never falsely triggers it.
-    if len(raw) >= 32 and raw[16:32] == b"\x00" * 16:
-        raw = raw[:16]
-    master = hashlib.sha256(raw).digest()
-    return master[0], master[:16], master[16:32]
+    # Hash basis: zero-tail reduction on the ORIGINAL (pre-padding) bytes,
+    # so a short text secret never falsely triggers it.
+    basis = raw[:16] if (len(raw) >= 32 and raw[16:32] == b"\x00" * 16) else raw
+    if len(raw) < 32:
+        raw = raw + b"\x00" * (32 - len(raw))
+    channel_hash = hashlib.sha256(basis).digest()[0]
+    return channel_hash, raw[:16], raw
 
 
 def decode_channel_payload(aes_key: bytes, hmac_key: bytes,
@@ -617,10 +622,13 @@ class Mcp:
             if not cfg_channel.name:
                 continue
             index[cfg_channel.name] = len(index)
-            # Default secret matches the bot's own companion behaviour and
-            # the phone apps: hashtag channels use the WELL-KNOWN derived
-            # key sha256("#name") - the '#' matters (see core/client.py).
-            secret = cfg_channel.secret_hex or cfg_channel.name
+            # Default secret matches the phone apps: hashtag channels use
+            # the WELL-KNOWN 128-bit key sha256("#name")[:16] - the '#'
+            # matters (see core/client.py). Kept as a hex STRING so
+            # _secret_bytes() restores the exact key bytes.
+            import hashlib
+            secret = cfg_channel.secret_hex or hashlib.sha256(
+                cfg_channel.name.encode("utf-8")).digest()[:16].hex()
             try:
                 channel_hash, aes_key, hmac_key = derive_channel_keys(secret)
             except Exception:
@@ -911,7 +919,7 @@ class Mcp:
                             peer.get_public_key(), self.identity)
                        + CryptoUtils.encrypt_then_mac(shared[:16], shared, plaintext))
             header = (PAYLOAD_TYPE_TXT_MSG << 2) | 2      # direct route, version 1
-            raw = bytes([header]) + payload
+            raw = bytes([header, 0]) + payload            # 0x00 = path_len (no path)
         except Exception as exc:
             log.warning("DM reply to %s could not be encrypted: %s", sender_prefix, exc)
             return False
@@ -933,7 +941,7 @@ class Mcp:
             mac = CryptoUtils._hmac_sha256(hmac_key, ciphertext)[:2]
             payload = bytes([channel_hash]) + mac + ciphertext
             header = (PAYLOAD_TYPE_GRP_TXT << 2) | 1     # flood route, version 1
-            return bytes([header]) + payload
+            return bytes([header, 0]) + payload          # 0x00 = path_len (flood)
         except Exception as exc:
             log.warning("Channel packet build failed: %s", exc)
             return None

@@ -9,6 +9,29 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.100 - 2026-09-10
+
+Channel decode now matches the firmware EXACTLY, proven against a real
+packet Brett captured on air (`!help` on #test). Two bugs found and
+fixed - both mine, both the reason the bot never answered on-channel
+text:
+
+- **Key derivation**: the firmware encrypts channel text with
+  AES key = the secret itself and HMAC key = that secret zero-padded to
+  32 bytes (PacketBuilder.create_group_text_packet / the app). The bot
+  was using openHop's channel-*hash* split instead - right family,
+  wrong scheme, so every HMAC check failed and messages were silently
+  dropped as "unknown channel". The hashtag default secret is now the
+  well-known 128-bit key sha256("#name")[:16] - the '#' matters,
+  exactly as Brett said.
+- **TX wire format**: our own channel/DM replies omitted the path_len
+  byte the C++ wire format carries after the header - the adverts were
+  fine (they use the official builder) but the bot's replies were
+  malformed. Both builders now emit header + path_len + payload.
+- New regression test decrypts the captured on-air packet and asserts
+  the plaintext - the suite fails if either bug ever comes back.
+  Suite: 362 passed (8 export failures pre-exist on the branch).
+
 ## 0.0.099 - 2026-09-10
 
 Dead feed link now heals itself (found from Brett's incident: modem
