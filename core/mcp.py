@@ -106,6 +106,45 @@ def _log_line(text: str, limit: int = 80) -> str:
     return " ".join((text or "").split())[:limit]
 
 
+# ---------------------------------------------------------------------------
+# Advert name (the radio's user-chosen ID).
+#
+# The advert appdata holds MAX_ADVERT_DATA_SIZE = 96 bytes; the name is what
+# remains after the flags byte (we set no location/features). Phones cap
+# contact names around 32 chars, so stay inside both limits. Names are UTF-8
+# - emojis welcome - and we cut at CHARACTER boundaries only: a cut inside a
+# multi-byte emoji makes the whole name invalid UTF-8 and receivers drop it.
+# ---------------------------------------------------------------------------
+MAX_ADVERT_NAME_CHARS = 32
+MAX_ADVERT_NAME_BYTES = 90
+
+
+def sanitize_advert_name(name: str,
+                         max_chars: int = MAX_ADVERT_NAME_CHARS,
+                         max_bytes: int = MAX_ADVERT_NAME_BYTES) -> str:
+    """The user's chosen radio name, made safe for the advert payload.
+
+    Collapses whitespace/control characters (newlines would forge log
+    lines), then fits the name within max_chars characters AND max_bytes
+    of UTF-8, cutting only at character boundaries so emojis survive.
+    Empty input stays empty - callers substitute their fallback.
+    """
+    cleaned = " ".join((name or "").split())
+    if not cleaned:
+        return ""
+    out: list[str] = []
+    used_bytes = 0
+    used_chars = 0
+    for ch in cleaned:
+        ch_bytes = len(ch.encode("utf-8"))
+        if used_chars >= max_chars or used_bytes + ch_bytes > max_bytes:
+            break
+        out.append(ch)
+        used_chars += 1
+        used_bytes += ch_bytes
+    return "".join(out).strip()
+
+
 def parse_envelope(data: bytes) -> dict:
     """Best-effort MeshCore packet header parse - no crypto, no imports.
 
@@ -376,13 +415,14 @@ class Mcp:
             return
         try:
             from pymc_core.protocol.packet_builder import PacketBuilder
+            advert_name = (sanitize_advert_name(bot_cfg.display_name)
+                           or "bot")
             pkt = PacketBuilder.create_self_advert(
-                self.identity, bot_cfg.display_name or "bot",
-                route_type="flood")
+                self.identity, advert_name, route_type="flood")
             await asyncio.sleep(2.0)            # let the driver settle
             if await self.send(pkt.write_to()):
                 log.info("Self-advert sent - the bot is on the mesh as '%s'.",
-                         bot_cfg.display_name or "bot")
+                         advert_name)
         except Exception as exc:
             log.warning("Self-advert failed (non-fatal): %s", exc)
 
