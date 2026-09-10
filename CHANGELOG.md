@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.093 - 2026-09-09
+
+- Fixed: the bot crashed at startup whenever the MCP radio was
+  switched on (UnboundLocalError in bot.py - the task list was used
+  before it was created, so the service crash-looped). Found by the
+  hilltop bench test. The task list is now created before the radio
+  starts; everything else appends to it.
+
 ## 0.0.092 - 2026-09-08
 
 - Added: the MCP radio module (`core/mcp.py`) - the bot OWNS the

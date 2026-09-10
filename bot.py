@@ -109,6 +109,13 @@ async def _run(settings: Settings) -> None:
     router = Router(service)
     service.router = router
 
+    # The task list must exist BEFORE the radio starts: _start_mcp and
+    # _start_companion append their tasks into it. (v0.0.092 bench-test
+    # fix: the list was created further down, so the first start with
+    # mcp enabled crashed with UnboundLocalError - and the service
+    # crash-looped. Found by the hilltop bench test 2026-09-09.)
+    tasks = []
+
     # MCP mode: the bot OWNS the SPI radio (PiMesh-1W v2) instead of
     # talking to an openHop companion. The modem feed shares every packet
     # with meshtech-modem so openHop's log stays complete.
@@ -134,9 +141,8 @@ async def _run(settings: Settings) -> None:
         Path(__file__).resolve().parent / "scripts" / "update-trigger.sh",
     )
 
-    tasks = [
-        service.update_checker.start(),
-    ]
+    # (tasks already holds the radio/feed tasks - append, never rebind)
+    tasks.append(service.update_checker.start())
     if settings.web.enabled:
         try:
             from web.server import serve as web_serve
