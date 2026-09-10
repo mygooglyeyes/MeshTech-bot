@@ -9,6 +9,38 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.095 - 2026-09-10
+
+The packet-decode milestone (Brett's decision 2026-09-09 evening: full
+decode - channels + adverts + DMs). The bot is now a real mesh node:
+
+- Added: the bot's OWN radio identity - one key file
+  (data/bot_radio_identity.txt, mode 600, firmware 64-byte format).
+  Created on first start, fixed forever after; back it up. Without it
+  nobody could DM the bot.
+- Added: DECODE pipeline in the MCP path - heard packets are parsed,
+  flood-deduped (45 s window, payload hash) and echo-guarded, then:
+  adverts are signature-verified and stored (name/position/SNR -> node
+  registry), group text is decrypted with the config's own channel keys
+  (same derivation as the firmware/openHop; hashtag channels use the
+  well-known key sha256("#name")) and delivered to the message router
+  with sender name, hop count and SNR, and direct messages are decrypted
+  with the bot's identity (ECDH with the sender's stored public key) and
+  delivered as DMs.
+- Added: REPLIES now go out as real encrypted radio packets - the router
+  sends through the MCP (channel replies as GRP_TXT floods, DM replies
+  as direct TXT_MSG). Rate limits, budgets and dedup all work exactly
+  as before; only the transport changed.
+- Added: self-advert on startup (when bot.advertise_on_start, same
+  switch as companion mode) so the mesh learns the bot's address.
+- Kept: the bot holds only keys it already legitimately had (config
+  channels) plus its own new identity - no other secrets, payload
+  captures of foreign channels stay envelope-only.
+- Tests: 17 new decode-helper tests (sender split, key derivation incl.
+  the 128-bit zero-tail convention, plaintext layouts, hop counting);
+  344 pass. (tests/test_export_messages.py failures are PRE-EXISTING on
+  the branch - verified by stash-run, unrelated to this change.)
+
 ## 0.0.094 - 2026-09-09
 
 Bench-test follow-ups from the hilltop box (all found 2026-09-09):

@@ -218,6 +218,10 @@ async def _start_mcp(service, settings, tasks) -> None:
         maxsize=settings.modem_feed.queue_size)
     mcp = Mcp(service, service.router.on_inbound, push_queue)
     service.mcp = mcp
+    # The router replies through ONE client interface. In MCP mode that
+    # client is the radio itself: the adapter below turns channel replies
+    # and DMs into real encrypted packets on the SPI radio.
+    service.client = mcp
     tasks.append(asyncio.create_task(mcp.start(), name="mcp-radio"))
 
     if settings.modem_feed.enabled:
