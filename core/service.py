@@ -471,7 +471,9 @@ class BotService:
 
     def status_snapshot(self) -> Dict:
         conn = None
-        if self.client is not None:
+        if self.client is not None and self.mcp is None:
+            # MCP radio mode has no companion link - the mcp block below
+            # carries the truth instead.
             cfg = self.settings.connection
             conn = {
                 "connected": self.client.is_connected,

@@ -368,6 +368,30 @@ class Mcp:
         # the router uses as channel_idx for replies)
         self._channel_index: dict[str, int] = {}
 
+    # ------------------------------------------------- client-interface shim
+    # bot.py sets service.client = mcp in radio mode (the router's reply
+    # interface). The status/dashboard code was written for the companion
+    # client, so it also asks for the three members below - without them
+    # every /api/status call raised AttributeError.
+
+    @property
+    def is_connected(self) -> bool:
+        """Radio-mode 'connected' = the SPI radio is up and listening."""
+        return self.is_running
+
+    @property
+    def own_name(self) -> str:
+        """The bot's on-air name (the dashboard shows it in its place)."""
+        bot_cfg = getattr(self.settings, "bot", None)
+        return (sanitize_advert_name(bot_cfg.display_name) if bot_cfg else "") or ""
+
+    def channel_names(self) -> dict[int, str]:
+        """Configured channels by slot index - the same indexing that
+        send_channel() uses to turn a slot number back into a channel."""
+        return {i: ch.name
+                for i, ch in enumerate(getattr(self.settings, "channels", []) or [])
+                if ch.name}
+
     # ------------------------------------------------------------------ radio
 
     def _radio_kwargs(self) -> dict:
@@ -440,38 +464,6 @@ class Mcp:
         radio.set_rx_callback(self._on_radio_rx)
         self.radio = radio
         log.info("Radio up - the MCP owns the air.")
-
-    # ------------------------------------------------------------- radio
-
-    def _radio_kwargs(self) -> dict:
-        """Driver arguments: pins from the board profile, settings from config."""
-        mcp = self.settings.mcp
-        return {
-            **PIMESH_1W_V2,
-            "frequency": mcp.frequency_hz,
-            "tx_power": mcp.tx_power_dbm,
-            "spreading_factor": mcp.spreading_factor,
-            "bandwidth": int(mcp.bandwidth_khz * 1000),
-            "coding_rate": mcp.coding_rate_index + 4,  # config index 1 -> CR4/5
-        }
-
-    async def start(self) -> bool:
-        """Bring the radio up; keep retrying quietly until it works."""
-        self._loop = asyncio.get_running_loop()
-        while not self.service.stop_requested:
-            try:
-                await self._radio_up()
-                self.is_running = True
-                return True
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                log.error("Radio init failed: %s - retrying in 30s", exc)
-                try:
-                    await asyncio.sleep(30)
-                except asyncio.CancelledError:
-                    raise
-        return False
 
     # ------------------------------------------------------------- radio RX
 

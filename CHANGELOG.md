@@ -9,6 +9,26 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.096 - 2026-09-10
+
+Fixed the dashboard's "Mcp object has no attribute is_connected"
+crash (every /api/status call 500'd in radio mode - the status bar
+chips and live packet feed could not load). Three parts:
+
+- core/mcp.py: in radio mode bot.py sets service.client = the MCP
+  radio object, but it lacked the two members the status code asks a
+  companion client for. Added a small client-interface shim:
+  is_connected (true while the radio is up), own_name (the bot's
+  on-air advert name), channel_names() (the configured slots - the
+  same indexing replies use). Also removed a stale duplicate of
+  _radio_kwargs/start() left by the interrupted session - Python kept
+  the last copy silently, which had disabled the self-advert send.
+- core/service.py: status_snapshot() no longer reports the old
+  companion "connection" block in radio mode - the mcp block (radio
+  up/down, RX/TX counts, feed state) is the truth there.
+- tests: new test pins the shim; suite is 356 passing (the 8 export
+  and meshhealth failures pre-date this work, documented in TODOS). 
+
 ## 0.0.095 - 2026-09-10
 
 The packet-decode milestone (Brett's decision 2026-09-09 evening: full
