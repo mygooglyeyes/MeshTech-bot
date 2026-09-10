@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.098 - 2026-09-10
+
+THE two-way-test blocker, found and fixed (Brett's decoded packet log
+showed real traffic labelled GRP_DATA where GRP_TXT belongs): the
+payload-type constants in core/mcp.py were OFF BY ONE against
+openhop_core's protocol/constants.py. Consequences: your #test
+message arrived cleanly and was silently dropped (wrong type check),
+adverts were never learned, and the packet log labelled every packet
+one step wrong. Fix: constants corrected (TXT_MSG 0x02, ADVERT 0x04,
+GRP_TXT 0x05) + name table completed; regression tests now pin the
+values and the envelope parser against the wire format. 360 pass.
+This is why the earlier #test messages never got answered - the
+radio heard them fine; the bot misread the label on the envelope.
+
 ## 0.0.097 - 2026-09-10
 
 Adverts you can rely on + a QR code to add the bot (Brett's request,

@@ -59,15 +59,18 @@ PIMESH_1W_V2 = {
 
 MAX_LORA_PAYLOAD = 255
 
-# MeshCore payload types (openhop_core protocol/constants.py values).
+# MeshCore payload types - VERIFIED byte-for-byte against openhop_core
+# protocol/constants.py 2026-09-10 (the values below were off by one
+# before, which silently dropped every real advert and channel text).
 PAYLOAD_TYPE_NAMES = {
-    0x00: "TXT_MSG", 0x01: "RESPONSE", 0x02: "ACK", 0x03: "ADVERT",
-    0x04: "GRP_TXT", 0x05: "GRP_DATA", 0x06: "ANON_REQ", 0x07: "PATH",
-    0x08: "TRACE", 0x0A: "MULTIPART", 0x0B: "CONTROL",
+    0x00: "REQ", 0x01: "RESPONSE", 0x02: "TXT_MSG", 0x03: "ACK",
+    0x04: "ADVERT", 0x05: "GRP_TXT", 0x06: "GRP_DATA",
+    0x07: "ANON_REQ", 0x08: "PATH", 0x09: "TRACE", 0x0A: "MULTIPART",
+    0x0B: "CONTROL", 0x0F: "RAW_CUSTOM",
 }
-PAYLOAD_TYPE_TXT_MSG = 0x00
-PAYLOAD_TYPE_ADVERT = 0x03
-PAYLOAD_TYPE_GRP_TXT = 0x04
+PAYLOAD_TYPE_TXT_MSG = 0x02
+PAYLOAD_TYPE_ADVERT = 0x04
+PAYLOAD_TYPE_GRP_TXT = 0x05
 ROUTE_TYPE_NAMES = {
     0: "transport-flood", 1: "flood", 2: "direct", 3: "transport-direct",
 }
