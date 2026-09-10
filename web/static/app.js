@@ -662,10 +662,37 @@ async function refreshStatus() {
   const st = await api("/api/status");
   lastStatus = st;
   const conn = st.connection;
+  const mcp = st.mcp;
   const chip = $("chip-conn");
-  chip.textContent = conn && conn.connected ? "connected " + conn.host + ":" + conn.port
-                                            : "not connected";
-  chip.className = "chip " + (conn && conn.connected ? "ok" : "bad");
+  if (mcp) {
+    // Radio mode: the bot has NO companion link, so the old red
+    // "not connected" chip would lie forever. It now shows the MCP's
+    // live link toward openHop (the modem feed), per Brett's request.
+    const f = mcp.feed;
+    if (!f) {
+      chip.textContent = "feed off";
+      chip.className = "chip muted-note";
+      chip.title = "modem_feed disabled - openHop sees nothing (bot only).";
+    } else if (f.connected) {
+      chip.textContent = "openHop link: live";
+      chip.className = "chip ok";
+      chip.title = "modem feed connected - every packet is pushed toward openHop.\n" +
+        "pushed: " + (f.pushed || 0) + "\ndropped (queue full): " + (f.dropped || 0) +
+        "\n(openHop's own receive state is not visible to the bot - check openHop's log)";
+    } else {
+      chip.textContent = "openHop link: down";
+      chip.className = "chip bad";
+      chip.title = "modem feed not connected - is meshtech-modem running?";
+    }
+  } else if (conn && conn.connected) {
+    chip.textContent = "connected " + conn.host + ":" + conn.port;
+    chip.className = "chip ok";
+    chip.title = "companion connection";
+  } else {
+    chip.textContent = "not connected";
+    chip.className = "chip bad";
+    chip.title = "companion connection";
+  }
   $("chip-uptime").textContent = "up " + fmtUptime(st.uptime_seconds);
   // Airtime budget chip: total transmissions used of the caps, plus the
   // busiest person's usage. Amber at >=80% of any cap, red when a cap is
@@ -1148,6 +1175,8 @@ $("node-filter").addEventListener("input", (e) => refreshNodes(e.target.value));
 
 // ------------------------------------------------------------------ messages
 
+let lastMsgKey = null;
+
 async function refreshMessages() {
   const channel = $("msg-channel").value;
   const kind = $("msg-kind").value;
@@ -1163,8 +1192,17 @@ async function refreshMessages() {
     const em = document.createElement("em");
     em.textContent = "no messages yet";
     wrap.appendChild(em);
+    lastMsgKey = "";
     return;
   }
+  // Refresh-glitch fix: rebuild the table ONLY when something actually
+  // changed. Rebuilding every 15s reset scroll position and flickered
+  // (Brett, 2026-09-09); a signature of the rows we render decides.
+  const sig = rows.map((r) =>
+    (r.recv_ts || 0) + "|" + (r.direction || "") + "|" + (r.text || "").slice(0, 60)
+  ).join(";");
+  if (sig === lastMsgKey) return;
+  lastMsgKey = sig;
   const table = document.createElement("table");
   table.innerHTML = "<thead><tr><th>When</th><th>Dir</th><th>Target</th><th>Hops</th><th>Text</th></tr></thead>";
   const tbody = document.createElement("tbody");
@@ -1366,6 +1404,8 @@ $("an-window").addEventListener("change", refreshAnalysis);
 
 // ------------------------------------------------------------------ packets
 
+let lastPktKey = null;
+
 async function refreshPackets() {
   const layer = $("pkt-layer").value;
   const qs = new URLSearchParams();
@@ -1398,6 +1438,13 @@ async function refreshPackets() {
   const rows = data.packets || [];
   const stats = data.stats || {};
   const wrap = $("pkt-list");
+  // Same anti-flicker rule as the messages list: only rebuild when the
+  // visible rows actually changed.
+  const pktSig = rows.map((r) =>
+    (r.ts || 0) + "|" + (r.layer || "") + "|" + (r.frame_type || "") + "|" + (r.size || 0)
+  ).join(";");
+  if (pktSig === lastPktKey) return;
+  lastPktKey = pktSig;
   wrap.innerHTML = "";
 
   const caption = document.createElement("div");

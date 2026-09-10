@@ -9,6 +9,37 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.094 - 2026-09-09
+
+Bench-test follow-ups from the hilltop box (all found 2026-09-09):
+
+- Added: the MCP radio path now feeds the dashboard - every packet
+  the radio hears lands in the packet log (raw layer AND an envelope
+  row with payload type, routing, hop count, RSSI/SNR). The bot can
+  NOT decrypt payloads - channel keys stay in the console/config by
+  design; openHop remains the decrypting observer.
+- Fixed: the repeated "Inbound handler error: 'bytes' object has no
+  attribute 'kind'" spam - the MCP path no longer calls the message
+  router with raw bytes. Decrypted delivery stays a design decision
+  for Brett (TODOS.md).
+- Changed: the header bar's red "not connected" chip now tells the
+  truth in radio mode - it shows "openHop link: live/down" (the modem
+  feed state) instead of the deleted companion connection.
+- Changed: the connection: config block is now OPTIONAL when
+  mcp: enabled: true (radio mode needs no companion). config.example.yaml
+  explains the two modes; a config missing connection WITHOUT mcp
+  still fails the check with a plain-words message.
+- Fixed: the messages and packets lists in the dashboard rebuilt
+  themselves on every poll (flicker + scroll jump - Brett reported it
+  as "an awful screen refresh"). They now rebuild only when the rows
+  actually changed.
+- Fixed: the systemd service template blocked the radio -
+  PrivateDevices=true hid /dev/gpiochip* and /dev/spidev*, and the
+  account lacked the gpio/spi groups (found live on the box; template
+  now matches the working box setup). requirements.txt gains
+  pymc_core[hardware] (non-Windows) so fresh installs include the
+  radio driver.
+
 ## 0.0.093 - 2026-09-09
 
 - Fixed: the bot crashed at startup whenever the MCP radio was

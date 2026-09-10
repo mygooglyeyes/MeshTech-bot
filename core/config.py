@@ -267,7 +267,7 @@ class LogCfg:
 
 @dataclass
 class Settings:
-    connection: ConnCfg
+    connection: Optional[ConnCfg]
     bot: BotCfg
     mesh: MeshCfg
     channels: List[ChannelCfg]
@@ -337,11 +337,16 @@ def load(config_path: str = "config.yaml") -> Settings:
     warnings: List[str] = []
 
     # --- connection ---
+    # The companion connection block is OPTIONAL when the bot owns the
+    # radio (mcp: enabled: true) - there is no companion to reach. A
+    # defaults-only ConnCfg keeps the rest of the code simple.
     conn_raw = _section(raw, "connection", errors)
-    host = _text(conn_raw, "host", "", errors, "connection.host",
-                 required=True)
+    host = _text(conn_raw, "host", "", errors, "connection.host")
     if host and not _looks_like_host(host):
         warnings.append("connection.host does not look like an IP address or hostname - please check.")
+    if not conn_raw and not _bool(_section(raw, "mcp", errors), "enabled", False, errors, "mcp.enabled"):
+        errors.append("'connection' section is required (host + port of the openHop companion) - "
+                      "or enable 'mcp:' to own the radio instead.")
     conn = ConnCfg(
         host=host,
         port=_int(conn_raw, "port", 5000, errors, "connection.port"),
@@ -849,11 +854,11 @@ def _read_password_file(path: str) -> Optional[str]:
 def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
     """Safe view of the config for the web dashboard (password masked)."""
     return {
-        "connection": {
+        "connection": ({
             "host": settings.connection.host,
             "port": settings.connection.port,
             "reconnect": settings.connection.reconnect,
-        },
+        } if settings.connection else None),
         "bot": {"advertise_on_start": settings.bot.advertise_on_start,
                  "answer_unknown_senders": settings.bot.answer_unknown_senders,
                  "display_name": settings.bot.display_name},

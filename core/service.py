@@ -472,10 +472,11 @@ class BotService:
     def status_snapshot(self) -> Dict:
         conn = None
         if self.client is not None:
+            cfg = self.settings.connection
             conn = {
                 "connected": self.client.is_connected,
-                "host": self.settings.connection.host,
-                "port": self.settings.connection.port,
+                "host": cfg.host if cfg else "?",
+                "port": cfg.port if cfg else 0,
                 "channels_seen": self.client.channel_names() if self.client else {},
             }
         companion = ""

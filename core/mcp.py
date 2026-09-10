@@ -54,6 +54,45 @@ PIMESH_1W_V2 = {
 
 MAX_LORA_PAYLOAD = 255
 
+# MeshCore payload types (openhop_core protocol/constants.py values).
+PAYLOAD_TYPE_NAMES = {
+    0x00: "TXT_MSG", 0x01: "RESPONSE", 0x02: "ACK", 0x03: "ADVERT",
+    0x04: "GRP_TXT", 0x05: "GRP_DATA", 0x06: "ANON_REQ", 0x07: "PATH",
+    0x08: "TRACE", 0x0A: "MULTIPART", 0x0B: "CONTROL",
+}
+ROUTE_TYPE_NAMES = {
+    0: "transport-flood", 1: "flood", 2: "direct", 3: "transport-direct",
+}
+
+
+def parse_envelope(data: bytes) -> dict:
+    """Best-effort MeshCore packet header parse - no crypto, no imports.
+
+    Mirrors pymc_core Packet.read_from()'s wire layout (header 1B |
+    [transport codes 4B] | path_len 1B | path | payload). Enough to say
+    WHAT a heard packet is (type, routing, hops) - never WHAT IT SAYS:
+    payload text is encrypted with keys the bot deliberately does not
+    hold (channel keys live in the web console / config files, hard rule).
+    """
+    info = {"payload_type": None, "route": None, "version": None,
+            "hops": None, "hash_size": None}
+    if not data:
+        return info
+    header = data[0]
+    route = header & 0x03
+    info["route"] = ROUTE_TYPE_NAMES.get(route, route)
+    info["payload_type"] = (header >> 2) & 0x0F
+    info["version"] = (header >> 6) & 0x03
+    idx = 1
+    if route in (0, 3):          # transport codes present on the wire
+        idx += 4
+    if idx >= len(data):
+        return info
+    path_len = data[idx]
+    info["hash_size"] = (path_len >> 6) + 1
+    info["hops"] = path_len & 0x3F
+    return info
+
 # Feed push wire format (verified against meshtech-modem modem.py,
 # FeedClient.run): 0x01 | rssi (1B, signed) | snr_x10 (1B, signed) |
 # signal_rssi (1B, signed) | length (2B LE) | raw bytes. TCP carries the
@@ -177,18 +216,48 @@ class Mcp:
         except asyncio.QueueFull:
             self.stats.dropped += 1
             log.debug("Feed queue full - packet not pushed (radio RX unaffected)")
-        # 2) the bot's own pipeline - guarded so a slow consumer never
-        #    blocks the IRQ path; scheduled as its own task.
+        # 2) the bot's own records: raw capture + the packet log, so the
+        #    dashboard shows everything the radio hears (bench-test fix:
+        #    both stayed empty before because only the companion path fed
+        #    them).
         try:
-            asyncio.get_running_loop().create_task(self._deliver(data))
-        except RuntimeError:
-            log.debug("No event loop for inbound delivery - packet skipped")
-
-    async def _deliver(self, data: bytes) -> None:
-        try:
-            await self._inbound(data)
+            self._record_packet(rssi, snr, signal_rssi, data)
         except Exception as exc:
-            log.error("Inbound handler error: %s", exc)
+            log.debug("packet record failed: %s", exc)
+        # 3) decoded delivery to the message pipeline is NOT wired yet:
+        #    router.on_inbound expects decrypted text, and decrypting needs
+        #    the channel keys - which live in config/console by design
+        #    (hard rule: no channel handling in bot code). Design decision
+        #    pending with Brett (TODOS.md). Envelope info lands in the
+        #    packet log above; no more 'bytes has no attribute kind' spam.
+
+    def _record_packet(self, rssi: int, snr: float, signal_rssi: int,
+                       data: bytes) -> None:
+        """One heard packet into the packet log: raw row + decoded envelope."""
+        capture = getattr(self.service, "capture", None)
+        if capture is None:
+            return
+        ts = time.time()
+        try:
+            capture.record_raw(ts, data)
+        except Exception as exc:
+            log.debug("raw capture failed: %s", exc)
+        try:
+            info = parse_envelope(data)
+            type_name = PAYLOAD_TYPE_NAMES.get(info.get("payload_type"),
+                                               "UNKNOWN")
+            capture.record_event(
+                ts, type_name,
+                {"hops": info.get("hops"), "snr": snr},
+                attributes={"route": info.get("route"),
+                            "rssi": rssi, "signal_rssi": signal_rssi,
+                            "size": len(data),
+                            "hash_size": info.get("hash_size"),
+                            "radio": "mcp-spi",
+                            "note": "envelope only - payload encrypted"},
+            )
+        except Exception as exc:
+            log.debug("envelope record failed: %s", exc)
 
     # ------------------------------------------------------------- radio TX
 

@@ -55,8 +55,9 @@ def _check(settings: Settings) -> int:
     for warning in settings.warnings:
         print(f"  warning: {warning}")
     conn = settings.connection
-    print(f"  connection : {conn.host}:{conn.port}"
-          f"{' (auto reconnect)' if conn.reconnect else ''}")
+    if conn is not None:
+        print(f"  connection : {conn.host}:{conn.port}"
+              f"{' (auto reconnect)' if conn.reconnect else ''}")
     print(f"  channels   : "
           + ", ".join(f"{c.name}{'' if c.reply else ' (listen)'}"
                       for c in settings.channels))
@@ -172,7 +173,8 @@ async def _run(settings: Settings) -> None:
                  stamp)
     else:
         log.info("MeshTech-Bot %s starting: %s:%s, %d channel(s)",
-                 stamp, conn.host, conn.port, len(settings.channels))
+                 stamp, conn.host if conn else "?", conn.port if conn else 0,
+                 len(settings.channels))
     if settings.web.enabled:
         log.info("Dashboard: http://%s:%d", settings.web.host, settings.web.port)
     if settings.updates.check_enabled:

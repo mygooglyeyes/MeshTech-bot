@@ -8,6 +8,10 @@
 # ============================================================
 
 # --- Connection to your openHop Repeater --------------------
+# The bot talks to ONE radio source. Pick ONE of the two:
+#   a) companion mode (default): fill in this connection block.
+#   b) radio mode: delete/leave out this block and set mcp: enabled: true
+#      below - the bot then owns a local SPI radio and needs no companion.
 connection:
   host: "192.168.1.50"      # <-- LAN IP of the machine running openHop Repeater
   port: 5000                # <-- companion port on the repeater. Must match the
@@ -232,7 +236,8 @@ logging:
 
 # --- MCP radio (the bot's own SPI radio) ------------------------
 # When enabled, the bot OWNS the PiMesh-1W v2 radio on this machine's
-# SPI pins and no longer talks to an openHop companion. Pin wiring is
+# SPI pins and no longer talks to an openHop companion (the connection:
+# block above is then ignored and may be deleted). Pin wiring is
 # built in for the PiMesh-1W v2 (hard-coded; do not edit here).
 mcp:
   enabled: false            # <-- true = the bot owns the radio
