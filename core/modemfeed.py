@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import time
 from pathlib import Path
 from typing import Optional
@@ -135,6 +136,17 @@ class ModemFeed:
             return False
         self._writer = writer
         self.connected = True
+        # TCP keepalive: if the modem dies without a clean close, the OS
+        # probes the dead peer instead of letting writes buffer forever.
+        try:
+            sock = writer.get_extra_info("socket")
+            if sock is not None:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+        except OSError as exc:
+            log.debug("keepalive not set: %s", exc)
         self.stats.connected_since = time.time()
         log.info("Modem feed connected (%s:%s)", cfg.host, cfg.port)
         self.service.feed.publish("modem_feed_up", {"host": cfg.host,
@@ -142,11 +154,40 @@ class ModemFeed:
         return True
 
     async def _pump(self) -> None:
-        """Send queued pushes until the connection drops."""
+        """Send queued pushes until the connection drops.
+
+        A DEAD LINK CANNOT BE SEEN BY WAITING ALONE: queue.get() sleeps
+        until the next packet, and on a quiet mesh that can be minutes -
+        during which a dropped connection goes unnoticed (seen live
+        2026-09-10: 18 dark minutes, chip said "live" the whole time).
+        Two guards fix that:
+        - wait_for a 120 s cap on each queue wait -> after two quiet
+          minutes we probe the link and re-dial if it is gone;
+        - TCP keepalive on the socket -> a truly dead peer errors on
+          the next write instead of silently buffering.
+        """
         writer = self._writer
+        idle_cap = 120.0
         try:
             while not self.service.stop_requested and not self._stop.is_set():
-                item = await self.queue.get()
+                # Slice the idle wait into short steps so a closing
+                # connection is noticed within seconds, not after the
+                # whole cap (also keeps tests off real-time waits).
+                waited = 0.0
+                item = None
+                while waited < idle_cap:
+                    try:
+                        item = await asyncio.wait_for(self.queue.get(),
+                                                      min(2.0, idle_cap - waited))
+                        break
+                    except asyncio.TimeoutError:
+                        waited += 2.0
+                        if writer.is_closing():
+                            return
+                if item is None:
+                    if writer.is_closing():
+                        break
+                    continue               # quiet mesh; link still open
                 rssi, snr, signal_rssi, data = item
                 from core.mcp import encode_feed_push
                 frame = encode_feed_push(rssi, snr, signal_rssi, data)

@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.099 - 2026-09-10
+
+Dead feed link now heals itself (found from Brett's incident: modem
+feed dropped 14:42, bot silent until 15:00 - 18 dark minutes on a
+quiet mesh, chip saying "live" throughout):
+
+- core/modemfeed.py: the pump's queue wait could sleep indefinitely,
+  so a connection that died during radio silence was never noticed
+  and never re-dialed. The wait is now sliced into 2 s steps (a
+  closing link is seen within seconds) with a 2-minute full-idle
+  probe, and the socket gets TCP keepalive (30s idle / 3 probes) so
+  a dead peer errors on write instead of buffering forever.
+- Test added: pump exits promptly when the link closes while idle.
+  361 pass.
+
 ## 0.0.098 - 2026-09-10
 
 THE two-way-test blocker, found and fixed (Brett's decoded packet log
