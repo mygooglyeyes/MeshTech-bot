@@ -119,6 +119,23 @@ MAX_ADVERT_NAME_CHARS = 32
 MAX_ADVERT_NAME_BYTES = 90
 
 
+def contact_share_string(pubkey_hex: str, name: str) -> str:
+    """The MeshCore app's contact-sharing string for the bot (the FAQ's
+    documented format, type=1 = chat node) - QR-encode it or paste it
+    into the app's 'add contact' box to add LoganBot without waiting
+    for the mesh to carry an advert.
+
+    App-verified QR format (MeshCore docs/faq.md 7.5):
+      meshcore://contact/add?name=<name>&public_key=<key>&type=<type>
+    """
+    from urllib.parse import quote
+    key = (pubkey_hex or "").strip().lower()
+    if len(key) != 64:
+        return ""
+    safe_name = quote(sanitize_advert_name(name) or "bot", safe="")
+    return f"meshcore://contact/add?name={safe_name}&public_key={key}&type=1"
+
+
 def sanitize_advert_name(name: str,
                          max_chars: int = MAX_ADVERT_NAME_CHARS,
                          max_bytes: int = MAX_ADVERT_NAME_BYTES) -> str:
@@ -352,6 +369,7 @@ class Mcp:
         self.is_running = False
         self._task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.EventLoop] = None
+        self._advert_task: Optional[asyncio.Task] = None
         # --- decode machinery (Brett's "full decode" decision) ----------
         self.identity = load_local_identity()
         self._channels_by_hash: dict[int, list[dict]] = {}
@@ -414,6 +432,7 @@ class Mcp:
                 await self._radio_up()
                 self.is_running = True
                 await self._announce_self()
+                self._spawn_advert_timer()
                 return True
             except asyncio.CancelledError:
                 raise
@@ -425,9 +444,40 @@ class Mcp:
                     raise
         return False
 
+    def _spawn_advert_timer(self) -> None:
+        """Periodic flood advert task (mcp.advert_interval_hours, 0 = off)."""
+        hours = getattr(self.settings.mcp, "advert_interval_hours", 0.0)
+        if not hours or hours <= 0 or self.identity is None:
+            return
+        async def _timer() -> None:
+            interval = hours * 3600.0
+            while not self.service.stop_requested:
+                try:
+                    await asyncio.sleep(interval)
+                except asyncio.CancelledError:
+                    raise
+                if self.service.stop_requested or not self.is_running:
+                    continue
+                bot_cfg = getattr(self.settings, "bot", None)
+                advert_name = (sanitize_advert_name(
+                    bot_cfg.display_name if bot_cfg else "") or "bot")
+                try:
+                    from pymc_core.protocol.packet_builder import PacketBuilder
+                    pkt = PacketBuilder.create_flood_advert(
+                        self.identity, advert_name)
+                    if await self.send(pkt.write_to()):
+                        log.info("Periodic flood advert sent (every %gh).", hours)
+                except Exception as exc:
+                    log.warning("Periodic advert failed (non-fatal): %s", exc)
+        self._advert_task = asyncio.create_task(
+            _timer(), name="mcp-advert-timer")
+
     async def _announce_self(self) -> None:
-        """Send the bot's signed advert once the radio is up (when
-        bot.advertise_on_start, the same switch companion mode uses).
+        """Announce the bot once the radio is up (when
+        bot.advertise_on_start, the same switch companion mode uses):
+        a FLOOD advert (repeated across the mesh - this is how distant
+        nodes learn the bot) followed by a DIRECT advert (zero hops -
+        phones in radio range pick it up instantly, no repeater needed).
 
         Without it nobody learns the bot's new radio address, so DMs to it
         could never be encrypted for us.
@@ -441,12 +491,29 @@ class Mcp:
             from pymc_core.protocol.packet_builder import PacketBuilder
             advert_name = (sanitize_advert_name(bot_cfg.display_name)
                            or "bot")
-            pkt = PacketBuilder.create_self_advert(
-                self.identity, advert_name, route_type="flood")
             await asyncio.sleep(2.0)            # let the driver settle
-            if await self.send(pkt.write_to()):
-                log.info("Self-advert sent - the bot is on the mesh as '%s'.",
+            flood = PacketBuilder.create_flood_advert(
+                self.identity, advert_name)
+            if await self.send(flood.write_to()):
+                log.info("Flood advert sent - the bot is on the mesh as '%s'.",
                          advert_name)
+            await asyncio.sleep(5.0)            # airtime gap between adverts
+            direct = PacketBuilder.create_direct_advert(
+                self.identity, advert_name)
+            if await self.send(direct.write_to()):
+                log.info("Direct advert sent (one hop, for nearby phones).")
+            # Write the contact share string next to the identity so the
+            # QR / paste string is easy to find on the box later.
+            try:
+                share = contact_share_string(
+                    self.identity.get_public_key().hex(), advert_name)
+                if share:
+                    share_path = Path(IDENTITY_FILE).with_name(
+                        "bot_contact_share.txt")
+                    share_path.write_text(share + "\n", encoding="utf-8")
+                    log.info("Contact share string saved to %s", share_path)
+            except OSError:
+                pass
         except Exception as exc:
             log.warning("Self-advert failed (non-fatal): %s", exc)
 
@@ -906,6 +973,9 @@ class Mcp:
 
     async def stop(self) -> None:
         self.is_running = False
+        if self._advert_task is not None:
+            self._advert_task.cancel()
+            self._advert_task = None
         radio, self.radio = self.radio, None
         if radio is not None:
             try:

@@ -9,6 +9,26 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.097 - 2026-09-10
+
+Adverts you can rely on + a QR code to add the bot (Brett's request,
+2026-09-10: "modem sends a flood AND direct advert when it comes
+online, and a flood advert every 24 hours"):
+
+- core/mcp.py: on start the bot now sends a FLOOD advert (repeated
+  across the mesh - how distant nodes learn it) and then a DIRECT
+  advert (zero hops - nearby phones hear it instantly). New periodic
+  flood-advert timer, default 24 h (mcp.advert_interval_hours, 0 =
+  off). It also writes the app's contact share string to
+  data/bot_contact_share.txt (meshcore://contact/add?name=...&
+  public_key=...&type=1 - the format from MeshCore's FAQ 7.5) so the
+  bot can be added by QR / paste without waiting for the mesh.
+- core/config.py: mcp.advert_interval_hours (0-168, default 24).
+- config.example.yaml: the new knob, documented.
+- Tests: contact-share format (incl. emoji URL-quoting) + periodic
+  timer firing + 0 = never starts. 358 pass (8 pre-existing failures
+  untouched).
+
 ## 0.0.096 - 2026-09-10
 
 Fixed the dashboard's "Mcp object has no attribute is_connected"

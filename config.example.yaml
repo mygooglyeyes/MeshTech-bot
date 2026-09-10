@@ -246,6 +246,9 @@ mcp:
   spreading_factor: 7
   bandwidth_khz: 62.5
   coding_rate_index: 1      # 1 = 4/5
+  # On start the bot sends a FLOOD advert (whole mesh) + a DIRECT advert
+  # (one hop, nearby phones). This sets how often it re-floods after that:
+  advert_interval_hours: 24 # 0 = only the two start-up adverts
 
 # --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
 # Pushes a copy of every packet the radio hears (and every packet the

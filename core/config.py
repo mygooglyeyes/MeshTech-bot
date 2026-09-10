@@ -219,6 +219,11 @@ class McpCfg:
     bandwidth_khz: float = 62.5
     # Coding rate index: 1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8.
     coding_rate_index: int = 1
+    # Adverts (the bot announcing itself so others can add/message it):
+    # on start it sends a FLOOD advert (whole mesh, repeated) and a
+    # DIRECT advert (one hop - phones in range hear it instantly), then
+    # a flood advert every advert_interval_hours (0 = off).
+    advert_interval_hours: float = 24.0
 
 
 @dataclass
@@ -656,6 +661,11 @@ def load(config_path: str = "config.yaml") -> Settings:
     mcp_cr = _int(mcp_raw, "coding_rate_index", 1, errors, "mcp.coding_rate_index")
     if mcp_cr < 1 or mcp_cr > 4:
         errors.append("mcp.coding_rate_index must be 1 (4/5), 2 (4/6), 3 (4/7) or 4 (4/8).")
+    mcp_adv_h = _float(mcp_raw, "advert_interval_hours", 24.0, errors,
+                       "mcp.advert_interval_hours")
+    if mcp_adv_h < 0 or mcp_adv_h > 168:
+        errors.append("mcp.advert_interval_hours must be between 0 and 168 "
+                      "(0 disables the periodic flood advert).")
     mcp = McpCfg(
         enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
         frequency_hz=freq,
@@ -663,6 +673,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         spreading_factor=mcp_sf,
         bandwidth_khz=mcp_bw,
         coding_rate_index=mcp_cr,
+        advert_interval_hours=mcp_adv_h,
     )
 
     # --- modem_feed (push radio packets to meshtech-modem port 5056) ---
