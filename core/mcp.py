@@ -381,6 +381,12 @@ class Mcp:
         # --- decode machinery (Brett's "full decode" decision) ----------
         self.identity = load_local_identity()
         self._channels_by_hash: dict[int, list[dict]] = {}
+        # config channel name -> index in settings.channels (the slot number
+        # the router uses as channel_idx for replies). Declared BEFORE
+        # _rebuild_channel_table() fills it - declaring it after the call
+        # silently wiped the map (v0.0.101 bench test: every reply carried
+        # channel_idx=None and the router crashed on send).
+        self._channel_index: dict[str, int] = {}
         self._rebuild_channel_table()
         # Recent packet hashes: MeshCore flood dedup (a flood heard over
         # several paths would otherwise hit the router once per hearing).
@@ -390,9 +396,6 @@ class Mcp:
         self._own_hash = (self.identity.get_public_key()[0]
                           if self.identity else None)
         self._recent_tx_hashes: dict[str, float] = {}
-        # config channel name -> index in settings.channels (the slot number
-        # the router uses as channel_idx for replies)
-        self._channel_index: dict[str, int] = {}
 
     # ------------------------------------------------- client-interface shim
     # bot.py sets service.client = mcp in radio mode (the router's reply
@@ -889,8 +892,8 @@ class Mcp:
     async def send_channel(self, idx: int, text: str) -> bool:
         """Router adapter: one channel reply as a real radio packet."""
         channels = getattr(self.settings, "channels", []) or []
-        if idx < 0 or idx >= len(channels):
-            log.warning("Channel reply dropped: unknown slot %d", idx)
+        if idx is None or idx < 0 or idx >= len(channels):
+            log.warning("Channel reply dropped: unknown slot %r", idx)
             return False
         name = channels[idx].name
         entry = next((c for lst in self._channels_by_hash.values() for c in lst

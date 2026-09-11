@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.102 - 2026-09-10
+
+The one-line fix that lets the bot actually SEND its replies. Brett's
+live test ("Hello" on #test at 20:03) exposed it via a bare asyncio
+traceback:
+
+- **Wiped channel index**: Mcp.__init__ built the channel-index map
+  (name -> slot number) and THEN declared the map as an empty dict -
+  wiping it. Every channel reply went out with channel_idx=None and the
+  router's send path crashed (`'<' not supported between instances of
+  'NoneType' and 'int'`) inside a background task, so the bot heard
+  everything, matched the command, built the reply - and died before
+  transmitting. The map is now declared BEFORE the build call, and
+  send_channel treats a None/unknown slot as a logged drop instead of a
+  crash.
+- Regression tests: the map survives __init__ (#test -> slot 1); a None
+  slot drops cleanly instead of raising.
+
 ## 0.0.101 - 2026-09-10
 
 The bot answers named senders on channels - the silent-treatment bug
