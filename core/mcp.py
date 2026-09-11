@@ -701,7 +701,11 @@ class Mcp:
         payload_type = pkt.get_payload_type()
         self.stats.decoded += 1
 
-        if self._own_hash is not None and len(pkt.payload) >= 2:
+        # Only TXT_MSG packets carry a destination hash in payload[1]; for
+        # GRP_TXT payload[1] is a MAC byte, so the own-packet check below is
+        # meaningful for DMs only (flood repeats are handled by _is_duplicate).
+        if payload_type == PAYLOAD_TYPE_TXT_MSG and self._own_hash is not None \
+                and len(pkt.payload) >= 2:
             src_hash = pkt.payload[1]
         else:
             src_hash = None
@@ -715,7 +719,7 @@ class Mcp:
             return
         if self._is_duplicate(pkt):
             return
-        if src_hash == self._own_hash:
+        if src_hash is not None and src_hash == self._own_hash:
             log.debug("Own packet heard back - ignoring.")
             return
         if payload_type == PAYLOAD_TYPE_GRP_TXT:
@@ -788,15 +792,20 @@ class Mcp:
             if plaintext is None:
                 continue                 # HMAC mismatch - next candidate
             timestamp, _flags, content = parse_channel_plaintext(plaintext)
-            sender_name, body = _split_sender(content)
+            # Deliver the FULL wire text ("Name: body") - the router owns
+            # the sender-name split (mesh.channel_sender_name policy). The
+            # companion path delivers raw text too; pre-stripping here made
+            # the router split again and clobber the sender to "unknown",
+            # so every channel command was silently ignored (bench test,
+            # 2026-09-10). _deliver still shows the body in the log.
             msg = InboundMessage(
-                kind="channel", text=body,
+                kind="channel", text=content,
                 channel_name=channel["name"],
                 channel_idx=self._channel_index.get(channel["name"]),
                 sender_ts=float(timestamp) if timestamp else None,
                 hops=_hops_from_packet(pkt), snr=snr)
-            msg.sender_name = sender_name
-            self._deliver("GRP_TXT", channel["name"], sender_name, msg)
+            name_for_log = _split_sender(content)[0] or "?"
+            self._deliver("GRP_TXT", channel["name"], name_for_log, msg)
             return                       # first validating candidate wins
         log.debug("GRP_TXT hash %02X: no channel key matched", channel_hash)
 
@@ -974,9 +983,14 @@ class Mcp:
 
     @staticmethod
     def _bytes_hash(data: bytes) -> str:
+        """Hash over header + payload (NO path_len byte) - byte-for-byte the
+        same recipe as _packet_hash_hex on RX, so an echoed TX matches its
+        dedup entry and the bot never answers itself. Before this fix the
+        two recipes differed by the path_len byte and could never match."""
         try:
             import hashlib
-            return hashlib.sha256(bytes([data[0] >> 2 & 0xFF]) + data[1:]).hexdigest()[:16]
+            return hashlib.sha256(bytes([(data[0] >> 2) & 0xFF])
+                                  + data[2:]).hexdigest()[:16]
         except Exception:
             return ""
 

@@ -9,6 +9,43 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.101 - 2026-09-10
+
+The bot answers named senders on channels - the silent-treatment bug
+that survived v0.0.100 is fixed, and Brett's own captured packet proves
+the diagnosis end to end:
+
+- **Root cause**: the MCP radio path stripped the `Name: ` prefix from
+  incoming channel text itself, then the router stripped *again* on the
+  already-stripped text and overwrote the sender name with None - so
+  every channel message looked like it came from an unknown sender and
+  the router stayed silent ("Ignoring message from unknown sender").
+  Brett's on-air hex decrypts to `🏃‍➡️ Logan Running: !weather 94945`
+  - the name was always on the air; the bot threw it away.
+- **Fix**: the MCP path now delivers the raw decrypted `Name: body`
+  text, exactly like the companion client path, and the router owns the
+  split in one place. Named senders now pass `_sender_known` (the rule:
+  name present = answerable, unless block-listed or over the reply
+  budget) and the name resolves against known nodes for pacing and
+  blocking, same as adverts do.
+- **Own-packet echo guard fixed twice over**: the guard compared a
+  non-existent sender hash on GRP_TXT packets (payload[1] there is a
+  MAC byte - it could randomly drop ~0.4% of channel traffic), and its
+  hash scheme never matched the RX dedup hash (one included the
+  path_len byte, the other didn't), so it never actually caught our own
+  echoes. The guard is now DM-scoped (payload[1] is a real destination
+  hash there) and hashes the same bytes the dedup table hashes.
+- **Latent landmine**: `_own_hash` was computed once at init; a late
+  identity load left it None, making `src_hash == self._own_hash` true
+  for everything - the guard would have dropped ALL traffic. Guard is
+  now None-safe.
+
+Regression tests: raw wire text delivered with the sender name intact
+(Brett's emoji name, from his captured packet), GRP_TXT not dropped by
+the own-hash guard, TX echo hash matches the RX dedup hash. 365 tests
+pass; the 8 export failures and the missing-meshhealth import pre-date
+this work (verified against a stashed baseline).
+
 ## 0.0.100 - 2026-09-10
 
 Channel decode now matches the firmware EXACTLY, proven against a real
