@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.117 - 2026-09-12
+
+Small UI fix to the advert buttons (Brett): while an advert is in
+flight BOTH chips (Advert direct / Advert flood) are disabled and the
+clicked one reads "advertising…", restored when the bot answers.
+There is only one radio, so a second advert mid-flight would just
+collide with the first. Disabled buttons get a dimmed, wait-cursor
+look (new `.btn:disabled` style).
+
 ## 0.0.116 - 2026-09-12
 
 Dashboard advert buttons (Brett, 2026-09-12: "add a set of advert

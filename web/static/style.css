@@ -232,6 +232,7 @@ pre.config { background: #0b0f15; border: 1px solid var(--border); border-radius
 .btn.active { border-color: var(--ok); color: var(--ok); }
 .btn:hover { border-color: var(--accent); }
 .btn.small { padding: 2px 8px; font-size: 0.75rem; }
+.btn:disabled { opacity: 0.55; cursor: wait; }
 .btn.danger:hover { border-color: var(--bad); color: var(--bad); }
 
 .result { color: var(--ok); font-size: 0.75rem; }

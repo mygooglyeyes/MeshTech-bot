@@ -1585,7 +1585,18 @@ $("btn-reload").addEventListener("click", async () => {
 // zero-hop (nearby phones); "flood" = repeated across the mesh. The
 // reply text shows in the controls card; the notice also hits the live
 // feed so there is an on-the-record confirmation.
-async function sendAdvert(action) {
+// v0.0.117: while an advert is in flight BOTH chips are disabled and
+// the clicked one shows "advertising…" - there is only one radio, so
+// a second advert mid-flight would just collide with the first.
+const ADVERT_BUTTONS = ["btn-advert-direct", "btn-advert-flood"];
+
+async function sendAdvert(action, clicked) {
+  const buttons = ADVERT_BUTTONS.map($);
+  for (const b of buttons) {
+    if (!b.dataset.label) b.dataset.label = b.textContent;
+    b.disabled = true;
+  }
+  clicked.textContent = "advertising…";
   try {
     const r = await api("/api/actions", {
       method: "POST",
@@ -1596,12 +1607,16 @@ async function sendAdvert(action) {
   } catch (e) {
     $("action-result").textContent = String(e.message || e);
   }
+  for (const b of buttons) {
+    b.disabled = false;
+    b.textContent = b.dataset.label;
+  }
 }
 
-$("btn-advert-direct").addEventListener("click",
-                                        () => sendAdvert("advert_direct"));
-$("btn-advert-flood").addEventListener("click",
-                                       () => sendAdvert("advert_flood"));
+$("btn-advert-direct").addEventListener("click", (ev) =>
+  sendAdvert("advert_direct", ev.currentTarget));
+$("btn-advert-flood").addEventListener("click", (ev) =>
+  sendAdvert("advert_flood", ev.currentTarget));
 
 $("btn-boost").addEventListener("click", async () => {
   // Raise the total airtime budget (+30/h +150/d per use, ceiling 90/h
