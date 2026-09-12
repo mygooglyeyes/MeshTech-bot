@@ -380,6 +380,15 @@ class Router:
 
         # -- DM sender access
         is_admin = settings.is_admin_prefix(msg.sender_prefix) if msg.kind == "dm" else False
+        # -- channel admins (same dm.admin_pubkey_prefixes, with the embedded
+        #    name resolved to a registry node) are exempt ONLY from the
+        #    per-sender reply pace below - not from budgets or handler access.
+        #    A name that matches no known node is never an admin (a bare
+        #    "name:..." identity can never match a hex admin prefix).
+        pace_exempt = is_admin
+        if not pace_exempt and msg.kind == "channel":
+            pace_identity = self._channel_sender_identity(msg)
+            pace_exempt = bool(pace_identity) and settings.is_admin_prefix(pace_identity)
 
         tokens, prefixed = tokenize(body)
         if not tokens:
@@ -429,14 +438,23 @@ class Router:
         # -- per-sender pace in channels: the same node asking again within
         #    the window waits (admins exempt; identity resolved best-effort
         #    from the embedded name, as the block list does).
-        if msg.kind == "channel" and not is_admin:
+        if msg.kind == "channel" and not pace_exempt:
             pace = settings.limits.per_sender_channel_seconds
             if pace > 0:
                 identity = self._channel_sender_identity(msg)
                 if identity and \
                         now - self._last_channel_answer.get(identity, 0.0) < pace:
-                    log.debug("Channel per-sender pace: %s replied to %.0fs ago.",
-                              identity, now - self._last_channel_answer[identity])
+                    wait = pace - (now - self._last_channel_answer[identity])
+                    log.info("Channel per-sender pace: %s may ask again in "
+                             "%.0fs - dropping: %s", identity, wait,
+                             _log_line(msg.text, 60))
+                    self.service.feed.publish("dropped", {
+                        "reason": f"per-sender wait ({int(wait) + 1}s left)",
+                        "kind": msg.kind,
+                        "channel": msg.channel_name,
+                        "sender": msg.sender_prefix or msg.sender_name,
+                        "text": msg.text,
+                    })
                     return
         # -- airtime budgets: cheap non-recording pre-filters (the
         #    authoritative check+record happens under the send lock) so a
@@ -507,13 +525,31 @@ class Router:
                                 ctx.msg.sender_prefix, 0.0) < \
                                 send_settings.limits.per_sender_seconds:
                             return
-                    if ctx.msg.kind == "channel" and not ctx.is_admin:
-                        pace = send_settings.limits.per_sender_channel_seconds
-                        if pace > 0:
-                            identity = self._channel_sender_identity(ctx.msg)
-                            if identity and send_now - \
-                                    self._last_channel_answer.get(identity, 0.0) < pace:
-                                return
+                    if ctx.msg.kind == "channel":
+                        send_pace_exempt = ctx.is_admin
+                        if not send_pace_exempt:
+                            send_ident = self._channel_sender_identity(ctx.msg)
+                            send_pace_exempt = bool(send_ident) and \
+                                send_settings.is_admin_prefix(send_ident)
+                        if not send_pace_exempt:
+                            pace = send_settings.limits.per_sender_channel_seconds
+                            if pace > 0:
+                                identity = self._channel_sender_identity(ctx.msg)
+                                if identity and send_now - \
+                                        self._last_channel_answer.get(identity, 0.0) < pace:
+                                    wait = pace - (send_now -
+                                                   self._last_channel_answer[identity])
+                                    log.info("Channel per-sender pace: %s may ask "
+                                             "again in %.0fs - reply held.",
+                                             identity, wait)
+                                    self.service.feed.publish("dropped", {
+                                        "reason": f"per-sender wait ({int(wait) + 1}s left)",
+                                        "kind": ctx.msg.kind,
+                                        "channel": ctx.msg.channel_name,
+                                        "sender": ctx.msg.sender_prefix or ctx.msg.sender_name,
+                                        "text": ctx.msg.text,
+                                    })
+                                    return
                     # airtime budgets, authoritative: check + record one slot
                     # per reply (a multi-chunk answer is one answer)
                     if not ctx.is_admin and not self.service.person_budget_check(

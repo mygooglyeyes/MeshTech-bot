@@ -9,6 +9,29 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.104 - 2026-09-11
+
+The 30-second per-sender channel wait rule stopped hiding its drops,
+and channel admins are exempt from it - from Brett's `!quake 94945`
+test (03:11:31): the bot heard the command, dropped it 18 s after his
+previous ask, and wrote NOTHING anywhere - a silent black hole.
+
+- **Visibility**: a message dropped by the per-sender pace rule now
+  gets a journal INFO line (who must wait, how long, what was asked)
+  AND a `[skip]` row in the dashboard's Live card - same treatment the
+  unknown-sender drop always had. Applies at both checkpoints: the
+  inbound pre-filter and the pre-transmit send lock ("reply held").
+- **Admin exemption, channels included**: admins named in
+  `dm.admin_pubkey_prefixes` are exempt from the pace rule in channels,
+  not just DMs. The embedded channel name must resolve to a known node
+  whose prefix matches the admin list - a bare name matching no node
+  (an impersonator) is never exempt. This covers the PACE RULE ONLY:
+  budgets and handler access are unchanged.
+- New tests: pace drop visible (journal + feed), admin exempt,
+  name-impersonator NOT exempt, normal pacing still enforced. Suite:
+  364 passed; the 8 pre-existing export/meshhealth failures are
+  untouched.
+
 ## 0.0.103 - 2026-09-11
 
 The dashboard's Live activity card shows the bot's own sends in radio
