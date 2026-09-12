@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
-from .models import InboundMessage
+from .models import InboundMessage, MsgRecord
 
 log = logging.getLogger("meshtech-bot.mcp")
 
@@ -907,6 +907,16 @@ class Mcp:
         ok = await self.send(pkt)
         if ok:
             log.info("OUT %s: %s", name, _log_line(text))
+            # Persist + publish like the companion path does, so the
+            # dashboard log window shows bot sends too (bench test
+            # 2026-09-10: replies went out but the log window had no
+            # [out] row - only inbound rows were ever stored).
+            self.service.store.add_message(MsgRecord(
+                kind="channel", direction="out", channel_name=name,
+                text=text, recv_ts=time.time()))
+            self.service.feed.publish("message_out", {"kind": "channel",
+                                                      "channel": name,
+                                                      "text": text})
         return ok
 
     async def send_dm(self, sender_prefix: str, text: str) -> bool:
@@ -938,6 +948,12 @@ class Mcp:
         ok = await self.send(raw)
         if ok:
             log.info("OUT DM->%s: %s", sender_prefix, _log_line(text))
+            self.service.store.add_message(MsgRecord(
+                kind="dm", direction="out", sender_prefix=sender_prefix,
+                text=text, recv_ts=time.time()))
+            self.service.feed.publish("message_out", {"kind": "dm",
+                                                      "sender": sender_prefix,
+                                                      "text": text})
         return ok
 
     def _build_group_packet(self, entry: dict, text: str) -> Optional[bytes]:

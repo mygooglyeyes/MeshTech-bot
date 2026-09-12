@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.103 - 2026-09-11
+
+The dashboard's Live activity card shows the bot's own sends in radio
+mode - the missing-reply mystery Brett chased across both nights, closed
+with proof from the box:
+
+- **The gap**: Brett's `!pathx` test (2026-09-11 16:26) proved the reply
+  went out on the air AND landed in openHop's packet database three
+  times - yet the Live card never showed it. The card's feed only ever
+  got `[out]` events from the old phone-companion path (core/client.py);
+  the MCP radio path (core/mcp.py) logged sends to the journal but
+  published nothing, so outgoing replies were invisible by design.
+- **Fix**: a successful channel reply or DM in radio mode now also
+  stores its message row and publishes `message_out` to the feed -
+  exactly what the companion path always did. 17 lines, dashboard
+  visibility only; nothing changes on the radio or in reply content.
+- Suite: 360 passed (the 7 export-feature failures pre-date this work,
+  documented in TODOS).
+
 ## 0.0.102 - 2026-09-10
 
 The one-line fix that lets the bot actually SEND its replies. Brett's
