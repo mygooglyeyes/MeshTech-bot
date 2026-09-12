@@ -25,6 +25,7 @@ radio problems must never crash the bot or stall its messaging.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import struct
@@ -278,6 +279,35 @@ class McpStats:
 IDENTITY_FILE = "data/bot_radio_identity.txt"
 
 
+def _clamp32(scalar: bytes) -> bytes:
+    """X25519 scalar clamping (RFC 7748 / MeshCore key_exchange.c):
+    clear the 3 low bits, clear bit 255, set bit 254."""
+    s = bytearray(scalar)
+    s[0] &= 248
+    s[31] &= 63
+    s[31] |= 64
+    return bytes(s)
+
+
+def _expand_firmware_key(seed32: bytes) -> bytes:
+    """32-byte Ed25519 seed -> 64-byte MeshCore firmware key [scalar|nonce].
+
+    Matches MeshCore firmware identity generation (SHA-512 expansion, scalar
+    clamped BEFORE anything else): the public key is derived from the clamped
+    scalar AND the ECDH uses the same clamped scalar, so what the bot
+    advertises and what it computes with agree.
+
+    This replaces the old os.urandom(64) generation whose raw scalar was
+    unclamped: pubkey = raw*G but ECDH ran with clamped(raw) - the two
+    disagree unless the raw bytes happen to be pre-clamped (p=1), which is
+    exactly the v0.0.113 "HMAC failed against N stored key(s)" DM bug.
+    """
+    if len(seed32) != 32:
+        raise ValueError("seed must be 32 bytes")
+    digest = hashlib.sha512(seed32).digest()
+    return _clamp32(digest[:32]) + digest[32:]
+
+
 def load_local_identity(identity_path: str = IDENTITY_FILE):
     """The bot's own LocalIdentity, created on first use.
 
@@ -298,6 +328,19 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
             raw = bytes.fromhex(hex_str)
             if len(raw) not in (32, 64):
                 raise ValueError(f"expected 32 or 64 bytes, got {len(raw)}")
+            if len(raw) == 64 and raw[:32] != _clamp32(raw[:32]):
+                # Legacy os.urandom(64) key: advert pubkey (raw*G) and the
+                # ECDH scalar (clamped) disagree, so DMs can never decrypt
+                # in either direction. No code path can fix it in place -
+                # the mesh address must change. Refuse rather than run
+                # half-blind; deleting the file mints a proper key.
+                log.warning(
+                    "Radio identity %s has an UNCLAMPED scalar (legacy "
+                    "os.urandom format) - DMs cannot work with it. Delete "
+                    "the file and restart to mint a proper key (the bot's "
+                    "mesh address will change; re-add contacts).",
+                    identity_path)
+                return None
             seed = raw
         except Exception as exc:
             log.error("Radio identity file %s is unusable (%s) - a NEW key "
@@ -305,7 +348,9 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
                       "fix or remove the file, then restart.", identity_path, exc)
             return None
     if seed is None:
-        seed = os.urandom(64)                    # firmware-format key
+        # Proper firmware-format key: SHA-512 expand + CLAMP the scalar.
+        # (os.urandom(64) was the v0.0.113 DM bug - see _expand_firmware_key.)
+        seed = _expand_firmware_key(os.urandom(32))
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

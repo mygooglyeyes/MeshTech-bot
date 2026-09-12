@@ -9,6 +9,28 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.114 - 2026-09-12
+
+The DM root cause, found and fixed. The fork-test + raw-capture replay
+(v0.0.111-113) proved Brett's DMs arrived clean, addressed to the bot,
+and still failed HMAC against every stored key - the bot's own radio
+identity was generated wrong.
+
+- **Root cause:** the bot minted its key with raw `os.urandom(64)` -
+  an UNCLAMPED scalar. The advertised pubkey is `raw*G` but ECDH ran
+  with `clamped(raw)`; unless the random bytes are already clamped
+  (p=1), those are two different secrets. Phones encrypted DMs to a
+  secret the bot can never reproduce - no decrypt, no ACK, no replies.
+  Channels always worked because they never use ECDH.
+- **Fix (generation):** new keys are proper firmware-style - SHA-512
+  expand a 32-byte seed, clamp the scalar BEFORE deriving anything
+  (`_expand_firmware_key`). Pubkey and ECDH now agree by construction.
+- **Safe mode:** loading a legacy unclamped key file is REFUSED (loud
+  warning, no identity) instead of running half-blind - no code path
+  can repair it in place, the mesh address must change.
+- Brett's box: delete `data/bot_radio_identity.txt`, restart - a
+  proper key is minted; re-add LoganBot from the fresh share string.
+
 ## 0.0.113 - 2026-09-12
 
 DM receive correctness: the bot now checks WHO a direct message is
