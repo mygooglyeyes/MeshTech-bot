@@ -381,10 +381,14 @@ class Router:
         # -- DM sender access
         is_admin = settings.is_admin_prefix(msg.sender_prefix) if msg.kind == "dm" else False
         # -- channel admins (same dm.admin_pubkey_prefixes, with the embedded
-        #    name resolved to a registry node) are exempt ONLY from the
-        #    per-sender reply pace below - not from budgets or handler access.
-        #    A name that matches no known node is never an admin (a bare
-        #    "name:..." identity can never match a hex admin prefix).
+        #    name resolved to a registry node) are exempt from the per-sender
+        #    reply pace AND from both airtime budgets below (v0.0.105, Brett:
+        #    "if the client has the public key designated in the config.yaml
+        #    list, then always answer it"). Handler access is unchanged: only
+        #    DM admins run admin commands, because a channel identity is a
+        #    spoofable name. A name that matches no known node is never an
+        #    admin (a bare "name:..." identity can never match a hex admin
+        #    prefix).
         pace_exempt = is_admin
         if not pace_exempt and msg.kind == "channel":
             pace_identity = self._channel_sender_identity(msg)
@@ -459,9 +463,11 @@ class Router:
         # -- airtime budgets: cheap non-recording pre-filters (the
         #    authoritative check+record happens under the send lock) so a
         #    doomed command never even spawns a handler task. Two layers:
-        #    per-person (keyword replies only; admins exempt) and the total
-        #    budget (replies + pushes; admins exempt there too).
-        if not is_admin:
+        #    per-person (keyword replies only) and the total budget
+        #    (replies + pushes). Admins (DM prefix, or a registry-resolved
+        #    channel name since v0.0.105) skip both: listed pubkeys are
+        #    always answered.
+        if not pace_exempt:
             if not self.service.person_budget_check(
                     self._channel_sender_identity(msg) if msg.kind == "channel"
                     else (msg.sender_prefix or "?"),
@@ -474,7 +480,7 @@ class Router:
                 self._lane_of(msg) if msg.kind == "channel" else "dm",
                 msg.sender_prefix or msg.sender_name or "?",
                 msg.text,
-                exempt=(msg.kind == "dm" and is_admin),
+                exempt=pace_exempt,
                 record=False):
             return
 
@@ -525,8 +531,8 @@ class Router:
                                 ctx.msg.sender_prefix, 0.0) < \
                                 send_settings.limits.per_sender_seconds:
                             return
+                    send_pace_exempt = ctx.is_admin
                     if ctx.msg.kind == "channel":
-                        send_pace_exempt = ctx.is_admin
                         if not send_pace_exempt:
                             send_ident = self._channel_sender_identity(ctx.msg)
                             send_pace_exempt = bool(send_ident) and \
@@ -551,8 +557,11 @@ class Router:
                                     })
                                     return
                     # airtime budgets, authoritative: check + record one slot
-                    # per reply (a multi-chunk answer is one answer)
-                    if not ctx.is_admin and not self.service.person_budget_check(
+                    # per reply (a multi-chunk answer is one answer). Same
+                    # admin exemption as the dispatch pre-filter:
+                    # registry-resolved channel admins skip both layers
+                    # (v0.0.105).
+                    if not send_pace_exempt and not self.service.person_budget_check(
                             self._channel_sender_identity(ctx.msg)
                             if ctx.msg.kind == "channel"
                             else (ctx.msg.sender_prefix or "?"),
@@ -567,7 +576,7 @@ class Router:
                             else "dm",
                             ctx.msg.sender_prefix or ctx.msg.sender_name or "?",
                             reply_text,
-                            exempt=(ctx.msg.kind == "dm" and ctx.is_admin),
+                            exempt=send_pace_exempt,
                             record=True):
                         return
                     await self._send_reply(ctx, reply_text,

@@ -9,6 +9,31 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.105 - 2026-09-11
+
+Admins named in `dm.admin_pubkey_prefixes` are now always answered, in
+channels too - Brett's rule: "if the client has the public key
+designated in the config.yaml list, then always answer it."
+
+- **Root cause found on the box**: his `!quake 94945` at 18:39:04 was
+  dropped by the per-person airtime budget (`person budget dropped
+  9725d9d7cc96 ... less than 30s`) - the "no zip" answer 21.6 s earlier
+  counted as his answer. v0.0.104 exempted admins from the per-sender
+  pace only; both airtime budgets still throttled them in channels.
+- **The change**: the same registry-resolved admin exemption (embedded
+  name -> node row -> prefix match) now skips the per-person budget AND
+  the total budget, at both checkpoints (dispatch pre-filter and the
+  pre-transmit send lock). DM admins are unaffected - they were already
+  exempt. Handler access stays DM-only: a channel identity is a
+  spoofable name, so admin COMMANDS still require a DM.
+- Impersonation note: a bare embedded name matching no registry node is
+  never exempt - spoofing "Hilltop-1" buys no free airtime. The total
+  budget keeps covering every non-admin, so one spammer cannot empty
+  the bot's airtime for everyone.
+- New tests: person-budget drop visible for non-admins, admin skips
+  pace + both budgets, name-impersonator still budgeted, total-budget
+  gap exempts admins but still limits non-admins.
+
 ## 0.0.104 - 2026-09-11
 
 The 30-second per-sender channel wait rule stopped hiding its drops,
