@@ -581,13 +581,6 @@ class Router:
                             exempt=send_pace_exempt,
                             record=True):
                         return
-                    if result.kind == "dm_text":
-                        # v0.0.111 (Brett): before opening a DM thread the bot
-                        # adverts itself once, local-only (direct advert, zero
-                        # hops). The phone then refreshes the bot's contact
-                        # straight from the air - key AND fresh routing info,
-                        # the one thing a QR/share string can never carry.
-                        await self._advert_self_once()
                     await self._send_reply(ctx, reply_text,
                                            force_dm=(result.kind == "dm_text"))
         except asyncio.CancelledError:
@@ -717,28 +710,6 @@ class Router:
             return "\n".join(str(data).splitlines()) if isinstance(data, str) else str(data or "")
         lines = handler.render_lines(result, verbosity)
         return "\n".join(lines)
-
-    async def _advert_self_once(self) -> None:
-        """One local-only (direct, zero-hop) advert, best effort.
-
-        Used by !dm so the asking phone learns the bot's current route
-        before the DM arrives (MeshCore phones cannot DM a contact whose
-        advert they have not heard). A direct advert is not repeated by
-        the mesh - one packet, adjacent nodes only, minimal airtime.
-        Failures are logged and swallowed: the DM reply itself still goes.
-        """
-        client = self.service.client
-        sender = getattr(client, "send_direct_advert", None)
-        if sender is None:
-            return                              # client cannot advert - skip
-        try:
-            ok = await sender()
-        except Exception as exc:
-            log.warning("Pre-DM advert failed (non-fatal): %s", exc)
-            return
-        if ok:
-            log.info("Pre-DM advert sent (local only) - the asking phone "
-                     "can now refresh the bot's contact.")
 
     async def _send_reply(self, ctx: RouterCtx, text: str,
                           force_dm: bool = False) -> None:

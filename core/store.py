@@ -353,6 +353,10 @@ class Store:
             )
 
     def get_node(self, key_or_prefix: str) -> Optional[Dict[str, Any]]:
+        if not key_or_prefix:
+            # Stored rows can have a NULL sender prefix (v0.0.115 bug:
+            # '&stats #test x' crashed here on .lower() of None).
+            return None
         key = key_or_prefix.lower()
         row = self._conn.execute(
             "SELECT * FROM nodes WHERE pubkey = ? OR prefix = ? "
@@ -362,6 +366,8 @@ class Store:
         return dict(row) if row else None
 
     def resolve_name(self, key_or_prefix: str) -> Optional[str]:
+        if not key_or_prefix:
+            return None
         node = self.get_node(key_or_prefix)
         if node and node.get("name"):
             return node["name"]

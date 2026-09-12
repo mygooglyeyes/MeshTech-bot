@@ -9,6 +9,30 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.115 - 2026-09-12
+
+Removes the advert-before-DM (Brett's call, queued at v0.0.111 time
+and confirmed after the DM root cause was fixed: "we need to remove
+the advert before DM portion we added earlier. This may be
+complicating things").
+
+- `!dm` now replies straight away: no direct (zero-hop) advert is
+  sent before the DM reply. Contact refresh is handled by the normal
+  adverts (periodic flood + on-start), and the DM root cause turned
+  out to be the broken identity, not a missing advert.
+- Everything else from v0.0.111 stays: DM delivery ACKs, routed DM
+  replies, INFO-level decrypt-failure logging, and the v0.0.113
+  dest-hash gate.
+- Router helper `_advert_self_once` deleted; two tests now pin the
+  new behavior (no advert before the DM reply; exactly one DM sent).
+- `Mcp.send_direct_advert()` stays - the upcoming dashboard advert
+  buttons (DIRECT/FLOOD chips) will use it.
+- Also fixed on the same day: `&stats <channel> x` (full verbosity)
+  crashed with 'NoneType has no attribute lower' when a stored message
+  row had a NULL sender prefix (live on the box, 14:28). The guard now
+  lives at the store boundary (get_node/resolve_name tolerate empty
+  input); 2 regression tests.
+
 ## 0.0.114 - 2026-09-12
 
 The DM root cause, found and fixed. The fork-test + raw-capture replay
