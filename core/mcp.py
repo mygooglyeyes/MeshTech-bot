@@ -547,17 +547,32 @@ class Mcp:
                  kwargs["frequency"] / 1e6, kwargs["spreading_factor"],
                  kwargs["bandwidth"] / 1000, kwargs["tx_power"])
         radio = SX1262Radio(**kwargs)
-        ok = await self._loop.run_in_executor(None, radio.begin)
-        if not ok:
-            raise RuntimeError("radio.begin() returned False")
-        # CAD thresholds for the radio's own LBT (mcp.cad_peak/cad_min,
-        # Brett's openHop tuning for this board: 15/7). 0/0 leaves the
-        # driver's defaults alone. Must succeed before first TX; a bad
-        # value here is a config error, so fail loud rather than drift
-        # silently onto different air sensitivity.
-        self._apply_cad_thresholds(
-            radio, int(getattr(mcp, "cad_peak", 0)), int(getattr(mcp, "cad_min", 0)))
-        radio.set_rx_callback(self._on_radio_rx)
+        try:
+            ok = await self._loop.run_in_executor(None, radio.begin)
+            if not ok:
+                raise RuntimeError("radio.begin() returned False")
+            # CAD thresholds for the radio's own LBT (mcp.cad_peak/cad_min,
+            # Brett's openHop tuning for this board: 15/7). 0/0 leaves the
+            # driver's defaults alone. Must succeed before first TX; a bad
+            # value here is a config error, so fail loud rather than drift
+            # silently onto different air sensitivity.
+            cfg = self.settings.mcp
+            self._apply_cad_thresholds(
+                radio, int(getattr(cfg, "cad_peak", 0)),
+                int(getattr(cfg, "cad_min", 0)))
+            radio.set_rx_callback(self._on_radio_rx)
+        except Exception:
+            # v0.0.107: a failed init must not leave the radio object holding
+            # the GPIO lines - the driver enforces one active instance, so an
+            # abandoned radio makes every retry die with 'GPIO Pin already in
+            # use' and the service crash-loops. Release the pins, then let
+            # start()'s retry loop try again clean.
+            try:
+                radio.cleanup()
+            except Exception as cleanup_exc:
+                log.warning("Radio cleanup after failed init also failed: %s",
+                            cleanup_exc)
+            raise
         self.radio = radio
         log.info("Radio up - the MCP owns the air.")
 

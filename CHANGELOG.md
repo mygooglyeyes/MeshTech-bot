@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.107 - 2026-09-11 (late)
+
+Emergency fix: v0.0.106 crash-looped on the box and left the bot deaf
+on air. The radio hardware came up fine, then radio init threw a
+'NameError: name mcp is not defined' - the new CAD-threshold code read
+a config name that only existed in a neighboring method. Worse, the
+abandoned radio object kept holding the GPIO pins, so every 30 s retry
+died with 'GPIO Pin 6 already in use' and systemd kept restarting a
+crash loop (restart counter hit 10).
+
+- **The fix (core/mcp.py):** _radio_up now reads the CAD values from
+  self.settings.mcp like every other radio setting.
+- **The guard:** a failed radio init now calls the driver's cleanup()
+  before retrying, so the GPIO lines are always released - a failed
+  init can never wedge the pins again.
+- **Tests:** 2 new regression tests drive _radio_up end-to-end against
+  a fake driver module (the direct unit tests could not catch this
+  class of bug). Suite: 381 pass.
+
 ## 0.0.106 - 2026-09-11
 
 The bot now spaces out its OWN transmissions - Brett's airtime-politeness
