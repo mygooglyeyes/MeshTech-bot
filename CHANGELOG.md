@@ -9,6 +9,31 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.113 - 2026-09-12
+
+DM receive correctness: the bot now checks WHO a direct message is
+for before trying to decrypt it (the firmware's dest-hash behavior,
+which our MCP mode never had).
+
+- **Dest-hash gate:** a flood TXT_MSG carries the first byte of the
+  recipient's pubkey. Packets addressed to other nodes are now skipped
+  before ANY decrypt attempt. Previously the bot tried to decrypt
+  every flood DM from any stored key matching the sender hash byte - a
+  hash collision (another 0x97-addressed node on this busy mesh)
+  produced journal lines indistinguishable from "Brett's DM failed",
+  which poisoned the phone-link investigation.
+- **Split failure diagnostics:** a DM addressed to us that cannot be
+  decrypted now says WHICH case it is: "no known key" (their advert
+  was never heard - ask the sender to advert) vs "HMAC failed against
+  N stored key(s) (aa bb cc...)" (the sender is NOT who we think -
+  both sides must re-advert). Different causes, different advice,
+  no more guessing from the journal.
+
+Brett's phone holds exactly one LoganBot contact with the CURRENT bot
+key (767365201bbe...) - the stale-contact theory is dead; the dest
+gate may re-explain the earlier src-97 decrypt_fail storm as foreign
+traffic. Suite: 431 pass (4 new).
+
 ## 0.0.112 - 2026-09-12
 
 Path hash size made strict and configurable (Brett: "the mesh is

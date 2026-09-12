@@ -946,9 +946,20 @@ class Mcp:
         payload = pkt.get_payload()
         if len(payload) < 3 or self.identity is None:
             return
+        dest_hash = pkt.payload[0]
         src_hash = pkt.payload[1]
+        # Firmware behavior (BaseChatMesh): a flood TXT_MSG names its
+        # destination by the first byte of the recipient's pubkey. If it
+        # is not us, this DM is somebody else's conversation - skipping
+        # it BEFORE any decrypt attempt keeps a hash collision with
+        # another 0x97-addressed node from polluting our failure
+        # diagnostics (the journal 'src 97' storm included such packets).
+        if self._own_hash is not None and dest_hash != self._own_hash:
+            log.debug("TXT_MSG for %02X (not us) - skipping.", dest_hash)
+            return
         body = payload[2:]               # skip dest_hash + src_hash
-        for candidate in self._contact_candidates(src_hash):
+        candidates = self._contact_candidates(src_hash)
+        for candidate in candidates:
             try:
                 from pymc_core.protocol.crypto import CryptoUtils
                 from pymc_core.protocol.identity import Identity
@@ -986,12 +997,25 @@ class Mcp:
         self.stats.decrypt_fail += 1
         # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
         # an unknown key" into a silent black hole - the sender saw nothing,
-        # the journal showed nothing. The usual cause: their advert was never
-        # heard, so the bot lacks their full pubkey and CANNOT decrypt.
-        log.info("TXT_MSG src %02X: no matching key - DM dropped "
-                 "(decrypt_fail=%d). Ask the sender to advert (or !dm from "
-                 "their side) so the bot learns their key.",
-                 src_hash, self.stats.decrypt_fail)
+        # the journal showed nothing. Reaching here means the packet was
+        # ADDRESSED TO US (v0.0.113 dest-hash gate), so the failure is real.
+        if not candidates:
+            # Their advert was never heard: we lack their full pubkey and
+            # CANNOT decrypt. The usual cause - ask them to advert.
+            log.info("TXT_MSG dest=us src=%02X: no known key - DM dropped "
+                     "(decrypt_fail=%d). Ask the sender to advert (or !dm "
+                     "from their side) so the bot learns their key.",
+                     src_hash, self.stats.decrypt_fail)
+            return
+        # Candidates existed but every HMAC failed: the sender is NOT the
+        # node we have stored for that hash byte (stale/wrong key pair on
+        # one side). Say exactly what was tried so the next 'why no reply'
+        # journal pull answers itself.
+        log.info("TXT_MSG dest=us src=%02X: HMAC failed against %d stored "
+                 "key(s) (%s) - sender is NOT who we think; both sides "
+                 "must re-advert so the key pair refreshes.",
+                 src_hash, len(candidates),
+                 ", ".join(c["pubkey"][:6] for c in candidates))
 
     # -- DM delivery ACK --------------------------------------------------
 
