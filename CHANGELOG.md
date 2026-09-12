@@ -9,6 +9,35 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.112 - 2026-09-12
+
+Path hash size made strict and configurable (Brett: "the mesh is
+migrating all nodes to 2-byte prefixes - if our system can't decode or
+store them properly it will not be useful").
+
+- **Learn any size:** an advert arriving over a 2-byte (or 3-byte) hash
+  path is now stored correctly - the old check only accepted paths
+  where one byte = one hop, silently discarding 2-byte routes (the bot
+  would have flood-replied instead of riding the taught path).
+- **The raw encoded byte is kept per node** (new `route_path_len`
+  column, DB migration 8): bits 6-7 carry the per-hop hash size, so the
+  bot remembers exactly what each node taught it.
+- **Replies echo the taught size:** a DM replayed down a stored path
+  reuses the node's encoded byte verbatim - a node taught in 2-byte
+  hashes is answered in 2-byte hashes. Inconsistent rows are refused
+  (the reply floods instead of sending garbage).
+- **New setting `mesh.path_hash_size`** (1, 2 or 3; default 1): the
+  bytes-per-hop the bot announces on its OWN zero-hop packets (adverts,
+  flood DMs). Every zero-hop TX is stamped with it; routed packets are
+  never re-stamped. The v0.0.110 config sync adds the line to the live
+  config automatically at next deploy.
+- **`!2byte` now sees radio-mode traffic:** MCP-mode RX records the
+  per-frame hash size into the capture, so the report reflects the real
+  mesh instead of only companion-mode captures.
+
+The 1-byte dest/src hash inside every DM is protocol-fixed and
+unchanged - only the multi-hop PATH encoding is touched.
+
 ## 0.0.111 - 2026-09-12
 
 DM plumbing fix (Brett's phone investigation: DMs showed "failed"

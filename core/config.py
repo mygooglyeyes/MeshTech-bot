@@ -68,6 +68,13 @@ class MeshCfg:
     # full text would not already match), or "off" (never strip - for
     # gateways that relay messages without the embedded name).
     channel_sender_name: str = "trust"  # "trust" | "smart" | "off"
+    # Bytes per hop the bot uses when IT originates zero-hop packets
+    # (adverts, flood DMs): 1 = classic 1-byte hashes, 2 = 2-byte hashes
+    # (the mesh-wide migration target), 3 = 3-byte. Learned per-node paths
+    # are always echoed back in whatever size the node taught us, so this
+    # only controls our own originated traffic. Defaults to 1 (today's
+    # mesh); raise as the repeaters migrate.
+    path_hash_size: int = 1            # 1 | 2 | 3
 
 
 @dataclass
@@ -410,10 +417,15 @@ def load(config_path: str = "config.yaml") -> Settings:
         errors.append("mesh.channel_sender_name must be 'trust', 'smart' or 'off' "
                       f"(found '{sender_name}').")
         sender_name = "trust"
+    phs = _int(mesh_raw, "path_hash_size", 1, errors, "mesh.path_hash_size")
+    if phs not in (1, 2, 3):
+        errors.append(f"mesh.path_hash_size must be 1, 2 or 3 (found '{phs}').")
+        phs = 1
     mesh = MeshCfg(
         max_inbound_hops=max(0, _int(mesh_raw, "max_inbound_hops", 0, errors, "mesh.max_inbound_hops")),
         unknown_hops=unknown,
         channel_sender_name=sender_name,
+        path_hash_size=phs,
     )
 
     # --- channels ---
@@ -952,7 +964,8 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                  "command_prefix": settings.bot.command_prefix},
         "mesh": {"max_inbound_hops": settings.mesh.max_inbound_hops,
                  "unknown_hops": settings.mesh.unknown_hops,
-                 "channel_sender_name": settings.mesh.channel_sender_name},
+                 "channel_sender_name": settings.mesh.channel_sender_name,
+                 "path_hash_size": settings.mesh.path_hash_size},
         "channels": [{"name": c.name, "reply": c.reply} for c in settings.channels],
         "dm": {"enabled": settings.dm.enabled,
                "admin_pubkey_prefixes": settings.dm.admin_pubkey_prefixes},

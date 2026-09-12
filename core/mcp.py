@@ -112,6 +112,38 @@ def _hops_from_packet(pkt) -> Optional[int]:
         return None
 
 
+def _path_len_byte(pkt) -> int:
+    """The RAW encoded path_len byte of an arriving packet.
+
+    Bits 6-7 say how many bytes each path hash uses (1-3); bits 0-5 the
+    hop count. The bot echoes this byte back verbatim on routed replies
+    so a node taught in 2-byte hashes is answered in 2-byte hashes - the
+    per-hop size must match end to end, or intermediate hops cannot read
+    the path at all.
+    """
+    try:
+        return int(pkt.path_len) & 0xFF
+    except Exception:
+        return 0
+
+
+def _hash_size_from_path_len(path_len_byte: int) -> int:
+    """Bytes per path hop encoded in a path_len byte (1-3; 0 on nonsense)."""
+    size = ((path_len_byte >> 6) & 0x03) + 1
+    return size if size <= 3 else 0
+
+
+def _encode_zero_hop_path_len(hash_size: int) -> int:
+    """Encoded path_len byte for a ZERO-hop packet at a given hash size.
+
+    Only bits 6-7 (the size) matter when there is no path; bits 0-5 are
+    the hop count (0). Returns 0 (1-byte hashes) for nonsense sizes.
+    """
+    if hash_size not in (1, 2, 3):
+        return 0
+    return ((hash_size - 1) << 6) & 0xFF
+
+
 def _log_line(text: str, limit: int = 80) -> str:
     """One safe log line from attacker-controlled radio text."""
     return " ".join((text or "").split())[:limit]
@@ -840,12 +872,21 @@ class Mcp:
         advert_hops = _hops_from_packet(pkt)
         route_hops = None
         route_path_hex = None
+        route_path_len = None                 # RAW encoded byte (size bits in)
         if advert_hops is not None and advert_hops > 0:
             try:
+                path_len_byte = _path_len_byte(pkt)
                 path_bytes = bytes(pkt.path[:pkt.get_path_byte_len()])
-                if len(path_bytes) == advert_hops:
+                # Size-agnostic: accept ANY per-hop hash size (1, 2 or 3
+                # bytes - the mesh is migrating to 2-byte). Consistency is
+                # what matters: the path's byte length must equal
+                # hops x size exactly as the sender encoded it.
+                size = _hash_size_from_path_len(path_len_byte)
+                if (size and len(path_bytes) == advert_hops * size
+                        and len(path_bytes) <= 63 * size):
                     route_hops = advert_hops
                     route_path_hex = path_bytes.hex()
+                    route_path_len = path_len_byte
             except Exception:
                 pass                     # path untrustworthy - reply floods
         self.service.store.upsert_node(
@@ -855,7 +896,8 @@ class Mcp:
             lon=decoded.get("longitude") or decoded.get("lon") or None,
             source="advert", ts=now,
             route_hops=route_hops,
-            route_summary=route_path_hex)
+            route_summary=route_path_hex,
+            route_path_len=route_path_len)
         log.info("ADVERT %s (%s) rssi=%d snr=%.1f%s", name,
                  pubkey_hex[:12], rssi, snr,
                  f" route={route_hops}h" if route_hops else "")
@@ -891,7 +933,10 @@ class Mcp:
                 sender_ts=float(timestamp) if timestamp else None,
                 hops=_hops_from_packet(pkt), snr=snr)
             name_for_log = _split_sender(content)[0] or "?"
-            self._deliver("GRP_TXT", channel["name"], name_for_log, msg)
+            self._deliver("GRP_TXT", channel["name"], name_for_log, msg,
+                          path_hash_size=(
+                              _hash_size_from_path_len(_path_len_byte(pkt))
+                              if (msg.hops or 0) > 0 else None))
             return                       # first validating candidate wins
         log.debug("GRP_TXT hash %02X: no channel key matched", channel_hash)
 
@@ -933,7 +978,10 @@ class Mcp:
                 kind="dm", text=text, sender_prefix=prefix,
                 sender_ts=float(timestamp) if timestamp else None,
                 hops=_hops_from_packet(pkt), snr=snr)
-            self._deliver("TXT_MSG", prefix, prefix, msg)
+            self._deliver("TXT_MSG", prefix, prefix, msg,
+                          path_hash_size=(
+                              _hash_size_from_path_len(_path_len_byte(pkt))
+                              if (msg.hops or 0) > 0 else None))
             return
         self.stats.decrypt_fail += 1
         # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
@@ -996,15 +1044,22 @@ class Mcp:
         return matches
 
     def _deliver(self, frame_type: str, label: str, sender: str,
-                 msg: InboundMessage) -> None:
-        """Log + publish + hand to the router (never raises)."""
+                 msg: InboundMessage,
+                 path_hash_size: Optional[int] = None) -> None:
+        """Log + publish + hand to the router (never raises).
+
+        path_hash_size (bytes per path hop, when the frame carried a path)
+        lands in the capture so the !2byte report reflects MCP-mode
+        radio traffic, not just companion-mode captures.
+        """
         capture = getattr(self.service, "capture", None)
         if capture is not None:
             try:
                 capture.record_event(
                     time.time(), frame_type,
                     {"text": msg.text, "channel": label,
-                     "sender": sender, "hops": msg.hops, "snr": msg.snr},
+                     "sender": sender, "hops": msg.hops, "snr": msg.snr,
+                     "path_hash_size": path_hash_size},
                     attributes={"radio": "mcp-spi"},
                     channel_name=msg.channel_name)
             except Exception:
@@ -1107,7 +1162,8 @@ class Mcp:
             if path:
                 header = (PAYLOAD_TYPE_TXT_MSG << 2) | 2  # direct route, version 1
                 raw = (bytes([header, path_len]) + bytes(path) + payload)
-                log.info("DM reply via stored path (%d hop(s)).", path_len & 0x3F)
+                log.info("DM reply via stored path (%d hop(s), %d-byte hashes).",
+                         path_len & 0x3F, _hash_size_from_path_len(path_len))
             else:
                 header = (PAYLOAD_TYPE_TXT_MSG << 2) | 1  # flood route, version 1
                 raw = bytes([header, 0]) + payload
@@ -1128,13 +1184,16 @@ class Mcp:
 
     @staticmethod
     def _out_path_for(node: Optional[dict]) -> tuple[list, int]:
-        """Stored (path, encoded path_len) for a node, or ([], 0).
+        """Stored (path bytes, RAW encoded path_len) for a node, or ([], 0).
 
         The store keeps the route observed when the node's advert arrived
-        (source='advert'). A 0-hop advert means the node is a direct
-        neighbour: a path-less direct packet already reaches it. Anything
-        else returns the recorded path so the reply rides the same route
-        the advert travelled - repeaters included.
+        (source='advert'), plus the raw encoded path_len byte (v0.0.112:
+        bits 6-7 = per-hop hash size). A 0-hop advert means the node is a
+        direct neighbour: a path-less direct packet already reaches it.
+        Rows that predate the route_path_len column are 1-byte-hash paths
+        (encoded byte == hop count). The reply echoes the encoded byte
+        verbatim so a node taught in 2-byte hashes is answered in
+        2-byte hashes.
         """
         if not node:
             return [], 0
@@ -1146,9 +1205,18 @@ class Mcp:
             path = list(bytes.fromhex(path_hex))
         except ValueError:
             return [], 0
-        if not 1 <= len(path) <= 63 or len(path) != int(hops):
+        hops = int(hops)
+        if not 1 <= hops <= 63:
             return [], 0
-        return path, int(hops) & 0x3F
+        stored_raw = node.get("route_path_len")       # may be None (old rows)
+        if stored_raw is not None:
+            size = _hash_size_from_path_len(int(stored_raw))
+            if (size and len(path) == hops * size):
+                return path, int(stored_raw) & 0xFF
+            return [], 0                              # row inconsistent - flood
+        if len(path) != hops:                         # legacy 1-byte-hash row
+            return [], 0
+        return path, hops & 0x3F
 
     def _build_group_packet(self, entry: dict, text: str) -> Optional[bytes]:
         """One GRP_TXT packet - the firmware's exact encryption format."""
@@ -1183,6 +1251,18 @@ class Mcp:
         if not self.is_running or self.radio is None:
             log.warning("Radio not up - dropping TX (%dB).", len(data) if data else 0)
             return False
+        # mesh.path_hash_size (v0.0.112): stamp our announced per-hop hash
+        # size onto every ZERO-hop packet we originate (bits 6-7 of the
+        # path_len byte). Routed packets (hop count > 0) carry the size the
+        # destination taught us and are never restamped. data[1] is the
+        # path_len byte for every packet this bot transmits (PacketBuilder
+        # write_to() emits header | path_len | path | payload).
+        if len(data) > 1 and (data[1] & 0x3F) == 0:
+            stamp = _encode_zero_hop_path_len(
+                getattr(getattr(self.settings, "mesh", None),
+                        "path_hash_size", 1) or 1)
+            if data[1] != stamp:
+                data = bytes([data[0], stamp]) + data[2:]
         async with self._tx_gate:
             now = time.monotonic()
             since_last = now - self._last_tx_at

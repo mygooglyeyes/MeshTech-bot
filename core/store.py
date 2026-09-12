@@ -160,6 +160,14 @@ _MIGRATIONS: List[tuple] = [
         # (No new column: migration exists to version the reinterpretation.)
         "SELECT 1",
     ]),
+    (8, [
+        # v0.0.112: the RAW encoded path_len byte of the taught advert path
+        # (bits 6-7 = per-hop hash size - 1, bits 0-5 = hop count). Rows with
+        # NULL here predate the column: they are 1-byte-hash paths, where the
+        # encoded byte equals the hop count. Replies echo this byte verbatim
+        # so a node taught in 2-byte hashes is answered in 2-byte hashes.
+        "ALTER TABLE nodes ADD COLUMN route_path_len INTEGER",
+    ]),
 ]
 
 
@@ -305,6 +313,7 @@ class Store:
                     lon: Optional[float] = None, source: Optional[str] = None,
                     route_hops: Optional[int] = None,
                     route_summary: Optional[str] = None,
+                    route_path_len: Optional[int] = None,
                     ts: Optional[float] = None) -> None:
         """Add or refresh a node. Existing non-empty values are kept."""
         pubkey = pubkey.lower()
@@ -314,8 +323,9 @@ class Store:
             self._conn.execute(
                 """
                 INSERT INTO nodes (pubkey, prefix, name, first_seen, last_seen,
-                                   last_snr, lat, lon, source, route_hops, route_summary)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   last_snr, lat, lon, source, route_hops, route_summary,
+                                   route_path_len)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(pubkey) DO UPDATE SET
                     last_seen  = excluded.last_seen,
                     name       = CASE WHEN excluded.name IS NOT NULL
@@ -333,10 +343,13 @@ class Store:
                                       THEN excluded.route_hops ELSE nodes.route_hops END,
                     route_summary = CASE WHEN excluded.route_summary IS NOT NULL
                                          THEN excluded.route_summary
-                                         ELSE nodes.route_summary END
+                                         ELSE nodes.route_summary END,
+                    route_path_len = CASE WHEN excluded.route_path_len IS NOT NULL
+                                          THEN excluded.route_path_len
+                                          ELSE nodes.route_path_len END
                 """,
                 (pubkey, prefix, name, ts, ts, snr, lat, lon, source,
-                 route_hops, route_summary),
+                 route_hops, route_summary, route_path_len),
             )
 
     def get_node(self, key_or_prefix: str) -> Optional[Dict[str, Any]]:
