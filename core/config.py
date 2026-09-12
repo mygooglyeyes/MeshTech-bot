@@ -48,6 +48,11 @@ class BotCfg:
     answer_unknown_senders: bool = False
     # How the bot names itself in replies (e.g. the !pathx chain's last hop).
     display_name: str = "me"
+    # The symbol that starts a command (v0.0.108, Brett). Default '!'.
+    # One printable symbol; ':' '#' '@' are refused at load time because
+    # they already mean things in mesh messages (sender-name split,
+    # channel hashtags, node addressing).
+    command_prefix: str = "!"
     # Courtesy clock-sync to the companion at startup. Leave off when the
     # companion keeps its own time (openHop on a Linux box does); firmware
     # without a clock can set true.
@@ -384,6 +389,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         answer_unknown_senders=_bool(bot_raw, "answer_unknown_senders", False, errors, "bot.answer_unknown_senders"),
         display_name=_text(bot_raw, "display_name", "me", errors, "bot.display_name"),
         sync_device_time=_bool(bot_raw, "sync_device_time", False, errors, "bot.sync_device_time"),
+        command_prefix=_command_prefix(bot_raw, errors, "bot.command_prefix"),
     )
 
     # --- mesh ---
@@ -775,6 +781,42 @@ def _text(data: Dict[str, Any], key: str, default: str, errors: List[str], where
     return value.strip()
 
 
+# Symbols that must never be the command prefix (v0.0.108, Brett: exclude
+# any symbol that might confuse the bot) - each already carries meaning in
+# mesh message text:
+RESERVED_PREFIX_REASONS = {
+    ":": "it splits the sender name from the message ('Name: body')",
+    "#": "it marks channel names like #test",
+    "@": "it marks node addresses like @K7ABC",
+}
+
+
+def _command_prefix(data: Dict[str, Any], errors: List[str], where: str) -> str:
+    """Validate bot.command_prefix - the symbol that starts a command.
+
+    Exactly one printable, non-space symbol; the default is '!'. Refuses
+    the reserved symbols in RESERVED_PREFIX_REASONS with a plain-language
+    reason, and multi-character or whitespace values, so a typo can never
+    silently wedge every command handler. Returns '!' whenever the value
+    is rejected (safe default beats a broken bot).
+    """
+    raw = data.get("command_prefix", "!")
+    if raw is None:
+        return "!"
+    if not isinstance(raw, str) or len(raw) != 1:
+        errors.append(f"'{where}' must be exactly one symbol "
+                      f"(found '{raw}').")
+        return "!"
+    if raw.isspace():
+        errors.append(f"'{where}' must be a visible symbol, not whitespace.")
+        return "!"
+    reason = RESERVED_PREFIX_REASONS.get(raw)
+    if reason:
+        errors.append(f"'{where}' can not be '{raw}' - {reason}.")
+        return "!"
+    return raw
+
+
 def _int(data: Dict[str, Any], key: str, default: int, errors: List[str], where: str) -> int:
     value = data.get(key, default)
     try:
@@ -899,7 +941,8 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
         } if settings.connection else None),
         "bot": {"advertise_on_start": settings.bot.advertise_on_start,
                  "answer_unknown_senders": settings.bot.answer_unknown_senders,
-                 "display_name": settings.bot.display_name},
+                 "display_name": settings.bot.display_name,
+                 "command_prefix": settings.bot.command_prefix},
         "mesh": {"max_inbound_hops": settings.mesh.max_inbound_hops,
                  "unknown_hops": settings.mesh.unknown_hops,
                  "channel_sender_name": settings.mesh.channel_sender_name},

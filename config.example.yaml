@@ -33,6 +33,11 @@ bot:
   # Clock-sync the companion at startup? Leave false when the companion
   # keeps its own time (openHop on a Linux box does).
   answer_unknown_senders: false
+  # The symbol that starts a command. Default '!'. Must be ONE visible
+  # symbol. ':' '#' and '@' are refused (they already mean things:
+  # sender-name split, channel hashtags, node addressing). Change it on
+  # a quiet mesh and tell your users - e.g. command_prefix: "$".
+  # command_prefix: "!"
 
 # --- Hop limits ------------------------------------------------
 # MeshCore reports how many hops an incoming message travelled.

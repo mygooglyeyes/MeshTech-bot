@@ -128,7 +128,7 @@ class QuakeModule(WeatherModule):
                 zip_code = await self._weather_zip()
         if not zip_code:
             return HandlerResult(kind="text",
-                                 data="Quake: no zip. Try  !quake 84321")
+                                 data=f"Quake: no zip. Try  {ctx.settings.bot.command_prefix}quake 84321")
         if not zip_code.isdigit() or len(zip_code) != 5:
             return HandlerResult(kind="text", data="Quake: zip must be 5 digits")
 
@@ -154,7 +154,7 @@ class QuakeModule(WeatherModule):
             if line:
                 lines.append(line)
         if not extended and len(features) > 3:
-            lines.append(f"+{len(features) - 3} more - try !quakex")
+            lines.append(f"+{len(features) - 3} more - try {ctx.settings.bot.command_prefix}quakex")
         return HandlerResult(kind="text", data="\n".join(lines))
 
     # --------------------------------------------------------------- helpers

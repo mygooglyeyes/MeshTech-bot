@@ -41,19 +41,20 @@ def _log_line(text: str, limit: int = 80) -> str:
 # Pure parsing helpers (unit-testable without a radio)
 # --------------------------------------------------------------------------
 
-def tokenize(raw: str) -> Tuple[List[str], bool]:
-    """Split a message into (tokens, used_exclamation_mark).
+def tokenize(raw: str, prefix: str = "!") -> Tuple[List[str], bool]:
+    """Split a message into (tokens, used_command_prefix).
 
-    Trailing colons are stripped from each token so that punctuation glued
-    to a word ("hello:", "!help:") does not stop it matching. The leading
-    "!" is only honoured at the start of the message; a mid-message
-    "!help" stays glued so embedded-sender-name parsing can tell "Alice:
-    !help" apart from a bare command.
+    ``prefix`` is the configured command symbol (bot.command_prefix,
+    v0.0.108; default '!'). It is only honoured at the start of the
+    message; a mid-message prefix stays glued so embedded-sender-name
+    parsing can tell "Alice: !help" apart from a bare command. Trailing
+    colons are stripped from each token so punctuation glued to a word
+    ("hello:", "!help:") does not stop it matching.
     """
     text = raw.strip()
-    prefixed = text.startswith("!")
+    prefixed = bool(prefix) and text.startswith(prefix)
     if prefixed:
-        text = text[1:].lstrip()
+        text = text[len(prefix):].lstrip()
     tokens = [t.lower().rstrip(":") for t in text.split() if t]
     return tokens, prefixed
 
@@ -122,7 +123,7 @@ def select_handler(tokens: List[str], prefixed: bool, handlers: List[Any],
 
 
 def resolve_channel_text(text: str, mode: str, handlers: List[Any],
-                         is_admin: bool = False):
+                         is_admin: bool = False, prefix: str = "!"):
     """Split a channel message into (sender_name, body) per the configured
     mesh.channel_sender_name policy:
 
@@ -139,7 +140,7 @@ def resolve_channel_text(text: str, mode: str, handlers: List[Any],
         return None, text
     name, body = split_channel_text(text)
     if mode == "smart" and name is not None:
-        tokens, prefixed = tokenize(text)
+        tokens, prefixed = tokenize(text, prefix)
         if tokens and select_handler(tokens, prefixed, handlers, "channel",
                                      is_admin) is not None:
             return None, text  # prefix is part of the message, not a name
@@ -293,7 +294,8 @@ class Router:
         #    blocked-node and unknown-sender guards both use sender identity.
         if msg.kind == "channel":
             msg.sender_name, body = resolve_channel_text(
-                msg.text, settings.mesh.channel_sender_name, self.handlers)
+                msg.text, settings.mesh.channel_sender_name, self.handlers,
+                prefix=settings.bot.command_prefix)
         else:
             body = msg.text
 
@@ -394,7 +396,7 @@ class Router:
             pace_identity = self._channel_sender_identity(msg)
             pace_exempt = bool(pace_identity) and settings.is_admin_prefix(pace_identity)
 
-        tokens, prefixed = tokenize(body)
+        tokens, prefixed = tokenize(body, settings.bot.command_prefix)
         if not tokens:
             return
 

@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.108 - 2026-09-11 (night)
+
+New feature (Brett's ask): the admin sets the command symbol. Until now
+the '!' that starts commands was hard-wired; it is now a config setting,
+with the confusing symbols refused.
+
+- **New setting** `bot.command_prefix` in config.yaml (default '!').
+  Exactly one visible symbol. The config check refuses ':' (splits
+  sender names from messages), '#' (channel hashtags) and '@' (node
+  addressing) - Brett's rule: exclude any symbol that might confuse
+  the bot - and refuses multi-character or whitespace values, falling
+  back to '!' so a typo can never wedge every command.
+- The router, the smart sender-name split and the help screens all use
+  the configured symbol; the default '!' behaviour is unchanged.
+- 13 new tests (config validation incl. all three reserved symbols,
+  parsing, smart-split interplay, end-to-end router on '$'). Suite:
+  394 pass.
+
 ## 0.0.107 - 2026-09-11 (late)
 
 Emergency fix: v0.0.106 crash-looped on the box and left the bot deaf

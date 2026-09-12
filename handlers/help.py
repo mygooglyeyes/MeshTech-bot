@@ -42,8 +42,8 @@ def _fit_words(prefix_parts: List[str], canned_words: str,
     return " | ".join(parts)
 
 
-def format_brief_help(command_words: str, canned_words: str,
-                      admin_hint: str) -> str:
+def format_brief_help(command_words: str, canned_words: str, admin_hint: str,
+                      prefix: str = "!") -> str:
     """One-packet brief help: commands + plain words + the x-modifier.
 
     The line opens with "My Commands - " followed by the bang-prefixed
@@ -56,9 +56,9 @@ def format_brief_help(command_words: str, canned_words: str,
     exceeds the packet (pathological) hard-ellipsize - the reply never
     exceeds one LoRa packet.
     """
-    cmds = "My Commands - " + " ".join("!" + w
+    cmds = "My Commands - " + " ".join(prefix + w
                                         for w in command_words.split())
-    xhint = "add x for more (e.g. !pathx)"
+    xhint = f"add x for more (e.g. {prefix}pathx)"
     base = ([cmds, xhint] if command_words.strip() else [xhint])
 
     line = _fit_words(base, canned_words,
@@ -123,23 +123,25 @@ class HelpHandler(Handler):
             command_words = " ".join(sorted({kw for _, kw, _, _ in pairs}))
             admin_hint = ("admin: reload shutdown diag up"
                           if ctx.is_admin else "")
-            data = format_brief_help(command_words, canned_list, admin_hint)
+            data = format_brief_help(command_words, canned_list, admin_hint,
+                                     prefix=ctx.settings.bot.command_prefix)
             return HandlerResult(kind="text", data=data)
 
+        prefix = ctx.settings.bot.command_prefix
         rows = []
         for handler, kw, scope, access in sorted(pairs, key=lambda p: p[0].priority):
             where = ("DM only" if scope == "dm" else
                      "channel/DM" if scope == "both" else "channel")
             if access == "admin":
                 where += " (admin)"
-            rows.append(["!" + kw, handler.description, where])
+            rows.append([prefix + kw, handler.description, where])
         table = fmt_table(["Command", "What it does", "Where"], rows,
                           col_caps=[16, 46, 10])
         lines = list(table)
         lines.append("")
         lines.append("Append 'x' to most commands for the extended version "
-                     "(e.g. !nodes x, !pathx, !path <node> x) - glued on is fine "
-                     "(!pathx == !path x).")
-        lines.append("Examples: !nodes   |   !nodes x   |   !pathx   |   !path K7ABC x")
+                     f"(e.g. {prefix}nodes x, {prefix}pathx, {prefix}path <node> x) - glued on is fine "
+                     f"({prefix}pathx == {prefix}path x).")
+        lines.append(f"Examples: {prefix}nodes   |   {prefix}nodes x   |   {prefix}pathx   |   {prefix}path K7ABC x")
         lines.append("Plain-word answers: " + canned_words)
         return HandlerResult(kind="text", data="\n".join(lines))

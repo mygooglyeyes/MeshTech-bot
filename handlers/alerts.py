@@ -116,7 +116,7 @@ class AlertsModule(WeatherModule):
             str(self.setting("zip", "") or "")
         if not zip_code:
             return HandlerResult(kind="text",
-                                 data="Alerts: no zip. Try  !alerts 84321")
+                                 data=f"Alerts: no zip. Try  {ctx.settings.bot.command_prefix}alerts 84321")
         if not zip_code.isdigit() or len(zip_code) != 5:
             return HandlerResult(kind="text", data="Alerts: zip must be 5 digits")
 
@@ -137,7 +137,7 @@ class AlertsModule(WeatherModule):
             if line:
                 lines.append(line)
         if not extended and len(features) > 3:
-            lines.append(f"+{len(features) - 3} more - try !alertsx")
+            lines.append(f"+{len(features) - 3} more - try {ctx.settings.bot.command_prefix}alertsx")
         return HandlerResult(kind="text", data="\n".join(lines))
 
     # ---------------------------------------------------------------- push
