@@ -480,6 +480,12 @@ def build_app(service) -> FastAPI:
                     f"Budget down: {result['cancelled']} boost(s) cancelled "
                     f"- now {result['hour_cap']:.0f}/h, "
                     f"{result['day_cap']:.0f}/d"}
+        if action in ("advert_direct", "advert_flood"):
+            result = await service.send_advert(
+                "direct" if action == "advert_direct" else "flood")
+            if not result.get("ok"):
+                return json_error(result["message"])
+            return {"ok": True, "message": result["message"]}
         if action == "shutdown":
             asyncio.get_event_loop().call_later(1.0, service.request_shutdown,
                                                 "web dashboard")

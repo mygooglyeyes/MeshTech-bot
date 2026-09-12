@@ -8,6 +8,10 @@
 # ============================================================
 
 # --- Connection to your openHop Repeater --------------------
+# The bot talks to ONE radio source. Pick ONE of the two:
+#   a) companion mode (default): fill in this connection block.
+#   b) radio mode: delete/leave out this block and set mcp: enabled: true
+#      below - the bot then owns a local SPI radio and needs no companion.
 connection:
   host: "192.168.1.50"      # <-- LAN IP of the machine running openHop Repeater
   port: 5000                # <-- companion port on the repeater. Must match the
@@ -29,6 +33,11 @@ bot:
   # Clock-sync the companion at startup? Leave false when the companion
   # keeps its own time (openHop on a Linux box does).
   answer_unknown_senders: false
+  # The symbol that starts a command. Default '!'. Must be ONE visible
+  # symbol. ':' '#' and '@' are refused (they already mean things:
+  # sender-name split, channel hashtags, node addressing). Change it on
+  # a quiet mesh and tell your users - e.g. command_prefix: "$".
+  # command_prefix: "!"
 
 # --- Hop limits ------------------------------------------------
 # MeshCore reports how many hops an incoming message travelled.
@@ -45,6 +54,15 @@ mesh:
   #   "smart" = strip it only when the rest of the text wouldn't already match
   #   "off"   = never strip (for gateways that relay messages WITHOUT names)
   channel_sender_name: "trust"
+  # Bytes per path hop the bot announces when IT originates zero-hop
+  # packets (adverts, flood-routed DMs). 1 = classic 1-byte hashes
+  # (today's mesh); 2 = 2-byte hashes (the mesh-wide migration target).
+  # Replies to a specific node always echo back whatever hash size that
+  # node's advert taught the bot, per node - this setting only controls
+  # the bot's own originated traffic. Raise it when the mesh repeaters
+  # have migrated; a value the rest of the mesh does not use yet makes
+  # the bot's adverts unrelayed by 1-byte repeaters.
+  path_hash_size: 1                        # 1 | 2 | 3
 
 # --- Channels the bot listens on -------------------------------
 # Names must match channels on your mesh. The bot checks the repeater's
@@ -156,6 +174,9 @@ replies: []
 limits:
   min_interval_seconds: 3    # minimum gap between ANY two bot replies
   per_sender_seconds: 30     # ignore repeat DM requests from the same node
+  # The bot waits this many seconds BEFORE sending any reply's first
+  # packet (Brett's air-politeness rule). Default 2.0; 0 = send at once.
+  # reply_delay_seconds: 2.0
   # Per-channel cadence: at most ONE reply per channel every N seconds
   # (0 = off, the default). Stops one busy channel from crowding out
   # replies on the others; DMs are never throttled by this.
@@ -229,3 +250,40 @@ logging:
   level: INFO                # DEBUG, INFO, WARNING, ERROR
   file: ""                   # e.g. "data/bot.log" - empty = console only
   timezone: local            # local | utc | IANA name such as "Europe/London"
+
+# --- MCP radio (the bot's own SPI radio) ------------------------
+# When enabled, the bot OWNS the PiMesh-1W v2 radio on this machine's
+# SPI pins and no longer talks to an openHop companion (the connection:
+# block above is then ignored and may be deleted). Pin wiring is
+# built in for the PiMesh-1W v2 (hard-coded; do not edit here).
+mcp:
+  enabled: false            # <-- true = the bot owns the radio
+  frequency_hz: 910525000   # US 915MHz band center used by this network
+  tx_power_dbm: 20          # hard ceiling: 20 (set lower per your local rules)
+  spreading_factor: 7
+  bandwidth_khz: 62.5
+  coding_rate_index: 1      # 1 = 4/5
+  # On start the bot sends a FLOOD advert (whole mesh) + a DIRECT advert
+  # (one hop, nearby phones). This sets how often it re-floods after that:
+  advert_interval_hours: 24 # 0 = only the two start-up adverts
+  # Minimum gap between the bot's OWN radio packets (seconds). The radio
+  # driver always listen-before-talks (CAD) before each packet; this gap
+  # stops the bot's own multi-chunk replies from going out back-to-back
+  # (they used to leave ~0.4 s apart). Default 2.0; 0 = off.
+  inter_packet_politeness_seconds: 2.0
+  # CAD (listen-before-talk) detection thresholds, 0-31 each - how
+  # sensitive the radio's channel-activity check is. 15/7 is the tuning
+  # Brett found best on openHop for this board. 0/0 = driver defaults.
+  cad_peak: 15
+  cad_min: 7
+
+# --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
+# Pushes a copy of every packet the radio hears (and every packet the
+# bot sends) to meshtech-modem's feed port, so openHop's packet log
+# stays complete. The token lives in its own protected file (first line
+# = password, chmod 600) - NEVER in this file.
+modem_feed:
+  enabled: false
+  host: "127.0.0.1"         # same box as meshtech-modem
+  port: 5056                # the modem's FEED port (5055 is openHop's)
+  token_file: "data/.modem_feed_token"

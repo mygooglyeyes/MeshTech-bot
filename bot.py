@@ -55,8 +55,9 @@ def _check(settings: Settings) -> int:
     for warning in settings.warnings:
         print(f"  warning: {warning}")
     conn = settings.connection
-    print(f"  connection : {conn.host}:{conn.port}"
-          f"{' (auto reconnect)' if conn.reconnect else ''}")
+    if conn is not None:
+        print(f"  connection : {conn.host}:{conn.port}"
+              f"{' (auto reconnect)' if conn.reconnect else ''}")
     print(f"  channels   : "
           + ", ".join(f"{c.name}{'' if c.reply else ' (listen)'}"
                       for c in settings.channels))
@@ -109,18 +110,20 @@ async def _run(settings: Settings) -> None:
     router = Router(service)
     service.router = router
 
-    try:
-        from core.client import RadioClient  # imports the meshcore library
-    except ImportError as exc:
-        raise RuntimeError(
-            f"Radio library missing ({exc}). Install it with: "
-            "pip install -r requirements.txt") from exc
-    client = RadioClient(service)
-    service.client = client
-    client.set_inbound_handler(router.on_inbound)
+    # The task list must exist BEFORE the radio starts: _start_mcp and
+    # _start_companion append their tasks into it. (v0.0.092 bench-test
+    # fix: the list was created further down, so the first start with
+    # mcp enabled crashed with UnboundLocalError - and the service
+    # crash-looped. Found by the hilltop bench test 2026-09-09.)
+    tasks = []
 
-    # Module pulses (optional scheduled pushes) - rebuilt on every reload.
-    service.schedule_module_pulses()
+    # MCP mode: the bot OWNS the SPI radio (PiMesh-1W v2) instead of
+    # talking to an openHop companion. The modem feed shares every packet
+    # with meshtech-modem so openHop's log stays complete.
+    if settings.mcp.enabled:
+        await _start_mcp(service, settings, tasks)
+    else:
+        await _start_companion(service, settings, tasks)
 
     stop = asyncio.Event()
     service.set_stop_callback(stop.set)
@@ -139,10 +142,8 @@ async def _run(settings: Settings) -> None:
         Path(__file__).resolve().parent / "scripts" / "update-trigger.sh",
     )
 
-    tasks = [
-        asyncio.create_task(client.run(), name="radio"),
-        service.update_checker.start(),
-    ]
+    # (tasks already holds the radio/feed tasks - append, never rebind)
+    tasks.append(service.update_checker.start())
     if settings.web.enabled:
         try:
             from web.server import serve as web_serve
@@ -167,8 +168,13 @@ async def _run(settings: Settings) -> None:
     from core.version import version_stamp
     stamp = _build_label(version_stamp())
     conn = settings.connection
-    log.info("MeshTech-Bot %s starting: %s:%s, %d channel(s)",
-             stamp, conn.host, conn.port, len(settings.channels))
+    if settings.mcp.enabled:
+        log.info("MeshTech-Bot %s starting (MCP radio mode: owns the SPI radio)",
+                 stamp)
+    else:
+        log.info("MeshTech-Bot %s starting: %s:%s, %d channel(s)",
+                 stamp, conn.host if conn else "?", conn.port if conn else 0,
+                 len(settings.channels))
     if settings.web.enabled:
         log.info("Dashboard: http://%s:%d", settings.web.host, settings.web.port)
     if settings.updates.check_enabled:
@@ -187,6 +193,44 @@ async def _run(settings: Settings) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
         store.close()
         log.info("Bot stopped. 73!")
+
+
+async def _start_companion(service, settings, tasks) -> None:
+    """Legacy radio path: talk to an openHop companion over TCP."""
+    try:
+        from core.client import RadioClient  # imports the meshcore library
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Radio library missing ({exc}). Install it with: "
+            "pip install -r requirements.txt") from exc
+    client = RadioClient(service)
+    service.client = client
+    client.set_inbound_handler(service.router.on_inbound)
+    tasks.append(asyncio.create_task(client.run(), name="radio"))
+
+
+async def _start_mcp(service, settings, tasks) -> None:
+    """MCP radio path: the bot owns the SPI radio + feeds the modem."""
+    from core.mcp import Mcp
+    from core.modemfeed import ModemFeed
+
+    push_queue: asyncio.Queue = asyncio.Queue(
+        maxsize=settings.modem_feed.queue_size)
+    mcp = Mcp(service, service.router.on_inbound, push_queue)
+    service.mcp = mcp
+    # The router replies through ONE client interface. In MCP mode that
+    # client is the radio itself: the adapter below turns channel replies
+    # and DMs into real encrypted packets on the SPI radio.
+    service.client = mcp
+    tasks.append(asyncio.create_task(mcp.start(), name="mcp-radio"))
+
+    if settings.modem_feed.enabled:
+        feed = ModemFeed(service, push_queue)
+        service.modem_feed = feed
+        tasks.append(asyncio.create_task(feed.run(), name="modem-feed"))
+    else:
+        log.info("Modem feed disabled - packets go to the bot only "
+                 "(openHop will show nothing).")
 
 
 def main(argv=None) -> int:

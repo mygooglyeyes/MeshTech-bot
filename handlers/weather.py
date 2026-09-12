@@ -221,7 +221,7 @@ class WeatherModule(ModuleSpec):
             str(self.setting("zip", "") or "")
         if not zip_code:
             return HandlerResult(kind="text",
-                                 data="Weather: no zip. Try  !wx 84321")
+                                 data=f"Weather: no zip. Try  {ctx.settings.bot.command_prefix}wx 84321")
         if not zip_code.isdigit() or len(zip_code) != 5:
             return HandlerResult(kind="text", data="Weather: zip must be 5 digits")
 

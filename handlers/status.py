@@ -35,7 +35,7 @@ class StatusHandler(Handler):
         if ctx.verbosity == "full":
             conn = service.settings.connection
             rows = [
-                ["repeater", f"{conn.host}:{conn.port}"],
+                ["repeater", f"{conn.host}:{conn.port}" if conn else "(radio mode)"],
                 ["hop limit", str(service.settings.mesh.max_inbound_hops)
                     if service.settings.mesh.max_inbound_hops else "unlimited"],
                 ["muted", "yes (dashboard switch)" if service.store.global_mute() else "no"],

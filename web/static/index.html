@@ -23,6 +23,7 @@
     <div id="status-chips" class="chips">
       <button class="btn small" id="btn-logout" title="End this dashboard session (nothing on the mesh changes)">logout</button>
       <span class="chip" id="chip-conn">connecting…</span>
+      <span class="chip" id="chip-mcp" hidden title="">radio: -</span>
       <span class="chip" id="chip-uptime">-</span>
       <span class="chip" id="chip-budget" title="">budget: -</span>
       <span class="chip" id="chip-version" title="" tabindex="0" role="button" aria-label="Software updates">version: -</span>
@@ -88,6 +89,8 @@
       <button class="btn" id="btn-mute">Mute bot</button>
       <button class="btn" id="btn-reload">Reload config</button>
       <button class="btn" id="btn-boost" title="Raise the total airtime budget: +30/hour +150/day per use (max 90/hour, 2200/day). Boosts age out after 24 hours.">Budget up</button>
+      <button class="btn" id="btn-advert-direct" title="Send one DIRECT advert: zero hops, heard by nearby phones only. Use after changing the bot's name so nearby contacts refresh.">Advert direct</button>
+      <button class="btn" id="btn-advert-flood" title="Send one FLOOD advert: repeated across the mesh so distant nodes and repeaters refresh their routes to the bot.">Advert flood</button>
       <button class="btn" id="btn-deflate" title="Cancel ALL active boosts - the budget returns to its base caps (30/hour, 250/day) immediately.">Budget down</button>
       <button class="btn danger" id="btn-shutdown">Shutdown bot</button>
       <span id="action-result" class="result"></span>

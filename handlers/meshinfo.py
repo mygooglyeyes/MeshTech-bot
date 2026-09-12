@@ -112,7 +112,7 @@ class MeshInfoHandler(Handler):
         caps = [18, 12, 8, 5, 7, 8]
         lines = fmt_table(headers, rows, col_caps=caps)
         if total > len(nodes):
-            lines.append(f"... and {total - len(nodes)} more (!nodes x for the full list)")
+            lines.append(f"... and {total - len(nodes)} more ({ctx.settings.bot.command_prefix}nodes x for the full list)")
         lines.append(f"{total} node(s) in the local database")
         return HandlerResult(kind="text", data="\n".join(lines))
 
@@ -141,7 +141,7 @@ class MeshInfoHandler(Handler):
                 latest = history[0]
                 lines.append(f"latest route: hops={latest['hops'] if latest['hops'] is not None else '?'} "
                              f"(recorded {rel_time(latest['observed_at'], now)})")
-            lines.append("!path <node> x for the full route history.")
+            lines.append(f"{ctx.settings.bot.command_prefix}path <node> x for the full route history.")
         else:
             lines.append(f"Node: {name} ({prefix})")
             lines.append(f"First seen {rel_time(node['first_seen'], now)} | "
@@ -231,7 +231,7 @@ class MeshInfoHandler(Handler):
         query = " ".join(ctx.args).strip()
         if not query:
             return HandlerResult(kind="text",
-                                 data="Usage: !stats <node-name-or-prefix | #channel> [x]")
+                                 data=f"Usage: {ctx.settings.bot.command_prefix}stats <node-name-or-prefix | #channel> [x]")
         is_channel = query.startswith("#")
 
         prefix = None

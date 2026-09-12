@@ -48,6 +48,11 @@ class BotCfg:
     answer_unknown_senders: bool = False
     # How the bot names itself in replies (e.g. the !pathx chain's last hop).
     display_name: str = "me"
+    # The symbol that starts a command (v0.0.108, Brett). Default '!'.
+    # One printable symbol; ':' '#' '@' are refused at load time because
+    # they already mean things in mesh messages (sender-name split,
+    # channel hashtags, node addressing).
+    command_prefix: str = "!"
     # Courtesy clock-sync to the companion at startup. Leave off when the
     # companion keeps its own time (openHop on a Linux box does); firmware
     # without a clock can set true.
@@ -63,6 +68,13 @@ class MeshCfg:
     # full text would not already match), or "off" (never strip - for
     # gateways that relay messages without the embedded name).
     channel_sender_name: str = "trust"  # "trust" | "smart" | "off"
+    # Bytes per hop the bot uses when IT originates zero-hop packets
+    # (adverts, flood DMs): 1 = classic 1-byte hashes, 2 = 2-byte hashes
+    # (the mesh-wide migration target), 3 = 3-byte. Learned per-node paths
+    # are always echoed back in whatever size the node taught us, so this
+    # only controls our own originated traffic. Defaults to 1 (today's
+    # mesh); raise as the repeaters migrate.
+    path_hash_size: int = 1            # 1 | 2 | 3
 
 
 @dataclass
@@ -154,6 +166,12 @@ class LimitsCfg:
     per_sender_seconds: float = 30.0
     max_reply_length: int = 133
     max_chunks: int = 6
+    # Brett (2026-09-12): the bot waits this long BEFORE transmitting any
+    # reply's first packet - every reply, channel or DM, admins included.
+    # Air-politeness on top of the pace rules (which decide WHETHER to
+    # answer); the between-chunks gap in core/mcp.py stacks on top for
+    # multi-chunk replies. 0 = send immediately (the old behaviour).
+    reply_delay_seconds: float = 2.0
     # Per-channel reply cadence: at most one bot reply per channel every N
     # seconds (0 = off, the old behaviour). Stops one busy channel - or a
     # single noisy node spamming it - from resetting the global reply pace
@@ -206,6 +224,57 @@ class RadioCfg:
 
 
 @dataclass
+class McpCfg:
+    """The MCP radio module: the bot OWNS the PiMesh-1W v2 over SPI.
+
+    Pin profile is hard-coded (board-specific, from openHop's own
+    radio-settings.json) - only the radio settings live in config.
+    """
+    enabled: bool = False
+    frequency_hz: int = 910525000
+    tx_power_dbm: int = 20
+    spreading_factor: int = 7
+    bandwidth_khz: float = 62.5
+    # Coding rate index: 1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8.
+    coding_rate_index: int = 1
+    # Adverts (the bot announcing itself so others can add/message it):
+    # on start it sends a FLOOD advert (whole mesh, repeated) and a
+    # DIRECT advert (one hop - phones in range hear it instantly), then
+    # a flood advert every advert_interval_hours (0 = off).
+    advert_interval_hours: float = 24.0
+    # Politeness gap between the bot's OWN transmissions (seconds).
+    # The radio driver already runs LBT (listen-before-talk CAD) before
+    # every packet - that defers to OTHER stations. This gap keeps the
+    # BOT from stampeding the channel with its own back-to-back packets
+    # (multi-chunk replies went out ~0.4 s apart). Airtime rules for
+    # MESH users live in limits: + the budget cards; this one guards the
+    # bot's own transmit behavior. 0 = off (not recommended).
+    inter_packet_politeness_seconds: float = 2.0
+    # CAD (channel-activity-detect) thresholds for the radio's
+    # listen-before-talk: peak then min, 0-31 each. Brett tuned this
+    # board by ear on openHop - 15/7 heard the mesh best. Applied to the
+    # driver at radio start; 0/0 = use the driver's own defaults.
+    cad_peak: int = 15
+    cad_min: int = 7
+
+
+@dataclass
+class ModemFeedCfg:
+    """Push every radio packet to meshtech-modem's feed port (localhost).
+
+    The token NEVER lives in this file - token_file points at a mode-600
+    file whose first line is the password (same pattern as web.password_file).
+    """
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 5056
+    token_file: str = "data/.modem_feed_token"
+    # Bounded queue between radio RX and the feed pump: a slow modem must
+    # never back-pressure the radio. Overflow drops feed packets only.
+    queue_size: int = 200
+
+
+@dataclass
 class UpdatesCfg:
     """'Is there newer code?' checking plus optional web-console updates.
 
@@ -235,7 +304,7 @@ class LogCfg:
 
 @dataclass
 class Settings:
-    connection: ConnCfg
+    connection: Optional[ConnCfg]
     bot: BotCfg
     mesh: MeshCfg
     channels: List[ChannelCfg]
@@ -251,6 +320,8 @@ class Settings:
     # working; load() always passes the parsed value explicitly.
     updates: UpdatesCfg = field(default_factory=UpdatesCfg)
     radio: RadioCfg = field(default_factory=RadioCfg)
+    mcp: McpCfg = field(default_factory=McpCfg)
+    modem_feed: ModemFeedCfg = field(default_factory=ModemFeedCfg)
     config_path: str = "config.yaml"
     warnings: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -303,11 +374,16 @@ def load(config_path: str = "config.yaml") -> Settings:
     warnings: List[str] = []
 
     # --- connection ---
+    # The companion connection block is OPTIONAL when the bot owns the
+    # radio (mcp: enabled: true) - there is no companion to reach. A
+    # defaults-only ConnCfg keeps the rest of the code simple.
     conn_raw = _section(raw, "connection", errors)
-    host = _text(conn_raw, "host", "", errors, "connection.host",
-                 required=True)
+    host = _text(conn_raw, "host", "", errors, "connection.host")
     if host and not _looks_like_host(host):
         warnings.append("connection.host does not look like an IP address or hostname - please check.")
+    if not conn_raw and not _bool(_section(raw, "mcp", errors), "enabled", False, errors, "mcp.enabled"):
+        errors.append("'connection' section is required (host + port of the openHop companion) - "
+                      "or enable 'mcp:' to own the radio instead.")
     conn = ConnCfg(
         host=host,
         port=_int(conn_raw, "port", 5000, errors, "connection.port"),
@@ -326,6 +402,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         answer_unknown_senders=_bool(bot_raw, "answer_unknown_senders", False, errors, "bot.answer_unknown_senders"),
         display_name=_text(bot_raw, "display_name", "me", errors, "bot.display_name"),
         sync_device_time=_bool(bot_raw, "sync_device_time", False, errors, "bot.sync_device_time"),
+        command_prefix=_command_prefix(bot_raw, errors, "bot.command_prefix"),
     )
 
     # --- mesh ---
@@ -340,10 +417,15 @@ def load(config_path: str = "config.yaml") -> Settings:
         errors.append("mesh.channel_sender_name must be 'trust', 'smart' or 'off' "
                       f"(found '{sender_name}').")
         sender_name = "trust"
+    phs = _int(mesh_raw, "path_hash_size", 1, errors, "mesh.path_hash_size")
+    if phs not in (1, 2, 3):
+        errors.append(f"mesh.path_hash_size must be 1, 2 or 3 (found '{phs}').")
+        phs = 1
     mesh = MeshCfg(
         max_inbound_hops=max(0, _int(mesh_raw, "max_inbound_hops", 0, errors, "mesh.max_inbound_hops")),
         unknown_hops=unknown,
         channel_sender_name=sender_name,
+        path_hash_size=phs,
     )
 
     # --- channels ---
@@ -487,6 +569,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         per_sender_seconds=max(0.0, _float(limits_raw, "per_sender_seconds", 30.0, errors, "limits.per_sender_seconds")),
         max_reply_length=max(40, _int(limits_raw, "max_reply_length", 133, errors, "limits.max_reply_length")),
         max_chunks=max(1, _int(limits_raw, "max_chunks", 6, errors, "limits.max_chunks")),
+        reply_delay_seconds=max(0.0, _float(limits_raw, "reply_delay_seconds", 2.0, errors, "limits.reply_delay_seconds")),
         channel_interval_seconds=max(0.0, _float(limits_raw, "channel_interval_seconds", 0.0, errors, "limits.channel_interval_seconds")),
         channel_intervals=channel_intervals,
         per_sender_channel_seconds=max(0.0, _float(limits_raw, "per_sender_channel_seconds", 30.0, errors, "limits.per_sender_channel_seconds")),
@@ -600,6 +683,70 @@ def load(config_path: str = "config.yaml") -> Settings:
     if log_cfg.level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         errors.append(f"logging.level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL (found '{log_cfg.level}').")
 
+    # --- mcp (the bot's own SPI radio; off = old companion mode) ---
+    mcp_raw = _section(raw, "mcp", errors)
+    freq = _int(mcp_raw, "frequency_hz", 910525000, errors, "mcp.frequency_hz")
+    if not 300_000_000 <= freq <= 1_000_000_000:
+        errors.append("mcp.frequency_hz must be between 300000000 and 1000000000.")
+    power = _int(mcp_raw, "tx_power_dbm", 20, errors, "mcp.tx_power_dbm")
+    if power < -9 or power > 20:
+        errors.append("mcp.tx_power_dbm must be between -9 and 20 (hard legal ceiling).")
+    mcp_sf = _int(mcp_raw, "spreading_factor", 7, errors, "mcp.spreading_factor")
+    if mcp_sf < 5 or mcp_sf > 12:
+        errors.append("mcp.spreading_factor must be between 5 and 12.")
+    mcp_bw = _float(mcp_raw, "bandwidth_khz", 62.5, errors, "mcp.bandwidth_khz")
+    if mcp_bw <= 0:
+        errors.append("mcp.bandwidth_khz must be a positive number.")
+    mcp_cr = _int(mcp_raw, "coding_rate_index", 1, errors, "mcp.coding_rate_index")
+    if mcp_cr < 1 or mcp_cr > 4:
+        errors.append("mcp.coding_rate_index must be 1 (4/5), 2 (4/6), 3 (4/7) or 4 (4/8).")
+    mcp_adv_h = _float(mcp_raw, "advert_interval_hours", 24.0, errors,
+                       "mcp.advert_interval_hours")
+    if mcp_adv_h < 0 or mcp_adv_h > 168:
+        errors.append("mcp.advert_interval_hours must be between 0 and 168 "
+                      "(0 disables the periodic flood advert).")
+    mcp_polite = _float(mcp_raw, "inter_packet_politeness_seconds", 2.0,
+                        errors, "mcp.inter_packet_politeness_seconds")
+    if mcp_polite < 0:
+        errors.append("mcp.inter_packet_politeness_seconds must be 0 or more "
+                      "(seconds between the bot's own packets).")
+    mcp_cad_peak = _int(mcp_raw, "cad_peak", 15, errors, "mcp.cad_peak")
+    mcp_cad_min = _int(mcp_raw, "cad_min", 7, errors, "mcp.cad_min")
+    if not 0 <= mcp_cad_peak <= 31 or not 0 <= mcp_cad_min <= 31:
+        errors.append("mcp.cad_peak and mcp.cad_min must each be between 0 "
+                      "and 31 (0/0 = use the driver's own CAD defaults).")
+    mcp = McpCfg(
+        enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
+        frequency_hz=freq,
+        tx_power_dbm=power,
+        spreading_factor=mcp_sf,
+        bandwidth_khz=mcp_bw,
+        coding_rate_index=mcp_cr,
+        advert_interval_hours=mcp_adv_h,
+        inter_packet_politeness_seconds=mcp_polite,
+        cad_peak=mcp_cad_peak,
+        cad_min=mcp_cad_min,
+    )
+
+    # --- modem_feed (push radio packets to meshtech-modem port 5056) ---
+    mf_raw = _section(raw, "modem_feed", errors)
+    mf_host = _text(mf_raw, "host", "127.0.0.1", errors, "modem_feed.host")
+    mf_port = _int(mf_raw, "port", 5056, errors, "modem_feed.port")
+    if mf_port < 1 or mf_port > 65535:
+        errors.append("modem_feed.port must be between 1 and 65535.")
+    mf_token = _text(mf_raw, "token_file", "data/.modem_feed_token", errors,
+                     "modem_feed.token_file")
+    if _text(mf_raw, "token", "", errors, "modem_feed.token"):
+        warnings.append("modem_feed.token inside config.yaml is IGNORED for safety "
+                        "- put the password in modem_feed.token_file instead.")
+    modem_feed = ModemFeedCfg(
+        enabled=_bool(mf_raw, "enabled", False, errors, "modem_feed.enabled"),
+        host=mf_host,
+        port=mf_port,
+        token_file=mf_token,
+        queue_size=max(10, _int(mf_raw, "queue_size", 200, errors, "modem_feed.queue_size")),
+    )
+
     if errors:
         pretty = "\n".join(f"  - {e}" for e in errors)
         raise ConfigError(f"config.yaml has {len(errors)} problem(s):\n{pretty}")
@@ -619,6 +766,8 @@ def load(config_path: str = "config.yaml") -> Settings:
         modules=modules,
         updates=updates,
         radio=radio,
+        mcp=mcp,
+        modem_feed=modem_feed,
         config_path=config_path,
         warnings=warnings,
         raw=raw,
@@ -649,6 +798,42 @@ def _text(data: Dict[str, Any], key: str, default: str, errors: List[str], where
             errors.append(f"'{where}' is required (put the value in quotes).")
         return default if isinstance(default, str) else ""
     return value.strip()
+
+
+# Symbols that must never be the command prefix (v0.0.108, Brett: exclude
+# any symbol that might confuse the bot) - each already carries meaning in
+# mesh message text:
+RESERVED_PREFIX_REASONS = {
+    ":": "it splits the sender name from the message ('Name: body')",
+    "#": "it marks channel names like #test",
+    "@": "it marks node addresses like @K7ABC",
+}
+
+
+def _command_prefix(data: Dict[str, Any], errors: List[str], where: str) -> str:
+    """Validate bot.command_prefix - the symbol that starts a command.
+
+    Exactly one printable, non-space symbol; the default is '!'. Refuses
+    the reserved symbols in RESERVED_PREFIX_REASONS with a plain-language
+    reason, and multi-character or whitespace values, so a typo can never
+    silently wedge every command handler. Returns '!' whenever the value
+    is rejected (safe default beats a broken bot).
+    """
+    raw = data.get("command_prefix", "!")
+    if raw is None:
+        return "!"
+    if not isinstance(raw, str) or len(raw) != 1:
+        errors.append(f"'{where}' must be exactly one symbol "
+                      f"(found '{raw}').")
+        return "!"
+    if raw.isspace():
+        errors.append(f"'{where}' must be a visible symbol, not whitespace.")
+        return "!"
+    reason = RESERVED_PREFIX_REASONS.get(raw)
+    if reason:
+        errors.append(f"'{where}' can not be '{raw}' - {reason}.")
+        return "!"
+    return raw
 
 
 def _int(data: Dict[str, Any], key: str, default: int, errors: List[str], where: str) -> int:
@@ -768,17 +953,19 @@ def _read_password_file(path: str) -> Optional[str]:
 def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
     """Safe view of the config for the web dashboard (password masked)."""
     return {
-        "connection": {
+        "connection": ({
             "host": settings.connection.host,
             "port": settings.connection.port,
             "reconnect": settings.connection.reconnect,
-        },
+        } if settings.connection else None),
         "bot": {"advertise_on_start": settings.bot.advertise_on_start,
                  "answer_unknown_senders": settings.bot.answer_unknown_senders,
-                 "display_name": settings.bot.display_name},
+                 "display_name": settings.bot.display_name,
+                 "command_prefix": settings.bot.command_prefix},
         "mesh": {"max_inbound_hops": settings.mesh.max_inbound_hops,
                  "unknown_hops": settings.mesh.unknown_hops,
-                 "channel_sender_name": settings.mesh.channel_sender_name},
+                 "channel_sender_name": settings.mesh.channel_sender_name,
+                 "path_hash_size": settings.mesh.path_hash_size},
         "channels": [{"name": c.name, "reply": c.reply} for c in settings.channels],
         "dm": {"enabled": settings.dm.enabled,
                "admin_pubkey_prefixes": settings.dm.admin_pubkey_prefixes},
@@ -791,6 +978,7 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                     "capture_packets": settings.storage.capture_packets,
                     "packet_raw_hex": settings.storage.packet_raw_hex},
         "limits": {"min_interval_seconds": settings.limits.min_interval_seconds,
+                   "reply_delay_seconds": settings.limits.reply_delay_seconds,
                    "per_sender_seconds": settings.limits.per_sender_seconds,
                    "per_sender_channel_seconds": settings.limits.per_sender_channel_seconds,
                    "channel_interval_seconds": settings.limits.channel_interval_seconds,
@@ -803,4 +991,15 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
         "logging": {"level": settings.logging.level, "file": settings.logging.file,
                     "timezone": settings.logging.timezone,
                     "tz_iana": settings.logging.tz_iana},
+        "mcp": {"enabled": settings.mcp.enabled,
+                "frequency_hz": settings.mcp.frequency_hz,
+                "tx_power_dbm": settings.mcp.tx_power_dbm,
+                "inter_packet_politeness_seconds":
+                    settings.mcp.inter_packet_politeness_seconds,
+                "cad_peak": settings.mcp.cad_peak,
+                "cad_min": settings.mcp.cad_min},
+        "modem_feed": {"enabled": settings.modem_feed.enabled,
+                       "host": settings.modem_feed.host,
+                       "port": settings.modem_feed.port,
+                       "token": "set" if settings.modem_feed.token_file else ""},
     }

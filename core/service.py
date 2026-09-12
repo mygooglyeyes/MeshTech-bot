@@ -32,6 +32,8 @@ class BotService:
         self.client = None            # set by bot.py (core.client.RadioClient)
         self.router = None            # set by bot.py (core.router.Router)
         self.capture = None           # set by bot.py (core.capture.PacketCapture)
+        self.mcp = None               # set by bot.py when mcp.enabled (core.mcp.Mcp)
+        self.modem_feed = None        # set by bot.py when modem_feed.enabled
         self.registry: List = []      # sorted handler instances
         self.started_at: float = time.time()
         self.stop_requested = False
@@ -210,6 +212,34 @@ class BotService:
                 "next_expiry": newest + 86400.0,
                 "hour_maxed": hour_cap >= self.BOOST_MAX_HOUR,
                 "day_maxed": day_cap >= self.BOOST_MAX_DAY}
+
+    async def send_advert(self, mode: str) -> Dict:
+        """Dashboard advert buttons (v0.0.116): push one advert now.
+
+        mode "direct" = zero-hop advert for nearby phones; "flood" =
+        repeated across the mesh so distant nodes refresh their routes
+        to the bot. Works in MCP mode (the radio is right here); in
+        companion mode the client has no advert capability, which comes
+        back as a plain 'not available' answer.
+        """
+        mode = (mode or "").strip().lower()
+        if mode not in ("direct", "flood"):
+            return {"ok": False, "message": "Unknown advert mode."}
+        sender = getattr(self.client, f"send_{mode}_advert", None)
+        if sender is None or self.mcp is None:
+            return {"ok": False,
+                    "message": "Adverts need MCP radio mode (bot owns the radio)."}
+        try:
+            ok = await sender()
+        except Exception as exc:               # pragma: no cover - defensive
+            return {"ok": False, "message": f"Advert failed: {exc}"}
+        if not ok:
+            return {"ok": False,
+                    "message": "Radio refused the advert (busy or not up)."}
+        label = "direct (nearby phones)" if mode == "direct" \
+            else "flood (whole mesh)"
+        self.feed.publish("notice", {"text": f"Advert sent ({label})."})
+        return {"ok": True, "message": f"Advert sent ({label})."}
 
     def deflate_budget(self) -> Dict:
         """Admin 'budget down': cancel ALL active boosts at once - the total
@@ -469,19 +499,37 @@ class BotService:
 
     def status_snapshot(self) -> Dict:
         conn = None
-        if self.client is not None:
+        if self.client is not None and self.mcp is None:
+            # MCP radio mode has no companion link - the mcp block below
+            # carries the truth instead.
+            cfg = self.settings.connection
             conn = {
                 "connected": self.client.is_connected,
-                "host": self.settings.connection.host,
-                "port": self.settings.connection.port,
+                "host": cfg.host if cfg else "?",
+                "port": cfg.port if cfg else 0,
                 "channels_seen": self.client.channel_names() if self.client else {},
             }
         companion = ""
         if self.client is not None:
             companion = (getattr(self.client, "own_name", "") or "").strip(" \x00")
+        # MCP radio mode: report the SPI radio + modem feed state instead.
+        mcp_state = None
+        if self.mcp is not None:
+            mf = self.modem_feed
+            mcp_state = {
+                "radio_up": bool(self.mcp.is_running),
+                "rx_count": self.mcp.stats.rx_count,
+                "tx_count": self.mcp.stats.tx_count,
+                "feed": ({
+                    "connected": bool(mf.connected),
+                    "pushed": mf.stats.pushed,
+                    "dropped": mf.stats.dropped,
+                } if mf is not None else None),
+            }
         return {
             "bot_name": "meshtech-bot",
             "companion_name": companion,
+            "mcp": mcp_state,
             "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),
             "config_file": self.settings.config_path,

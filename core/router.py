@@ -41,19 +41,20 @@ def _log_line(text: str, limit: int = 80) -> str:
 # Pure parsing helpers (unit-testable without a radio)
 # --------------------------------------------------------------------------
 
-def tokenize(raw: str) -> Tuple[List[str], bool]:
-    """Split a message into (tokens, used_exclamation_mark).
+def tokenize(raw: str, prefix: str = "!") -> Tuple[List[str], bool]:
+    """Split a message into (tokens, used_command_prefix).
 
-    Trailing colons are stripped from each token so that punctuation glued
-    to a word ("hello:", "!help:") does not stop it matching. The leading
-    "!" is only honoured at the start of the message; a mid-message
-    "!help" stays glued so embedded-sender-name parsing can tell "Alice:
-    !help" apart from a bare command.
+    ``prefix`` is the configured command symbol (bot.command_prefix,
+    v0.0.108; default '!'). It is only honoured at the start of the
+    message; a mid-message prefix stays glued so embedded-sender-name
+    parsing can tell "Alice: !help" apart from a bare command. Trailing
+    colons are stripped from each token so punctuation glued to a word
+    ("hello:", "!help:") does not stop it matching.
     """
     text = raw.strip()
-    prefixed = text.startswith("!")
+    prefixed = bool(prefix) and text.startswith(prefix)
     if prefixed:
-        text = text[1:].lstrip()
+        text = text[len(prefix):].lstrip()
     tokens = [t.lower().rstrip(":") for t in text.split() if t]
     return tokens, prefixed
 
@@ -122,7 +123,7 @@ def select_handler(tokens: List[str], prefixed: bool, handlers: List[Any],
 
 
 def resolve_channel_text(text: str, mode: str, handlers: List[Any],
-                         is_admin: bool = False):
+                         is_admin: bool = False, prefix: str = "!"):
     """Split a channel message into (sender_name, body) per the configured
     mesh.channel_sender_name policy:
 
@@ -139,7 +140,7 @@ def resolve_channel_text(text: str, mode: str, handlers: List[Any],
         return None, text
     name, body = split_channel_text(text)
     if mode == "smart" and name is not None:
-        tokens, prefixed = tokenize(text)
+        tokens, prefixed = tokenize(text, prefix)
         if tokens and select_handler(tokens, prefixed, handlers, "channel",
                                      is_admin) is not None:
             return None, text  # prefix is part of the message, not a name
@@ -293,7 +294,8 @@ class Router:
         #    blocked-node and unknown-sender guards both use sender identity.
         if msg.kind == "channel":
             msg.sender_name, body = resolve_channel_text(
-                msg.text, settings.mesh.channel_sender_name, self.handlers)
+                msg.text, settings.mesh.channel_sender_name, self.handlers,
+                prefix=settings.bot.command_prefix)
         else:
             body = msg.text
 
@@ -380,8 +382,21 @@ class Router:
 
         # -- DM sender access
         is_admin = settings.is_admin_prefix(msg.sender_prefix) if msg.kind == "dm" else False
+        # -- channel admins (same dm.admin_pubkey_prefixes, with the embedded
+        #    name resolved to a registry node) are exempt from the per-sender
+        #    reply pace AND from both airtime budgets below (v0.0.105, Brett:
+        #    "if the client has the public key designated in the config.yaml
+        #    list, then always answer it"). Handler access is unchanged: only
+        #    DM admins run admin commands, because a channel identity is a
+        #    spoofable name. A name that matches no known node is never an
+        #    admin (a bare "name:..." identity can never match a hex admin
+        #    prefix).
+        pace_exempt = is_admin
+        if not pace_exempt and msg.kind == "channel":
+            pace_identity = self._channel_sender_identity(msg)
+            pace_exempt = bool(pace_identity) and settings.is_admin_prefix(pace_identity)
 
-        tokens, prefixed = tokenize(body)
+        tokens, prefixed = tokenize(body, settings.bot.command_prefix)
         if not tokens:
             return
 
@@ -429,21 +444,32 @@ class Router:
         # -- per-sender pace in channels: the same node asking again within
         #    the window waits (admins exempt; identity resolved best-effort
         #    from the embedded name, as the block list does).
-        if msg.kind == "channel" and not is_admin:
+        if msg.kind == "channel" and not pace_exempt:
             pace = settings.limits.per_sender_channel_seconds
             if pace > 0:
                 identity = self._channel_sender_identity(msg)
                 if identity and \
                         now - self._last_channel_answer.get(identity, 0.0) < pace:
-                    log.debug("Channel per-sender pace: %s replied to %.0fs ago.",
-                              identity, now - self._last_channel_answer[identity])
+                    wait = pace - (now - self._last_channel_answer[identity])
+                    log.info("Channel per-sender pace: %s may ask again in "
+                             "%.0fs - dropping: %s", identity, wait,
+                             _log_line(msg.text, 60))
+                    self.service.feed.publish("dropped", {
+                        "reason": f"per-sender wait ({int(wait) + 1}s left)",
+                        "kind": msg.kind,
+                        "channel": msg.channel_name,
+                        "sender": msg.sender_prefix or msg.sender_name,
+                        "text": msg.text,
+                    })
                     return
         # -- airtime budgets: cheap non-recording pre-filters (the
         #    authoritative check+record happens under the send lock) so a
         #    doomed command never even spawns a handler task. Two layers:
-        #    per-person (keyword replies only; admins exempt) and the total
-        #    budget (replies + pushes; admins exempt there too).
-        if not is_admin:
+        #    per-person (keyword replies only) and the total budget
+        #    (replies + pushes). Admins (DM prefix, or a registry-resolved
+        #    channel name since v0.0.105) skip both: listed pubkeys are
+        #    always answered.
+        if not pace_exempt:
             if not self.service.person_budget_check(
                     self._channel_sender_identity(msg) if msg.kind == "channel"
                     else (msg.sender_prefix or "?"),
@@ -456,7 +482,7 @@ class Router:
                 self._lane_of(msg) if msg.kind == "channel" else "dm",
                 msg.sender_prefix or msg.sender_name or "?",
                 msg.text,
-                exempt=(msg.kind == "dm" and is_admin),
+                exempt=pace_exempt,
                 record=False):
             return
 
@@ -507,16 +533,37 @@ class Router:
                                 ctx.msg.sender_prefix, 0.0) < \
                                 send_settings.limits.per_sender_seconds:
                             return
-                    if ctx.msg.kind == "channel" and not ctx.is_admin:
-                        pace = send_settings.limits.per_sender_channel_seconds
-                        if pace > 0:
-                            identity = self._channel_sender_identity(ctx.msg)
-                            if identity and send_now - \
-                                    self._last_channel_answer.get(identity, 0.0) < pace:
-                                return
+                    send_pace_exempt = ctx.is_admin
+                    if ctx.msg.kind == "channel":
+                        if not send_pace_exempt:
+                            send_ident = self._channel_sender_identity(ctx.msg)
+                            send_pace_exempt = bool(send_ident) and \
+                                send_settings.is_admin_prefix(send_ident)
+                        if not send_pace_exempt:
+                            pace = send_settings.limits.per_sender_channel_seconds
+                            if pace > 0:
+                                identity = self._channel_sender_identity(ctx.msg)
+                                if identity and send_now - \
+                                        self._last_channel_answer.get(identity, 0.0) < pace:
+                                    wait = pace - (send_now -
+                                                   self._last_channel_answer[identity])
+                                    log.info("Channel per-sender pace: %s may ask "
+                                             "again in %.0fs - reply held.",
+                                             identity, wait)
+                                    self.service.feed.publish("dropped", {
+                                        "reason": f"per-sender wait ({int(wait) + 1}s left)",
+                                        "kind": ctx.msg.kind,
+                                        "channel": ctx.msg.channel_name,
+                                        "sender": ctx.msg.sender_prefix or ctx.msg.sender_name,
+                                        "text": ctx.msg.text,
+                                    })
+                                    return
                     # airtime budgets, authoritative: check + record one slot
-                    # per reply (a multi-chunk answer is one answer)
-                    if not ctx.is_admin and not self.service.person_budget_check(
+                    # per reply (a multi-chunk answer is one answer). Same
+                    # admin exemption as the dispatch pre-filter:
+                    # registry-resolved channel admins skip both layers
+                    # (v0.0.105).
+                    if not send_pace_exempt and not self.service.person_budget_check(
                             self._channel_sender_identity(ctx.msg)
                             if ctx.msg.kind == "channel"
                             else (ctx.msg.sender_prefix or "?"),
@@ -531,7 +578,7 @@ class Router:
                             else "dm",
                             ctx.msg.sender_prefix or ctx.msg.sender_name or "?",
                             reply_text,
-                            exempt=(ctx.msg.kind == "dm" and ctx.is_admin),
+                            exempt=send_pace_exempt,
                             record=True):
                         return
                     await self._send_reply(ctx, reply_text,
@@ -675,6 +722,18 @@ class Router:
         if client is None:
             log.warning("No radio client attached; reply dropped.")
             return
+        # Reply delay (limits.reply_delay_seconds, default 2.0 - Brett,
+        # 2026-09-12): wait BEFORE the reply's first packet goes out. Every
+        # reply, channel or DM, admins included - it is air-politeness, not
+        # a pace rule, so no exemptions. The mcp politeness gap (between
+        # the bot's own packets) stacks on top for multi-chunk replies.
+        # Held under the caller's reply lock, so concurrent replies wait
+        # their turn instead of transmitting together. 0 = send at once.
+        delay = max(0.0, float(settings.limits.reply_delay_seconds))
+        if delay > 0:
+            log.info("Reply delay: waiting %.1fs before answering (%s).",
+                     delay, ctx.sender_display())
+            await asyncio.sleep(delay)
         sent = 0
         dm_target = None
         if force_dm:

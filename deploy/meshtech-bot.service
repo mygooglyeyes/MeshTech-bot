@@ -18,12 +18,16 @@ RestartSec=5
 # Hardening: the bot only needs to write its data folder at runtime, so
 # the whole install (code, venv, config) is mounted read-only for it.
 # Flags are conservative - unknown options on older systemd are ignored.
+# NOTE (2026-09-09): the bot may own an SPI radio (mcp: enabled). GPIO
+# (/dev/gpiochip*) and SPI (/dev/spidev*) must reach the service, so
+# PrivateDevices stays FALSE and the account gets the gpio+spi groups.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ReadWritePaths={INSTALL_DIR}/data
 ProtectHome=true
-PrivateDevices=true
+PrivateDevices=false
+SupplementaryGroups=gpio spi
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -9,6 +9,591 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.118 - 2026-09-12
+
+Startup identity self-check (Brett, after asking "the bot's identity key
+should not change - is there a circumstance where you see it changing?").
+A pubkey sidecar (`data/bot_radio_identity.pub`) records what the identity
+file produced on first load; every later start must derive the SAME pubkey
+from the SAME file. Read-only toward the key - it is never rewritten. Three
+loud refusals instead of silent changes: derivation drift (the v0.0.113
+bug class: same file, different pubkey), a missing identity file while a
+baseline exists (lost data dir / fresh SD card - never auto-rekey), and
+the existing legacy unclamped-key refusal. Startup log now shows the full
+pubkey (was 16 hex chars). Tests: 5 new in test_identity_clamp.py (450
+pass total, same 8 known export failures).
+
+## 0.0.117 - 2026-09-12
+
+Small UI fix to the advert buttons (Brett): while an advert is in
+flight BOTH chips (Advert direct / Advert flood) are disabled and the
+clicked one reads "advertising…", restored when the bot answers.
+There is only one radio, so a second advert mid-flight would just
+collide with the first. Disabled buttons get a dimmed, wait-cursor
+look (new `.btn:disabled` style).
+
+## 0.0.116 - 2026-09-12
+
+Dashboard advert buttons (Brett, 2026-09-12: "add a set of advert
+buttons to the control panel - a chip for direct and one for flood"):
+
+- **Control panel chips:** `Advert direct` (one zero-hop advert for
+  nearby phones) and `Advert flood` (one repeated advert so distant
+  nodes and repeaters refresh their routes to the bot). Both land in
+  the Channels & Controls card, results show inline and as a live-
+  feed notice.
+- **Wiring:** `Mcp.send_flood_advert()` (sibling of the v0.0.111
+  direct-advert adapter), `BotService.send_advert(mode)` with plain-
+  language answers for unknown modes / companion mode / radio
+  refusal, and two `/api/actions` verbs (`advert_direct`,
+  `advert_flood`) behind the dashboard's normal authentication.
+- 6 regression tests (mode routing, feed notice, companion fallback,
+  radio refusal).
+
+## 0.0.115 - 2026-09-12
+
+Removes the advert-before-DM (Brett's call, queued at v0.0.111 time
+and confirmed after the DM root cause was fixed: "we need to remove
+the advert before DM portion we added earlier. This may be
+complicating things").
+
+- `!dm` now replies straight away: no direct (zero-hop) advert is
+  sent before the DM reply. Contact refresh is handled by the normal
+  adverts (periodic flood + on-start), and the DM root cause turned
+  out to be the broken identity, not a missing advert.
+- Everything else from v0.0.111 stays: DM delivery ACKs, routed DM
+  replies, INFO-level decrypt-failure logging, and the v0.0.113
+  dest-hash gate.
+- Router helper `_advert_self_once` deleted; two tests now pin the
+  new behavior (no advert before the DM reply; exactly one DM sent).
+- `Mcp.send_direct_advert()` stays - the upcoming dashboard advert
+  buttons (DIRECT/FLOOD chips) will use it.
+- Also fixed on the same day: `&stats <channel> x` (full verbosity)
+  crashed with 'NoneType has no attribute lower' when a stored message
+  row had a NULL sender prefix (live on the box, 14:28). The guard now
+  lives at the store boundary (get_node/resolve_name tolerate empty
+  input); 2 regression tests.
+
+## 0.0.114 - 2026-09-12
+
+The DM root cause, found and fixed. The fork-test + raw-capture replay
+(v0.0.111-113) proved Brett's DMs arrived clean, addressed to the bot,
+and still failed HMAC against every stored key - the bot's own radio
+identity was generated wrong.
+
+- **Root cause:** the bot minted its key with raw `os.urandom(64)` -
+  an UNCLAMPED scalar. The advertised pubkey is `raw*G` but ECDH ran
+  with `clamped(raw)`; unless the random bytes are already clamped
+  (p=1), those are two different secrets. Phones encrypted DMs to a
+  secret the bot can never reproduce - no decrypt, no ACK, no replies.
+  Channels always worked because they never use ECDH.
+- **Fix (generation):** new keys are proper firmware-style - SHA-512
+  expand a 32-byte seed, clamp the scalar BEFORE deriving anything
+  (`_expand_firmware_key`). Pubkey and ECDH now agree by construction.
+- **Safe mode:** loading a legacy unclamped key file is REFUSED (loud
+  warning, no identity) instead of running half-blind - no code path
+  can repair it in place, the mesh address must change.
+- Brett's box: delete `data/bot_radio_identity.txt`, restart - a
+  proper key is minted; re-add LoganBot from the fresh share string.
+
+## 0.0.113 - 2026-09-12
+
+DM receive correctness: the bot now checks WHO a direct message is
+for before trying to decrypt it (the firmware's dest-hash behavior,
+which our MCP mode never had).
+
+- **Dest-hash gate:** a flood TXT_MSG carries the first byte of the
+  recipient's pubkey. Packets addressed to other nodes are now skipped
+  before ANY decrypt attempt. Previously the bot tried to decrypt
+  every flood DM from any stored key matching the sender hash byte - a
+  hash collision (another 0x97-addressed node on this busy mesh)
+  produced journal lines indistinguishable from "Brett's DM failed",
+  which poisoned the phone-link investigation.
+- **Split failure diagnostics:** a DM addressed to us that cannot be
+  decrypted now says WHICH case it is: "no known key" (their advert
+  was never heard - ask the sender to advert) vs "HMAC failed against
+  N stored key(s) (aa bb cc...)" (the sender is NOT who we think -
+  both sides must re-advert). Different causes, different advice,
+  no more guessing from the journal.
+
+Brett's phone holds exactly one LoganBot contact with the CURRENT bot
+key (767365201bbe...) - the stale-contact theory is dead; the dest
+gate may re-explain the earlier src-97 decrypt_fail storm as foreign
+traffic. Suite: 431 pass (4 new).
+
+## 0.0.112 - 2026-09-12
+
+Path hash size made strict and configurable (Brett: "the mesh is
+migrating all nodes to 2-byte prefixes - if our system can't decode or
+store them properly it will not be useful").
+
+- **Learn any size:** an advert arriving over a 2-byte (or 3-byte) hash
+  path is now stored correctly - the old check only accepted paths
+  where one byte = one hop, silently discarding 2-byte routes (the bot
+  would have flood-replied instead of riding the taught path).
+- **The raw encoded byte is kept per node** (new `route_path_len`
+  column, DB migration 8): bits 6-7 carry the per-hop hash size, so the
+  bot remembers exactly what each node taught it.
+- **Replies echo the taught size:** a DM replayed down a stored path
+  reuses the node's encoded byte verbatim - a node taught in 2-byte
+  hashes is answered in 2-byte hashes. Inconsistent rows are refused
+  (the reply floods instead of sending garbage).
+- **New setting `mesh.path_hash_size`** (1, 2 or 3; default 1): the
+  bytes-per-hop the bot announces on its OWN zero-hop packets (adverts,
+  flood DMs). Every zero-hop TX is stamped with it; routed packets are
+  never re-stamped. The v0.0.110 config sync adds the line to the live
+  config automatically at next deploy.
+- **`!2byte` now sees radio-mode traffic:** MCP-mode RX records the
+  per-frame hash size into the capture, so the report reflects the real
+  mesh instead of only companion-mode captures.
+
+The 1-byte dest/src hash inside every DM is protocol-fixed and
+unchanged - only the multi-hop PATH encoding is touched.
+
+## 0.0.111 - 2026-09-12
+
+DM plumbing fix (Brett's phone investigation: DMs showed "failed"
+after 3 tries, no chat screen opened, and the bot's `!dm` reply never
+arrived - all traced to missing ACK/advert/routing behavior in MCP
+radio mode).
+
+- **Delivery ACKs:** every decrypted DM now earns a firmware-
+  compatible ACK (payload type 0x03, body = sha256(timestamp||flags||
+  text||sender_pubkey)[:4] + ext-attempt + random byte, sent after the
+  firmware's 200 ms TXT_ACK_DELAY). Phones stop showing "sending...
+  failed" for messages the bot actually heard. Flood-arrived DMs are
+  ACKed flood-routed so the ACK can reach the sender the same way.
+- **Advert before DM (Brett's design):** on `!dm` the bot transmits
+  one DIRECT (local-only, zero-hop) advert BEFORE the DM reply, so the
+  asking phone refreshes the bot's contact straight from the air -
+  key AND current routing, which a QR/share string can never carry.
+  Best effort: an advert failure never blocks the reply.
+- **Routed DM replies:** adverts now record the path they travelled
+  (hops + per-hop bytes, nodes table route_hops/route_summary); DM
+  replies ride that taught path instead of going out path-less (a
+  path-less direct packet only reaches arm's-length neighbours - the
+  reason repeater-range phones never saw replies). No stored path
+  falls back to flood routing. Store schema v7.
+- **Visible DM drops:** an undecryptable DM (sender unknown - usually
+  their advert was never heard) now logs at INFO with advice instead
+  of hiding at DEBUG; the old silence was a black hole.
+- 5 new tests. Suite: 421 pass + 8 export failures and 1 collection
+  error verified pre-existing on the clean baseline (untouched).
+
+## 0.0.110 - 2026-09-12
+
+Deploy improvement (Brett's rule: every documented setting must be
+EXPLICITLY present in the box's config.yaml - never "just add a line").
+
+- **New deploy step:** before config validation, the deploy now syncs
+  documented-but-missing settings from config.example.yaml into the
+  live config.yaml - added ACTIVE (not commented) with their default
+  values and their explaining comments. Settings already present are
+  left byte-identical; secrets (password/token/secret/seed) are never
+  auto-added; module sub-blocks land under their own headers; a
+  backup (config.yaml.bak-sync) is written before any change. A
+  second run adds nothing (idempotent).
+- New helper scripts/sync_config_defaults.py (+ --dry-run for a
+  no-change preview); deploy.sh calls it automatically.
+- First run on a copy of the real box config: 33 settings added
+  (command_prefix, reply_delay_seconds, the mcp radio keys, module
+  budgets, ...), validator passes the synced file.
+- 10 new tests. Suite: 409 pass.
+
+## 0.0.109 - 2026-09-12
+
+New rule (Brett, after the !help reply vanished into a burst of channel
+noise): the bot WAITS before answering.
+
+- **New setting** `limits.reply_delay_seconds` (default 2.0, Brett's
+  "a couple of seconds"; 0 = the old immediate behaviour). After all
+  the drop-guards pass, the bot waits this long BEFORE transmitting
+  any reply's first packet - every reply, channel or DM, admins
+  included: air-politeness, not a pace rule, so no exemptions. Refused
+  replies still happen instantly.
+- Stacks on top of the existing politeness gap (v0.0.106, between the
+  bot's OWN consecutive packets), which only ever fires on multi-chunk
+  replies - this new delay covers the first packet too. The wait runs
+  under the reply lock, so concurrent replies queue instead of
+  transmitting together.
+- 5 new tests (default 2.0 s, configurable, negatives clamp to 0,
+  wait happens before the send, 0 sends immediately). Suite: 399 pass.
+
+## 0.0.108 - 2026-09-11 (night)
+
+New feature (Brett's ask): the admin sets the command symbol. Until now
+the '!' that starts commands was hard-wired; it is now a config setting,
+with the confusing symbols refused.
+
+- **New setting** `bot.command_prefix` in config.yaml (default '!').
+  Exactly one visible symbol. The config check refuses ':' (splits
+  sender names from messages), '#' (channel hashtags) and '@' (node
+  addressing) - Brett's rule: exclude any symbol that might confuse
+  the bot - and refuses multi-character or whitespace values, falling
+  back to '!' so a typo can never wedge every command.
+- The router, the smart sender-name split and the help screens all use
+  the configured symbol; the default '!' behaviour is unchanged.
+- 13 new tests (config validation incl. all three reserved symbols,
+  parsing, smart-split interplay, end-to-end router on '$'). Suite:
+  394 pass.
+
+## 0.0.107 - 2026-09-11 (late)
+
+Emergency fix: v0.0.106 crash-looped on the box and left the bot deaf
+on air. The radio hardware came up fine, then radio init threw a
+'NameError: name mcp is not defined' - the new CAD-threshold code read
+a config name that only existed in a neighboring method. Worse, the
+abandoned radio object kept holding the GPIO pins, so every 30 s retry
+died with 'GPIO Pin 6 already in use' and systemd kept restarting a
+crash loop (restart counter hit 10).
+
+- **The fix (core/mcp.py):** _radio_up now reads the CAD values from
+  self.settings.mcp like every other radio setting.
+- **The guard:** a failed radio init now calls the driver's cleanup()
+  before retrying, so the GPIO lines are always released - a failed
+  init can never wedge the pins again.
+- **Tests:** 2 new regression tests drive _radio_up end-to-end against
+  a fake driver module (the direct unit tests could not catch this
+  class of bug). Suite: 381 pass.
+
+## 0.0.106 - 2026-09-11
+
+The bot now spaces out its OWN transmissions - Brett's airtime-politeness
+concern after the live re-test showed two-chunk quake replies leaving
+~0.4 s apart (20:46:44/20:46:45) amid heavy CRC-error traffic.
+
+- **LBT verified, unchanged**: the radio driver (openhop_core
+  sx1262_wrapper, read-only dep) runs a CAD listen-before-talk check
+  before EVERY packet - up to 5 attempts with jittered exponential
+  backoff (50-200 ms base, doubling, 5 s cap), and its TX lock
+  serializes packets hardware-side. The bot cannot skip it and never
+  did. What LBT does NOT do is pace our own next packet once the
+  channel reads clear.
+- **The change**: a politeness gap between the bot's own packets
+  (`mcp.inter_packet_politeness_seconds`, default 2 s): each send waits
+  under a lock until the previous bot transmission ended the gap ago,
+  then the driver's LBT still runs as always. 0 disables it. Adverts,
+  replies, pushes - every MCP TX path now goes through one gate.
+  (Default set to 2 s per Brett's call; he asked for "a couple of
+  seconds" and 3 felt like more than a couple.)
+- **CAD thresholds configurable** (`mcp.cad_peak` / `mcp.cad_min`,
+  0-31 each, defaults 15/7): the sensitivity of the radio's own CAD
+  listen-before-talk. These are the values Brett tuned by ear on
+  openHop for this board ("worked best at 15 and 7"), applied to the
+  SX1262 at radio start via the driver's existing
+  `set_custom_cad_thresholds()`; without them the driver picks its own
+  defaults per SF. 0/0 = driver defaults. Applied before first TX and
+  logged either way, so the box journal shows exactly what is in use.
+- New tests: gap waits before a fast second TX, zero setting disables,
+  long-ago TX does not wait, concurrent sends stay serialized (one
+  radio.send per gap).
+
+## 0.0.105 - 2026-09-11
+
+Admins named in `dm.admin_pubkey_prefixes` are now always answered, in
+channels too - Brett's rule: "if the client has the public key
+designated in the config.yaml list, then always answer it."
+
+- **Root cause found on the box**: his `!quake 94945` at 18:39:04 was
+  dropped by the per-person airtime budget (`person budget dropped
+  9725d9d7cc96 ... less than 30s`) - the "no zip" answer 21.6 s earlier
+  counted as his answer. v0.0.104 exempted admins from the per-sender
+  pace only; both airtime budgets still throttled them in channels.
+- **The change**: the same registry-resolved admin exemption (embedded
+  name -> node row -> prefix match) now skips the per-person budget AND
+  the total budget, at both checkpoints (dispatch pre-filter and the
+  pre-transmit send lock). DM admins are unaffected - they were already
+  exempt. Handler access stays DM-only: a channel identity is a
+  spoofable name, so admin COMMANDS still require a DM.
+- Impersonation note: a bare embedded name matching no registry node is
+  never exempt - spoofing "Hilltop-1" buys no free airtime. The total
+  budget keeps covering every non-admin, so one spammer cannot empty
+  the bot's airtime for everyone.
+- New tests: person-budget drop visible for non-admins, admin skips
+  pace + both budgets, name-impersonator still budgeted, total-budget
+  gap exempts admins but still limits non-admins.
+
+## 0.0.104 - 2026-09-11
+
+The 30-second per-sender channel wait rule stopped hiding its drops,
+and channel admins are exempt from it - from Brett's `!quake 94945`
+test (03:11:31): the bot heard the command, dropped it 18 s after his
+previous ask, and wrote NOTHING anywhere - a silent black hole.
+
+- **Visibility**: a message dropped by the per-sender pace rule now
+  gets a journal INFO line (who must wait, how long, what was asked)
+  AND a `[skip]` row in the dashboard's Live card - same treatment the
+  unknown-sender drop always had. Applies at both checkpoints: the
+  inbound pre-filter and the pre-transmit send lock ("reply held").
+- **Admin exemption, channels included**: admins named in
+  `dm.admin_pubkey_prefixes` are exempt from the pace rule in channels,
+  not just DMs. The embedded channel name must resolve to a known node
+  whose prefix matches the admin list - a bare name matching no node
+  (an impersonator) is never exempt. This covers the PACE RULE ONLY:
+  budgets and handler access are unchanged.
+- New tests: pace drop visible (journal + feed), admin exempt,
+  name-impersonator NOT exempt, normal pacing still enforced. Suite:
+  364 passed; the 8 pre-existing export/meshhealth failures are
+  untouched.
+
+## 0.0.103 - 2026-09-11
+
+The dashboard's Live activity card shows the bot's own sends in radio
+mode - the missing-reply mystery Brett chased across both nights, closed
+with proof from the box:
+
+- **The gap**: Brett's `!pathx` test (2026-09-11 16:26) proved the reply
+  went out on the air AND landed in openHop's packet database three
+  times - yet the Live card never showed it. The card's feed only ever
+  got `[out]` events from the old phone-companion path (core/client.py);
+  the MCP radio path (core/mcp.py) logged sends to the journal but
+  published nothing, so outgoing replies were invisible by design.
+- **Fix**: a successful channel reply or DM in radio mode now also
+  stores its message row and publishes `message_out` to the feed -
+  exactly what the companion path always did. 17 lines, dashboard
+  visibility only; nothing changes on the radio or in reply content.
+- Suite: 360 passed (the 7 export-feature failures pre-date this work,
+  documented in TODOS).
+
+## 0.0.102 - 2026-09-10
+
+The one-line fix that lets the bot actually SEND its replies. Brett's
+live test ("Hello" on #test at 20:03) exposed it via a bare asyncio
+traceback:
+
+- **Wiped channel index**: Mcp.__init__ built the channel-index map
+  (name -> slot number) and THEN declared the map as an empty dict -
+  wiping it. Every channel reply went out with channel_idx=None and the
+  router's send path crashed (`'<' not supported between instances of
+  'NoneType' and 'int'`) inside a background task, so the bot heard
+  everything, matched the command, built the reply - and died before
+  transmitting. The map is now declared BEFORE the build call, and
+  send_channel treats a None/unknown slot as a logged drop instead of a
+  crash.
+- Regression tests: the map survives __init__ (#test -> slot 1); a None
+  slot drops cleanly instead of raising.
+
+## 0.0.101 - 2026-09-10
+
+The bot answers named senders on channels - the silent-treatment bug
+that survived v0.0.100 is fixed, and Brett's own captured packet proves
+the diagnosis end to end:
+
+- **Root cause**: the MCP radio path stripped the `Name: ` prefix from
+  incoming channel text itself, then the router stripped *again* on the
+  already-stripped text and overwrote the sender name with None - so
+  every channel message looked like it came from an unknown sender and
+  the router stayed silent ("Ignoring message from unknown sender").
+  Brett's on-air hex decrypts to `🏃‍➡️ Logan Running: !weather 94945`
+  - the name was always on the air; the bot threw it away.
+- **Fix**: the MCP path now delivers the raw decrypted `Name: body`
+  text, exactly like the companion client path, and the router owns the
+  split in one place. Named senders now pass `_sender_known` (the rule:
+  name present = answerable, unless block-listed or over the reply
+  budget) and the name resolves against known nodes for pacing and
+  blocking, same as adverts do.
+- **Own-packet echo guard fixed twice over**: the guard compared a
+  non-existent sender hash on GRP_TXT packets (payload[1] there is a
+  MAC byte - it could randomly drop ~0.4% of channel traffic), and its
+  hash scheme never matched the RX dedup hash (one included the
+  path_len byte, the other didn't), so it never actually caught our own
+  echoes. The guard is now DM-scoped (payload[1] is a real destination
+  hash there) and hashes the same bytes the dedup table hashes.
+- **Latent landmine**: `_own_hash` was computed once at init; a late
+  identity load left it None, making `src_hash == self._own_hash` true
+  for everything - the guard would have dropped ALL traffic. Guard is
+  now None-safe.
+
+Regression tests: raw wire text delivered with the sender name intact
+(Brett's emoji name, from his captured packet), GRP_TXT not dropped by
+the own-hash guard, TX echo hash matches the RX dedup hash. 365 tests
+pass; the 8 export failures and the missing-meshhealth import pre-date
+this work (verified against a stashed baseline).
+
+## 0.0.100 - 2026-09-10
+
+Channel decode now matches the firmware EXACTLY, proven against a real
+packet Brett captured on air (`!help` on #test). Two bugs found and
+fixed - both mine, both the reason the bot never answered on-channel
+text:
+
+- **Key derivation**: the firmware encrypts channel text with
+  AES key = the secret itself and HMAC key = that secret zero-padded to
+  32 bytes (PacketBuilder.create_group_text_packet / the app). The bot
+  was using openHop's channel-*hash* split instead - right family,
+  wrong scheme, so every HMAC check failed and messages were silently
+  dropped as "unknown channel". The hashtag default secret is now the
+  well-known 128-bit key sha256("#name")[:16] - the '#' matters,
+  exactly as Brett said.
+- **TX wire format**: our own channel/DM replies omitted the path_len
+  byte the C++ wire format carries after the header - the adverts were
+  fine (they use the official builder) but the bot's replies were
+  malformed. Both builders now emit header + path_len + payload.
+- New regression test decrypts the captured on-air packet and asserts
+  the plaintext - the suite fails if either bug ever comes back.
+  Suite: 362 passed (8 export failures pre-exist on the branch).
+
+## 0.0.099 - 2026-09-10
+
+Dead feed link now heals itself (found from Brett's incident: modem
+feed dropped 14:42, bot silent until 15:00 - 18 dark minutes on a
+quiet mesh, chip saying "live" throughout):
+
+- core/modemfeed.py: the pump's queue wait could sleep indefinitely,
+  so a connection that died during radio silence was never noticed
+  and never re-dialed. The wait is now sliced into 2 s steps (a
+  closing link is seen within seconds) with a 2-minute full-idle
+  probe, and the socket gets TCP keepalive (30s idle / 3 probes) so
+  a dead peer errors on write instead of buffering forever.
+- Test added: pump exits promptly when the link closes while idle.
+  361 pass.
+
+## 0.0.098 - 2026-09-10
+
+THE two-way-test blocker, found and fixed (Brett's decoded packet log
+showed real traffic labelled GRP_DATA where GRP_TXT belongs): the
+payload-type constants in core/mcp.py were OFF BY ONE against
+openhop_core's protocol/constants.py. Consequences: your #test
+message arrived cleanly and was silently dropped (wrong type check),
+adverts were never learned, and the packet log labelled every packet
+one step wrong. Fix: constants corrected (TXT_MSG 0x02, ADVERT 0x04,
+GRP_TXT 0x05) + name table completed; regression tests now pin the
+values and the envelope parser against the wire format. 360 pass.
+This is why the earlier #test messages never got answered - the
+radio heard them fine; the bot misread the label on the envelope.
+
+## 0.0.097 - 2026-09-10
+
+Adverts you can rely on + a QR code to add the bot (Brett's request,
+2026-09-10: "modem sends a flood AND direct advert when it comes
+online, and a flood advert every 24 hours"):
+
+- core/mcp.py: on start the bot now sends a FLOOD advert (repeated
+  across the mesh - how distant nodes learn it) and then a DIRECT
+  advert (zero hops - nearby phones hear it instantly). New periodic
+  flood-advert timer, default 24 h (mcp.advert_interval_hours, 0 =
+  off). It also writes the app's contact share string to
+  data/bot_contact_share.txt (meshcore://contact/add?name=...&
+  public_key=...&type=1 - the format from MeshCore's FAQ 7.5) so the
+  bot can be added by QR / paste without waiting for the mesh.
+- core/config.py: mcp.advert_interval_hours (0-168, default 24).
+- config.example.yaml: the new knob, documented.
+- Tests: contact-share format (incl. emoji URL-quoting) + periodic
+  timer firing + 0 = never starts. 358 pass (8 pre-existing failures
+  untouched).
+
+## 0.0.096 - 2026-09-10
+
+Fixed the dashboard's "Mcp object has no attribute is_connected"
+crash (every /api/status call 500'd in radio mode - the status bar
+chips and live packet feed could not load). Three parts:
+
+- core/mcp.py: in radio mode bot.py sets service.client = the MCP
+  radio object, but it lacked the two members the status code asks a
+  companion client for. Added a small client-interface shim:
+  is_connected (true while the radio is up), own_name (the bot's
+  on-air advert name), channel_names() (the configured slots - the
+  same indexing replies use). Also removed a stale duplicate of
+  _radio_kwargs/start() left by the interrupted session - Python kept
+  the last copy silently, which had disabled the self-advert send.
+- core/service.py: status_snapshot() no longer reports the old
+  companion "connection" block in radio mode - the mcp block (radio
+  up/down, RX/TX counts, feed state) is the truth there.
+- tests: new test pins the shim; suite is 356 passing (the 8 export
+  and meshhealth failures pre-date this work, documented in TODOS). 
+
+## 0.0.095 - 2026-09-10
+
+The packet-decode milestone (Brett's decision 2026-09-09 evening: full
+decode - channels + adverts + DMs). The bot is now a real mesh node:
+
+- Added: the bot's OWN radio identity - one key file
+  (data/bot_radio_identity.txt, mode 600, firmware 64-byte format).
+  Created on first start, fixed forever after; back it up. Without it
+  nobody could DM the bot.
+- Added: DECODE pipeline in the MCP path - heard packets are parsed,
+  flood-deduped (45 s window, payload hash) and echo-guarded, then:
+  adverts are signature-verified and stored (name/position/SNR -> node
+  registry), group text is decrypted with the config's own channel keys
+  (same derivation as the firmware/openHop; hashtag channels use the
+  well-known key sha256("#name")) and delivered to the message router
+  with sender name, hop count and SNR, and direct messages are decrypted
+  with the bot's identity (ECDH with the sender's stored public key) and
+  delivered as DMs.
+- Added: REPLIES now go out as real encrypted radio packets - the router
+  sends through the MCP (channel replies as GRP_TXT floods, DM replies
+  as direct TXT_MSG). Rate limits, budgets and dedup all work exactly
+  as before; only the transport changed.
+- Added: self-advert on startup (when bot.advertise_on_start, same
+  switch as companion mode) so the mesh learns the bot's address.
+- Kept: the bot holds only keys it already legitimately had (config
+  channels) plus its own new identity - no other secrets, payload
+  captures of foreign channels stay envelope-only.
+- Tests: 17 new decode-helper tests (sender split, key derivation incl.
+  the 128-bit zero-tail convention, plaintext layouts, hop counting);
+  344 pass. (tests/test_export_messages.py failures are PRE-EXISTING on
+  the branch - verified by stash-run, unrelated to this change.)
+
+## 0.0.094 - 2026-09-09
+
+Bench-test follow-ups from the hilltop box (all found 2026-09-09):
+
+- Added: the MCP radio path now feeds the dashboard - every packet
+  the radio hears lands in the packet log (raw layer AND an envelope
+  row with payload type, routing, hop count, RSSI/SNR). The bot can
+  NOT decrypt payloads - channel keys stay in the console/config by
+  design; openHop remains the decrypting observer.
+- Fixed: the repeated "Inbound handler error: 'bytes' object has no
+  attribute 'kind'" spam - the MCP path no longer calls the message
+  router with raw bytes. Decrypted delivery stays a design decision
+  for Brett (TODOS.md).
+- Changed: the header bar's red "not connected" chip now tells the
+  truth in radio mode - it shows "openHop link: live/down" (the modem
+  feed state) instead of the deleted companion connection.
+- Changed: the connection: config block is now OPTIONAL when
+  mcp: enabled: true (radio mode needs no companion). config.example.yaml
+  explains the two modes; a config missing connection WITHOUT mcp
+  still fails the check with a plain-words message.
+- Fixed: the messages and packets lists in the dashboard rebuilt
+  themselves on every poll (flicker + scroll jump - Brett reported it
+  as "an awful screen refresh"). They now rebuild only when the rows
+  actually changed.
+- Fixed: the systemd service template blocked the radio -
+  PrivateDevices=true hid /dev/gpiochip* and /dev/spidev*, and the
+  account lacked the gpio/spi groups (found live on the box; template
+  now matches the working box setup). requirements.txt gains
+  pymc_core[hardware] (non-Windows) so fresh installs include the
+  radio driver.
+
+## 0.0.093 - 2026-09-09
+
+- Fixed: the bot crashed at startup whenever the MCP radio was
+  switched on (UnboundLocalError in bot.py - the task list was used
+  before it was created, so the service crash-looped). Found by the
+  hilltop bench test. The task list is now created before the radio
+  starts; everything else appends to it.
+
+## 0.0.092 - 2026-09-08
+
+- Added: the MCP radio module (`core/mcp.py`) - the bot OWNS the
+  PiMesh-1W v2 over SPI (pin profile from openHop's own settings,
+  hard-coded). Enabled with `mcp: enabled: true`. When on, the bot
+  no longer talks to an openHop companion at all.
+- Added: every packet the radio hears is split - the bot handles it
+  AND a copy goes to the modem feed; every packet the bot sends is
+  looped back to the feed so openHop's log stays complete.
+- Added: rebuilt modem feed client (`core/modemfeed.py`) speaking the
+  modem's verified wire protocol (token -> 0x01/0x00 handshake, then
+  push frames). Password comes from a protected token file, never
+  from config.yaml (a leftover `modem_feed.token` key is ignored with
+  a warning).
+- Added: config sections `mcp:` and `modem_feed:` (see
+  config.example.yaml); dashboard shows a `radio:`/`feed:` chip in
+  MCP mode.
+- New branch `feature/spi-radio`, built from DEV. (The old
+  `feature/modem-feed` branch was deleted by request; its wire
+  protocol knowledge was re-derived from the modem's source.)
+
 ## 0.0.083 - 2026-09-07
 
 Docs: the branch workflow is now written down - feature branches are

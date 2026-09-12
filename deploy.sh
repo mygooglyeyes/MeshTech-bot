@@ -103,6 +103,20 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   "$PY" -m pip install -q -r "$RUNTIME/requirements.txt" 2>/dev/null \
     || warn "pip install had warnings (continuing)"
 
+  # Sync documented-but-missing settings from the shipped example into the
+  # live config (Brett, 2026-09-12: every setting explicitly present in the
+  # live file - never "just add a line"). Adds ONLY keys absent from the
+  # live file, with their defaults; existing lines stay byte-identical;
+  # secrets are never auto-added; a backup is written first. Failure here
+  # does not abort the deploy - config validation below still gates it.
+  if [[ -f "$RUNTIME/config.example.yaml" && -f "$RUNTIME/config.yaml" ]]; then
+    log "Syncing documented default settings into your config..."
+    "$PY" "$RUNTIME/scripts/sync_config_defaults.py" \
+      --example "$RUNTIME/config.example.yaml" \
+      --live "$RUNTIME/config.yaml" \
+      || warn "config default-sync had a problem (continuing; validation still gates this deploy)"
+  fi
+
   log "Validating your config with the new code..."
   # Run from the RUNTIME directory: bot.py resolves data/ (password file,
   # database) relative to the current directory, so validating from elsewhere
