@@ -1581,6 +1581,28 @@ $("btn-reload").addEventListener("click", async () => {
   refreshStatus();
 });
 
+// Advert buttons (v0.0.116): push one advert on demand. "direct" =
+// zero-hop (nearby phones); "flood" = repeated across the mesh. The
+// reply text shows in the controls card; the notice also hits the live
+// feed so there is an on-the-record confirmation.
+async function sendAdvert(action) {
+  try {
+    const r = await api("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    $("action-result").textContent = (r && r.message) || "sent";
+  } catch (e) {
+    $("action-result").textContent = String(e.message || e);
+  }
+}
+
+$("btn-advert-direct").addEventListener("click",
+                                        () => sendAdvert("advert_direct"));
+$("btn-advert-flood").addEventListener("click",
+                                       () => sendAdvert("advert_flood"));
+
 $("btn-boost").addEventListener("click", async () => {
   // Raise the total airtime budget (+30/h +150/d per use, ceiling 90/h
   // and 2200/d). The reply text carries the new caps; the budget chip

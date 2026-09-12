@@ -1178,6 +1178,27 @@ class Mcp:
                                                       "text": text})
         return ok
 
+    async def send_flood_advert(self) -> bool:
+        """One FLOOD advert: repeated by the mesh, so distant nodes and
+        repeaters learn the bot (refreshing their routes to us).
+
+        Dashboard 'advert flood' button (v0.0.116): the same packet the
+        startup/periodic advert sends, on demand.
+        """
+        if self.identity is None or not self.is_running:
+            return False
+        try:
+            from pymc_core.protocol.packet_builder import PacketBuilder
+            advert = PacketBuilder.create_flood_advert(
+                self.identity, self._advert_name())
+            ok = await self.send(advert.write_to())
+            if ok:
+                log.info("Flood advert sent (dashboard request).")
+            return ok
+        except Exception as exc:
+            log.warning("Flood advert failed (non-fatal): %s", exc)
+            return False
+
     async def send_direct_advert(self) -> bool:
         """Router adapter: one DIRECT (local-only, zero-hop) advert.
 

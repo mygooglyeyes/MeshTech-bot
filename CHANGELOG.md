@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.116 - 2026-09-12
+
+Dashboard advert buttons (Brett, 2026-09-12: "add a set of advert
+buttons to the control panel - a chip for direct and one for flood"):
+
+- **Control panel chips:** `Advert direct` (one zero-hop advert for
+  nearby phones) and `Advert flood` (one repeated advert so distant
+  nodes and repeaters refresh their routes to the bot). Both land in
+  the Channels & Controls card, results show inline and as a live-
+  feed notice.
+- **Wiring:** `Mcp.send_flood_advert()` (sibling of the v0.0.111
+  direct-advert adapter), `BotService.send_advert(mode)` with plain-
+  language answers for unknown modes / companion mode / radio
+  refusal, and two `/api/actions` verbs (`advert_direct`,
+  `advert_flood`) behind the dashboard's normal authentication.
+- 6 regression tests (mode routing, feed notice, companion fallback,
+  radio refusal).
+
 ## 0.0.115 - 2026-09-12
 
 Removes the advert-before-DM (Brett's call, queued at v0.0.111 time

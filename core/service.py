@@ -213,6 +213,34 @@ class BotService:
                 "hour_maxed": hour_cap >= self.BOOST_MAX_HOUR,
                 "day_maxed": day_cap >= self.BOOST_MAX_DAY}
 
+    async def send_advert(self, mode: str) -> Dict:
+        """Dashboard advert buttons (v0.0.116): push one advert now.
+
+        mode "direct" = zero-hop advert for nearby phones; "flood" =
+        repeated across the mesh so distant nodes refresh their routes
+        to the bot. Works in MCP mode (the radio is right here); in
+        companion mode the client has no advert capability, which comes
+        back as a plain 'not available' answer.
+        """
+        mode = (mode or "").strip().lower()
+        if mode not in ("direct", "flood"):
+            return {"ok": False, "message": "Unknown advert mode."}
+        sender = getattr(self.client, f"send_{mode}_advert", None)
+        if sender is None or self.mcp is None:
+            return {"ok": False,
+                    "message": "Adverts need MCP radio mode (bot owns the radio)."}
+        try:
+            ok = await sender()
+        except Exception as exc:               # pragma: no cover - defensive
+            return {"ok": False, "message": f"Advert failed: {exc}"}
+        if not ok:
+            return {"ok": False,
+                    "message": "Radio refused the advert (busy or not up)."}
+        label = "direct (nearby phones)" if mode == "direct" \
+            else "flood (whole mesh)"
+        self.feed.publish("notice", {"text": f"Advert sent ({label})."})
+        return {"ok": True, "message": f"Advert sent ({label})."}
+
     def deflate_budget(self) -> Dict:
         """Admin 'budget down': cancel ALL active boosts at once - the total
         budget returns straight to its base caps (the pushbudget card's
