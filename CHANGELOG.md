@@ -9,6 +9,26 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.110 - 2026-09-12
+
+Deploy improvement (Brett's rule: every documented setting must be
+EXPLICITLY present in the box's config.yaml - never "just add a line").
+
+- **New deploy step:** before config validation, the deploy now syncs
+  documented-but-missing settings from config.example.yaml into the
+  live config.yaml - added ACTIVE (not commented) with their default
+  values and their explaining comments. Settings already present are
+  left byte-identical; secrets (password/token/secret/seed) are never
+  auto-added; module sub-blocks land under their own headers; a
+  backup (config.yaml.bak-sync) is written before any change. A
+  second run adds nothing (idempotent).
+- New helper scripts/sync_config_defaults.py (+ --dry-run for a
+  no-change preview); deploy.sh calls it automatically.
+- First run on a copy of the real box config: 33 settings added
+  (command_prefix, reply_delay_seconds, the mcp radio keys, module
+  budgets, ...), validator passes the synced file.
+- 10 new tests. Suite: 409 pass.
+
 ## 0.0.109 - 2026-09-12
 
 New rule (Brett, after the !help reply vanished into a burst of channel
