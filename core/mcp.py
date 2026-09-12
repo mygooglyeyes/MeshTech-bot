@@ -313,6 +313,11 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
 
     Returns None when pynacl/pymc_core is unavailable - decode then stays
     envelope-only and the bot never crashes over it.
+
+    v0.0.118 startup self-check: also returns None (LOUDLY) whenever the
+    bot's mesh address would silently change - an unclamped legacy key, a
+    drifted pubkey derivation, or a lost identity file with an existing
+    pubkey baseline. Brett's rule: the identity never changes on its own.
     """
     try:
         from pymc_core.protocol.identity import LocalIdentity
@@ -321,6 +326,9 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
                     "- packets stay envelope-only.", exc)
         return None
     path = Path(identity_path)
+    # v0.0.118 self-check sidecar: records the pubkey this identity file
+    # produced, so every later start can prove the address never drifted.
+    sidecar = path.with_suffix(".pub")
     seed = None
     if path.is_file():
         try:
@@ -348,6 +356,19 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
                       "fix or remove the file, then restart.", identity_path, exc)
             return None
     if seed is None:
+        if sidecar.is_file():
+            # The pubkey baseline exists but the identity file does not:
+            # minting a new key here would SILENTLY change the bot's mesh
+            # address (lost data dir, fresh SD card, partial restore).
+            # Refuse and let the operator decide - never rekey on our own.
+            log.error(
+                "Radio identity file %s is MISSING but %s records the "
+                "bot's established pubkey - generating a new key would "
+                "change the bot's mesh address. Restore the identity "
+                "file (or delete the .pub file if a rekey is really "
+                "intended), then restart. Packets stay envelope-only "
+                "until then.", identity_path, sidecar.name)
+            return None
         # Proper firmware-format key: SHA-512 expand + CLAMP the scalar.
         # (os.urandom(64) was the v0.0.113 DM bug - see _expand_firmware_key.)
         seed = _expand_firmware_key(os.urandom(32))
@@ -369,8 +390,47 @@ def load_local_identity(identity_path: str = IDENTITY_FILE):
             return None
     try:
         identity = LocalIdentity(seed)
-        log.info("Radio identity loaded: %s...",
-                 identity.get_public_key().hex()[:16])
+        pub_hex = identity.get_public_key().hex()
+        # --- startup self-check (v0.0.118) ------------------------------
+        # The .pub sidecar records what this identity file produced the
+        # first time it loaded. Every later start must derive the SAME
+        # pubkey from the SAME file: a mismatch means the derivation
+        # drifted (code/library change - exactly the v0.0.113 bug class)
+        # and the advertised address would silently change. Read-only
+        # toward the identity file; the key itself is never rewritten.
+        baseline = None
+        if sidecar.is_file():
+            try:
+                baseline = (sidecar.read_text(encoding="utf-8")
+                            .strip().splitlines()[0].lower())
+            except Exception as exc:
+                log.warning("Radio identity self-check: could not read "
+                            "pubkey baseline %s (%s) - drift detection "
+                            "inactive this start.", sidecar, exc)
+        if baseline is None:
+            try:
+                fd = os.open(sidecar, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                             0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(pub_hex + "\n")
+                log.info("Radio identity self-check: pubkey baseline "
+                         "recorded in %s - the bot's address must never "
+                         "drift from this.", sidecar.name)
+            except OSError as exc:
+                log.warning("Radio identity self-check: could not write "
+                            "pubkey baseline %s (%s) - drift detection "
+                            "inactive until this works.", sidecar, exc)
+        elif baseline != pub_hex.lower():
+            log.error(
+                "Radio identity self-check FAILED: %s now derives pubkey "
+                "%s but the recorded baseline is %s - the bot's mesh "
+                "address would silently change. Refusing radio crypto; "
+                "packets stay envelope-only. Do NOT delete the identity "
+                "file to silence this - fix the code that derives the "
+                "key, then restart.",
+                identity_path, pub_hex, baseline)
+            return None
+        log.info("Radio identity loaded: %s (self-check OK).", pub_hex)
         return identity
     except Exception as exc:                     # pragma: no cover
         log.error("Radio identity could not be loaded (%s) - packets stay "

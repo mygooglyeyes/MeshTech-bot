@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.118 - 2026-09-12
+
+Startup identity self-check (Brett, after asking "the bot's identity key
+should not change - is there a circumstance where you see it changing?").
+A pubkey sidecar (`data/bot_radio_identity.pub`) records what the identity
+file produced on first load; every later start must derive the SAME pubkey
+from the SAME file. Read-only toward the key - it is never rewritten. Three
+loud refusals instead of silent changes: derivation drift (the v0.0.113
+bug class: same file, different pubkey), a missing identity file while a
+baseline exists (lost data dir / fresh SD card - never auto-rekey), and
+the existing legacy unclamped-key refusal. Startup log now shows the full
+pubkey (was 16 hex chars). Tests: 5 new in test_identity_clamp.py (450
+pass total, same 8 known export failures).
+
 ## 0.0.117 - 2026-09-12
 
 Small UI fix to the advert buttons (Brett): while an advert is in
