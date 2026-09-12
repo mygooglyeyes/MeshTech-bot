@@ -62,6 +62,13 @@ MAX_LORA_PAYLOAD = 255
 # MeshCore payload types - VERIFIED byte-for-byte against openhop_core
 # protocol/constants.py 2026-09-10 (the values below were off by one
 # before, which silently dropped every real advert and channel text).
+# Firmware DM text types (MeshCore BaseChatMesh::onPeerDataRecv): only the
+# two chat types earn a delivery ACK; CLI data travels as its own exchange.
+TXT_TYPE_PLAIN = 0
+TXT_TYPE_SIGNED_PLAIN = 2
+TXT_TYPE_CLI_DATA = 1
+TXT_TYPE_CLI_COMMAND = 3
+
 PAYLOAD_TYPE_NAMES = {
     0x00: "REQ", 0x01: "RESPONSE", 0x02: "TXT_MSG", 0x03: "ACK",
     0x04: "ADVERT", 0x05: "GRP_TXT", 0x06: "GRP_DATA",
@@ -69,6 +76,7 @@ PAYLOAD_TYPE_NAMES = {
     0x0B: "CONTROL", 0x0F: "RAW_CUSTOM",
 }
 PAYLOAD_TYPE_TXT_MSG = 0x02
+PAYLOAD_TYPE_ACK = 0x03
 PAYLOAD_TYPE_ADVERT = 0x04
 PAYLOAD_TYPE_GRP_TXT = 0x05
 ROUTE_TYPE_NAMES = {
@@ -424,6 +432,10 @@ class Mcp:
         """The bot's on-air name (the dashboard shows it in its place)."""
         bot_cfg = getattr(self.settings, "bot", None)
         return (sanitize_advert_name(bot_cfg.display_name) if bot_cfg else "") or ""
+
+    def _advert_name(self) -> str:
+        """Sanitized on-air name for adverts (never empty)."""
+        return self.own_name or "bot"
 
     def channel_names(self) -> dict[int, str]:
         """Configured channels by slot index - the same indexing that
@@ -820,14 +832,33 @@ class Mcp:
         if key in self._seen_hashes and now - self._seen_hashes[key] < 45:
             return
         self._seen_hashes[key] = now
+        # Record the route the advert travelled (v0.0.111): DM replies back
+        # to this node ride the same path. The flood-route packet carries the
+        # hops it took; path bytes live in pkt.path - one byte per hop for
+        # 1-byte-hash meshes (this firmware). 0 hops = direct neighbour: no
+        # path needed, a path-less direct packet already reaches them.
+        advert_hops = _hops_from_packet(pkt)
+        route_hops = None
+        route_path_hex = None
+        if advert_hops is not None and advert_hops > 0:
+            try:
+                path_bytes = bytes(pkt.path[:pkt.get_path_byte_len()])
+                if len(path_bytes) == advert_hops:
+                    route_hops = advert_hops
+                    route_path_hex = path_bytes.hex()
+            except Exception:
+                pass                     # path untrustworthy - reply floods
         self.service.store.upsert_node(
             pubkey=pubkey_hex, name=name,
             snr=snr,
             lat=decoded.get("latitude") or decoded.get("lat") or None,
             lon=decoded.get("longitude") or decoded.get("lon") or None,
-            source="advert", ts=now)
-        log.info("ADVERT %s (%s) rssi=%d snr=%.1f", name,
-                 pubkey_hex[:12], rssi, snr)
+            source="advert", ts=now,
+            route_hops=route_hops,
+            route_summary=route_path_hex)
+        log.info("ADVERT %s (%s) rssi=%d snr=%.1f%s", name,
+                 pubkey_hex[:12], rssi, snr,
+                 f" route={route_hops}h" if route_hops else "")
 
     # -- channel text -----------------------------------------------------
 
@@ -890,6 +921,14 @@ class Mcp:
             if txt_type != 0:
                 return                   # CLI data / control - not chat
             prefix = candidate["pubkey"][:12].lower()
+            # Delivery ACK (v0.0.111): phones mark a DM "failed" without one.
+            # Recipe mirrors firmware BaseChatMesh::onPeerDataRecv -> sendAckTo
+            # via openhop_core TextMessageHandler._calc_ack_hash:
+            #   sha256(timestamp||flags||text||sender_pubkey)[:4]
+            #   + ext_attempt byte + random byte (bytes 4-5 only make the ACK
+            #   packet hash unique so mesh dedup never drops a legit ACK).
+            self._schedule_dm_ack(pkt, candidate["pubkey"], shared,
+                                  timestamp, flags, text)
             msg = InboundMessage(
                 kind="dm", text=text, sender_prefix=prefix,
                 sender_ts=float(timestamp) if timestamp else None,
@@ -897,7 +936,51 @@ class Mcp:
             self._deliver("TXT_MSG", prefix, prefix, msg)
             return
         self.stats.decrypt_fail += 1
-        log.debug("TXT_MSG src %02X: no contact key matched", src_hash)
+        # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
+        # an unknown key" into a silent black hole - the sender saw nothing,
+        # the journal showed nothing. The usual cause: their advert was never
+        # heard, so the bot lacks their full pubkey and CANNOT decrypt.
+        log.info("TXT_MSG src %02X: no matching key - DM dropped "
+                 "(decrypt_fail=%d). Ask the sender to advert (or !dm from "
+                 "their side) so the bot learns their key.",
+                 src_hash, self.stats.decrypt_fail)
+
+    # -- DM delivery ACK --------------------------------------------------
+
+    def _schedule_dm_ack(self, pkt, sender_pubkey_hex: str, shared: bytes,
+                         timestamp: int, flags: int, text: str) -> None:
+        """Queue a firmware-compatible delivery ACK for a decrypted DM.
+
+        Phones show "sending..." until an ACK arrives; without this the
+        MeshCore app gives up after 3 tries even when the bot heard the
+        message (Brett's phone, 2026-09-12). Sent after TXT_ACK_DELAY
+        (200 ms, matching firmware) via the radio's own politeness gate.
+        Flood-arrived DMs are ACKed as a flood-routed discrete ACK - the
+        sender may be reachable only the way their packet came in.
+        """
+        import hashlib as _hashlib
+        import os as _os
+        try:
+            sender_pubkey = bytes.fromhex(sender_pubkey_hex)
+            text_bytes = (text or "").encode("utf-8")
+            basis = (int(timestamp).to_bytes(4, "little")
+                     + bytes([flags & 0xFF]) + text_bytes + sender_pubkey)
+            ack_bytes = _hashlib.sha256(basis).digest()[:4] \
+                + b"\x00" + _os.urandom(1)
+            is_flood = _hops_from_packet(pkt) not in (0,)  # flood or unknown
+            header = (PAYLOAD_TYPE_ACK << 2) | (1 if is_flood else 2)
+            raw = bytes([header, 0]) + ack_bytes
+        except Exception as exc:
+            log.debug("ACK build failed (non-fatal): %s", exc)
+            return
+        self._loop.create_task(self._send_ack_later(raw, sender_pubkey_hex))
+
+    async def _send_ack_later(self, raw: bytes, sender_pubkey_hex: str) -> None:
+        await asyncio.sleep(0.2)             # firmware TXT_ACK_DELAY
+        if not self.is_running:
+            return
+        if await self.send(raw):
+            log.info("ACK sent -> %s", sender_pubkey_hex[:12])
 
     def _contact_candidates(self, src_hash: int) -> list[dict]:
         """Known nodes whose pubkey starts with the sender's hash byte."""
@@ -971,8 +1054,36 @@ class Mcp:
                                                       "text": text})
         return ok
 
+    async def send_direct_advert(self) -> bool:
+        """Router adapter: one DIRECT (local-only, zero-hop) advert.
+
+        Lets the router advert the bot to the asking phone right before a
+        DM thread starts (!dm, v0.0.111): the phone refreshes the bot's
+        contact - key AND current routing - straight from the air.
+        """
+        if self.identity is None or not self.is_running:
+            return False
+        try:
+            from pymc_core.protocol.packet_builder import PacketBuilder
+            advert = PacketBuilder.create_direct_advert(
+                self.identity, self._advert_name())
+            ok = await self.send(advert.write_to())
+            if ok:
+                log.info("Direct advert sent (one hop, for nearby phones).")
+            return ok
+        except Exception as exc:
+            log.warning("Direct advert failed (non-fatal): %s", exc)
+            return False
+
     async def send_dm(self, sender_prefix: str, text: str) -> bool:
-        """Router adapter: one DM reply as a real radio packet."""
+        """Router adapter: one DM reply as a real radio packet.
+
+        v0.0.111: when the node store holds a taught path for the sender
+        (from a PATH return after our advert), the DM rides that path -
+        a path-less direct packet only reaches arm's-length neighbours,
+        which is why Brett's repeater-range phone never saw replies.
+        Flood-arrived DMs (or unknown paths) get the flood-routed form.
+        """
         if self.identity is None:
             log.warning("DM reply dropped: no radio identity.")
             return False
@@ -992,8 +1103,15 @@ class Mcp:
             payload = (PacketBuilder._hash_bytes(
                             peer.get_public_key(), self.identity)
                        + CryptoUtils.encrypt_then_mac(shared[:16], shared, plaintext))
-            header = (PAYLOAD_TYPE_TXT_MSG << 2) | 2      # direct route, version 1
-            raw = bytes([header, 0]) + payload            # 0x00 = path_len (no path)
+            path, path_len = self._out_path_for(node)
+            if path:
+                header = (PAYLOAD_TYPE_TXT_MSG << 2) | 2  # direct route, version 1
+                raw = (bytes([header, path_len]) + bytes(path) + payload)
+                log.info("DM reply via stored path (%d hop(s)).", path_len & 0x3F)
+            else:
+                header = (PAYLOAD_TYPE_TXT_MSG << 2) | 1  # flood route, version 1
+                raw = bytes([header, 0]) + payload
+                log.info("DM reply flood-routed (no stored path).")
         except Exception as exc:
             log.warning("DM reply to %s could not be encrypted: %s", sender_prefix, exc)
             return False
@@ -1007,6 +1125,30 @@ class Mcp:
                                                       "sender": sender_prefix,
                                                       "text": text})
         return ok
+
+    @staticmethod
+    def _out_path_for(node: Optional[dict]) -> tuple[list, int]:
+        """Stored (path, encoded path_len) for a node, or ([], 0).
+
+        The store keeps the route observed when the node's advert arrived
+        (source='advert'). A 0-hop advert means the node is a direct
+        neighbour: a path-less direct packet already reaches it. Anything
+        else returns the recorded path so the reply rides the same route
+        the advert travelled - repeaters included.
+        """
+        if not node:
+            return [], 0
+        hops = node.get("route_hops")
+        path_hex = node.get("route_summary") or ""   # path bytes (hex), see _handle_advert
+        if hops is None or not path_hex:
+            return [], 0
+        try:
+            path = list(bytes.fromhex(path_hex))
+        except ValueError:
+            return [], 0
+        if not 1 <= len(path) <= 63 or len(path) != int(hops):
+            return [], 0
+        return path, int(hops) & 0x3F
 
     def _build_group_packet(self, entry: dict, text: str) -> Optional[bytes]:
         """One GRP_TXT packet - the firmware's exact encryption format."""

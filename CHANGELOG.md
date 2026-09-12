@@ -9,6 +9,36 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.111 - 2026-09-12
+
+DM plumbing fix (Brett's phone investigation: DMs showed "failed"
+after 3 tries, no chat screen opened, and the bot's `!dm` reply never
+arrived - all traced to missing ACK/advert/routing behavior in MCP
+radio mode).
+
+- **Delivery ACKs:** every decrypted DM now earns a firmware-
+  compatible ACK (payload type 0x03, body = sha256(timestamp||flags||
+  text||sender_pubkey)[:4] + ext-attempt + random byte, sent after the
+  firmware's 200 ms TXT_ACK_DELAY). Phones stop showing "sending...
+  failed" for messages the bot actually heard. Flood-arrived DMs are
+  ACKed flood-routed so the ACK can reach the sender the same way.
+- **Advert before DM (Brett's design):** on `!dm` the bot transmits
+  one DIRECT (local-only, zero-hop) advert BEFORE the DM reply, so the
+  asking phone refreshes the bot's contact straight from the air -
+  key AND current routing, which a QR/share string can never carry.
+  Best effort: an advert failure never blocks the reply.
+- **Routed DM replies:** adverts now record the path they travelled
+  (hops + per-hop bytes, nodes table route_hops/route_summary); DM
+  replies ride that taught path instead of going out path-less (a
+  path-less direct packet only reaches arm's-length neighbours - the
+  reason repeater-range phones never saw replies). No stored path
+  falls back to flood routing. Store schema v7.
+- **Visible DM drops:** an undecryptable DM (sender unknown - usually
+  their advert was never heard) now logs at INFO with advice instead
+  of hiding at DEBUG; the old silence was a black hole.
+- 5 new tests. Suite: 421 pass + 8 export failures and 1 collection
+  error verified pre-existing on the clean baseline (untouched).
+
 ## 0.0.110 - 2026-09-12
 
 Deploy improvement (Brett's rule: every documented setting must be

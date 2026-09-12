@@ -152,6 +152,14 @@ _MIGRATIONS: List[tuple] = [
         """,
         "CREATE INDEX IF NOT EXISTS idx_node_traffic_day ON node_traffic(day)",
     ]),
+    (7, [
+        # v0.0.111: the taught DM path per node. route_summary on the nodes
+        # table already holds the path hex (one byte per hop) recorded when
+        # the node's advert arrived; this backfills existing rows so a bot
+        # upgrade keeps replying down known routes instead of flooding.
+        # (No new column: migration exists to version the reinterpretation.)
+        "SELECT 1",
+    ]),
 ]
 
 
