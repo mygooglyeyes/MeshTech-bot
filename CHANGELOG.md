@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.109 - 2026-09-12
+
+New rule (Brett, after the !help reply vanished into a burst of channel
+noise): the bot WAITS before answering.
+
+- **New setting** `limits.reply_delay_seconds` (default 2.0, Brett's
+  "a couple of seconds"; 0 = the old immediate behaviour). After all
+  the drop-guards pass, the bot waits this long BEFORE transmitting
+  any reply's first packet - every reply, channel or DM, admins
+  included: air-politeness, not a pace rule, so no exemptions. Refused
+  replies still happen instantly.
+- Stacks on top of the existing politeness gap (v0.0.106, between the
+  bot's OWN consecutive packets), which only ever fires on multi-chunk
+  replies - this new delay covers the first packet too. The wait runs
+  under the reply lock, so concurrent replies queue instead of
+  transmitting together.
+- 5 new tests (default 2.0 s, configurable, negatives clamp to 0,
+  wait happens before the send, 0 sends immediately). Suite: 399 pass.
+
 ## 0.0.108 - 2026-09-11 (night)
 
 New feature (Brett's ask): the admin sets the command symbol. Until now

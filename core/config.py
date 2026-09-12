@@ -159,6 +159,12 @@ class LimitsCfg:
     per_sender_seconds: float = 30.0
     max_reply_length: int = 133
     max_chunks: int = 6
+    # Brett (2026-09-12): the bot waits this long BEFORE transmitting any
+    # reply's first packet - every reply, channel or DM, admins included.
+    # Air-politeness on top of the pace rules (which decide WHETHER to
+    # answer); the between-chunks gap in core/mcp.py stacks on top for
+    # multi-chunk replies. 0 = send immediately (the old behaviour).
+    reply_delay_seconds: float = 2.0
     # Per-channel reply cadence: at most one bot reply per channel every N
     # seconds (0 = off, the old behaviour). Stops one busy channel - or a
     # single noisy node spamming it - from resetting the global reply pace
@@ -551,6 +557,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         per_sender_seconds=max(0.0, _float(limits_raw, "per_sender_seconds", 30.0, errors, "limits.per_sender_seconds")),
         max_reply_length=max(40, _int(limits_raw, "max_reply_length", 133, errors, "limits.max_reply_length")),
         max_chunks=max(1, _int(limits_raw, "max_chunks", 6, errors, "limits.max_chunks")),
+        reply_delay_seconds=max(0.0, _float(limits_raw, "reply_delay_seconds", 2.0, errors, "limits.reply_delay_seconds")),
         channel_interval_seconds=max(0.0, _float(limits_raw, "channel_interval_seconds", 0.0, errors, "limits.channel_interval_seconds")),
         channel_intervals=channel_intervals,
         per_sender_channel_seconds=max(0.0, _float(limits_raw, "per_sender_channel_seconds", 30.0, errors, "limits.per_sender_channel_seconds")),
@@ -958,6 +965,7 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                     "capture_packets": settings.storage.capture_packets,
                     "packet_raw_hex": settings.storage.packet_raw_hex},
         "limits": {"min_interval_seconds": settings.limits.min_interval_seconds,
+                   "reply_delay_seconds": settings.limits.reply_delay_seconds,
                    "per_sender_seconds": settings.limits.per_sender_seconds,
                    "per_sender_channel_seconds": settings.limits.per_sender_channel_seconds,
                    "channel_interval_seconds": settings.limits.channel_interval_seconds,

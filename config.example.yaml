@@ -165,6 +165,9 @@ replies: []
 limits:
   min_interval_seconds: 3    # minimum gap between ANY two bot replies
   per_sender_seconds: 30     # ignore repeat DM requests from the same node
+  # The bot waits this many seconds BEFORE sending any reply's first
+  # packet (Brett's air-politeness rule). Default 2.0; 0 = send at once.
+  # reply_delay_seconds: 2.0
   # Per-channel cadence: at most ONE reply per channel every N seconds
   # (0 = off, the default). Stops one busy channel from crowding out
   # replies on the others; DMs are never throttled by this.

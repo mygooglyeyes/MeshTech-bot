@@ -722,6 +722,18 @@ class Router:
         if client is None:
             log.warning("No radio client attached; reply dropped.")
             return
+        # Reply delay (limits.reply_delay_seconds, default 2.0 - Brett,
+        # 2026-09-12): wait BEFORE the reply's first packet goes out. Every
+        # reply, channel or DM, admins included - it is air-politeness, not
+        # a pace rule, so no exemptions. The mcp politeness gap (between
+        # the bot's own packets) stacks on top for multi-chunk replies.
+        # Held under the caller's reply lock, so concurrent replies wait
+        # their turn instead of transmitting together. 0 = send at once.
+        delay = max(0.0, float(settings.limits.reply_delay_seconds))
+        if delay > 0:
+            log.info("Reply delay: waiting %.1fs before answering (%s).",
+                     delay, ctx.sender_display())
+            await asyncio.sleep(delay)
         sent = 0
         dm_target = None
         if force_dm:
