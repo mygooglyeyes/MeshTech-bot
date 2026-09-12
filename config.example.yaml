@@ -249,6 +249,16 @@ mcp:
   # On start the bot sends a FLOOD advert (whole mesh) + a DIRECT advert
   # (one hop, nearby phones). This sets how often it re-floods after that:
   advert_interval_hours: 24 # 0 = only the two start-up adverts
+  # Minimum gap between the bot's OWN radio packets (seconds). The radio
+  # driver always listen-before-talks (CAD) before each packet; this gap
+  # stops the bot's own multi-chunk replies from going out back-to-back
+  # (they used to leave ~0.4 s apart). Default 2.0; 0 = off.
+  inter_packet_politeness_seconds: 2.0
+  # CAD (listen-before-talk) detection thresholds, 0-31 each - how
+  # sensitive the radio's channel-activity check is. 15/7 is the tuning
+  # Brett found best on openHop for this board. 0/0 = driver defaults.
+  cad_peak: 15
+  cad_min: 7
 
 # --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
 # Pushes a copy of every packet the radio hears (and every packet the

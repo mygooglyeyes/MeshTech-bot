@@ -224,6 +224,20 @@ class McpCfg:
     # DIRECT advert (one hop - phones in range hear it instantly), then
     # a flood advert every advert_interval_hours (0 = off).
     advert_interval_hours: float = 24.0
+    # Politeness gap between the bot's OWN transmissions (seconds).
+    # The radio driver already runs LBT (listen-before-talk CAD) before
+    # every packet - that defers to OTHER stations. This gap keeps the
+    # BOT from stampeding the channel with its own back-to-back packets
+    # (multi-chunk replies went out ~0.4 s apart). Airtime rules for
+    # MESH users live in limits: + the budget cards; this one guards the
+    # bot's own transmit behavior. 0 = off (not recommended).
+    inter_packet_politeness_seconds: float = 2.0
+    # CAD (channel-activity-detect) thresholds for the radio's
+    # listen-before-talk: peak then min, 0-31 each. Brett tuned this
+    # board by ear on openHop - 15/7 heard the mesh best. Applied to the
+    # driver at radio start; 0/0 = use the driver's own defaults.
+    cad_peak: int = 15
+    cad_min: int = 7
 
 
 @dataclass
@@ -666,6 +680,16 @@ def load(config_path: str = "config.yaml") -> Settings:
     if mcp_adv_h < 0 or mcp_adv_h > 168:
         errors.append("mcp.advert_interval_hours must be between 0 and 168 "
                       "(0 disables the periodic flood advert).")
+    mcp_polite = _float(mcp_raw, "inter_packet_politeness_seconds", 2.0,
+                        errors, "mcp.inter_packet_politeness_seconds")
+    if mcp_polite < 0:
+        errors.append("mcp.inter_packet_politeness_seconds must be 0 or more "
+                      "(seconds between the bot's own packets).")
+    mcp_cad_peak = _int(mcp_raw, "cad_peak", 15, errors, "mcp.cad_peak")
+    mcp_cad_min = _int(mcp_raw, "cad_min", 7, errors, "mcp.cad_min")
+    if not 0 <= mcp_cad_peak <= 31 or not 0 <= mcp_cad_min <= 31:
+        errors.append("mcp.cad_peak and mcp.cad_min must each be between 0 "
+                      "and 31 (0/0 = use the driver's own CAD defaults).")
     mcp = McpCfg(
         enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
         frequency_hz=freq,
@@ -674,6 +698,9 @@ def load(config_path: str = "config.yaml") -> Settings:
         bandwidth_khz=mcp_bw,
         coding_rate_index=mcp_cr,
         advert_interval_hours=mcp_adv_h,
+        inter_packet_politeness_seconds=mcp_polite,
+        cad_peak=mcp_cad_peak,
+        cad_min=mcp_cad_min,
     )
 
     # --- modem_feed (push radio packets to meshtech-modem port 5056) ---
@@ -902,7 +929,11 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                     "tz_iana": settings.logging.tz_iana},
         "mcp": {"enabled": settings.mcp.enabled,
                 "frequency_hz": settings.mcp.frequency_hz,
-                "tx_power_dbm": settings.mcp.tx_power_dbm},
+                "tx_power_dbm": settings.mcp.tx_power_dbm,
+                "inter_packet_politeness_seconds":
+                    settings.mcp.inter_packet_politeness_seconds,
+                "cad_peak": settings.mcp.cad_peak,
+                "cad_min": settings.mcp.cad_min},
         "modem_feed": {"enabled": settings.modem_feed.enabled,
                        "host": settings.modem_feed.host,
                        "port": settings.modem_feed.port,

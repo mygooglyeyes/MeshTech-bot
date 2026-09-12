@@ -9,6 +9,38 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.106 - 2026-09-11
+
+The bot now spaces out its OWN transmissions - Brett's airtime-politeness
+concern after the live re-test showed two-chunk quake replies leaving
+~0.4 s apart (20:46:44/20:46:45) amid heavy CRC-error traffic.
+
+- **LBT verified, unchanged**: the radio driver (openhop_core
+  sx1262_wrapper, read-only dep) runs a CAD listen-before-talk check
+  before EVERY packet - up to 5 attempts with jittered exponential
+  backoff (50-200 ms base, doubling, 5 s cap), and its TX lock
+  serializes packets hardware-side. The bot cannot skip it and never
+  did. What LBT does NOT do is pace our own next packet once the
+  channel reads clear.
+- **The change**: a politeness gap between the bot's own packets
+  (`mcp.inter_packet_politeness_seconds`, default 2 s): each send waits
+  under a lock until the previous bot transmission ended the gap ago,
+  then the driver's LBT still runs as always. 0 disables it. Adverts,
+  replies, pushes - every MCP TX path now goes through one gate.
+  (Default set to 2 s per Brett's call; he asked for "a couple of
+  seconds" and 3 felt like more than a couple.)
+- **CAD thresholds configurable** (`mcp.cad_peak` / `mcp.cad_min`,
+  0-31 each, defaults 15/7): the sensitivity of the radio's own CAD
+  listen-before-talk. These are the values Brett tuned by ear on
+  openHop for this board ("worked best at 15 and 7"), applied to the
+  SX1262 at radio start via the driver's existing
+  `set_custom_cad_thresholds()`; without them the driver picks its own
+  defaults per SF. 0/0 = driver defaults. Applied before first TX and
+  logged either way, so the box journal shows exactly what is in use.
+- New tests: gap waits before a fast second TX, zero setting disables,
+  long-ago TX does not wait, concurrent sends stay serialized (one
+  radio.send per gap).
+
 ## 0.0.105 - 2026-09-11
 
 Admins named in `dm.admin_pubkey_prefixes` are now always answered, in

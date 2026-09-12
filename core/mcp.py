@@ -396,6 +396,17 @@ class Mcp:
         self._own_hash = (self.identity.get_public_key()[0]
                           if self.identity else None)
         self._recent_tx_hashes: dict[str, float] = {}
+        # Politeness gap between the bot's OWN packets (v0.0.106): the
+        # driver's LBT defers to other stations, not to our own next
+        # packet - without this, multi-chunk replies went out ~0.4 s
+        # apart. Set to 0 only when the mesh demands it.
+        self._last_tx_at: float = 0.0
+        self._politeness = max(
+            0.0, float(getattr(self.settings.mcp,
+                               "inter_packet_politeness_seconds", 2.0)))
+        # Serializes wait+TX so two concurrent sends cannot both sleep
+        # past the gap and then transmit back-to-back anyway.
+        self._tx_gate = asyncio.Lock()
 
     # ------------------------------------------------- client-interface shim
     # bot.py sets service.client = mcp in radio mode (the router's reply
@@ -539,9 +550,35 @@ class Mcp:
         ok = await self._loop.run_in_executor(None, radio.begin)
         if not ok:
             raise RuntimeError("radio.begin() returned False")
+        # CAD thresholds for the radio's own LBT (mcp.cad_peak/cad_min,
+        # Brett's openHop tuning for this board: 15/7). 0/0 leaves the
+        # driver's defaults alone. Must succeed before first TX; a bad
+        # value here is a config error, so fail loud rather than drift
+        # silently onto different air sensitivity.
+        self._apply_cad_thresholds(
+            radio, int(getattr(mcp, "cad_peak", 0)), int(getattr(mcp, "cad_min", 0)))
         radio.set_rx_callback(self._on_radio_rx)
         self.radio = radio
         log.info("Radio up - the MCP owns the air.")
+
+    @staticmethod
+    def _apply_cad_thresholds(radio, cad_peak: int, cad_min: int) -> None:
+        """Program the CAD (listen-before-talk) detection thresholds.
+
+        Duck-typed on purpose: the real driver exposes
+        ``set_custom_cad_thresholds(peak, min)`` and tests pass a fake.
+        0/0 keeps the driver's own per-SF defaults. Range errors raise -
+        config validation already guards this, so a raise here means a
+        hand-edited or stale config reached us some other way.
+        """
+        if not (0 <= cad_peak <= 31 and 0 <= cad_min <= 31):
+            raise ValueError(
+                f"CAD thresholds out of range 0-31: peak={cad_peak} min={cad_min}")
+        if cad_peak or cad_min:
+            radio.set_custom_cad_thresholds(cad_peak, cad_min)
+            log.info("CAD thresholds applied: peak=%d min=%d", cad_peak, cad_min)
+        else:
+            log.info("CAD thresholds: driver defaults (config 0/0).")
 
     # ------------------------------------------------------------- radio RX
 
@@ -977,15 +1014,32 @@ class Mcp:
     # ------------------------------------------------------------- radio TX
 
     async def send(self, data: bytes) -> bool:
-        """Transmit over the real radio, then loop back to the modem feed."""
+        """Transmit over the real radio, then loop back to the modem feed.
+
+        A politeness gap (mcp.inter_packet_politeness_seconds, default
+        2 s) is waited BEFORE the packet goes out whenever the bot's own
+        previous transmission ended less than that long ago. The driver
+        still runs its own LBT/CAD check under its TX lock - the gap is
+        the bot's courtesy on top, not a replacement. Zero at radio-down,
+        so a queued reply never stalls at shutdown.
+        """
         if not self.is_running or self.radio is None:
             log.warning("Radio not up - dropping TX (%dB).", len(data) if data else 0)
             return False
-        try:
-            await self.radio.send(data)
-        except Exception as exc:
-            log.error("TX failed: %s", exc)
-            return False
+        async with self._tx_gate:
+            now = time.monotonic()
+            since_last = now - self._last_tx_at
+            if self._politeness > 0 and 0 <= since_last < self._politeness:
+                wait = self._politeness - since_last
+                log.info("Politeness gap: waiting %.1fs before TX (%dB).",
+                         wait, len(data))
+                await asyncio.sleep(wait)
+            try:
+                await self.radio.send(data)
+            except Exception as exc:
+                log.error("TX failed: %s", exc)
+                return False
+            self._last_tx_at = time.monotonic()
         self.stats.tx_count += 1
         # Remember our own bytes briefly: if a repeat comes back over the
         # air we must not answer ourselves (the flood echo guard).
