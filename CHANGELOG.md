@@ -9,6 +9,29 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.127 - 2026-09-13 (stability-fixes branch)
+
+Git-side unit locks decided and fixed, so a reinstall can never
+silently re-break web updates (Brett's open item: the box's installed
+unit had NoNewPrivileges + ProtectHome removed by hand - .bak-updates -
+to unblock the updater, while the template in git still carried them).
+Git history settled the question: the locks were added in the original
+hardening pass BEFORE the web-update feature existed, and the
+PrivateDevices=true radio conflict was the same class of bug, already
+fixed in v0.0.094. The template now matches the unit proven live on the
+box: NoNewPrivileges and ProtectHome REMOVED (sudo must reach the
+sudoers-gated update trigger, and the runner must read the home clone
+at updates.clone_path), everything else kept - PrivateTmp,
+ProtectSystem=full, kernel/control-group protections, LockPersonality,
+and the radio access lines (PrivateDevices=false + gpio/spi groups).
+The template itself now carries a loud DO-NOT-RE-ENABLE warning naming
+both features each flag would break, and five new tests pin the file:
+the two flags absent as directives, radio access present, remaining
+hardening present. (The test design itself matters: comments may
+MENTION the flags, so the checks parse active directive lines only.)
+Docs/INSTALL.md touches no unit flags, so nothing else needed changes.
+No effect on the running box - hilltop already runs the fixed unit.
+
 ## 0.0.126 - 2026-09-13 (stability-fixes branch)
 
 Deploys now PRUNE stale code files (Brett's &health crash report:

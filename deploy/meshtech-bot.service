@@ -18,14 +18,35 @@ RestartSec=5
 # Hardening: the bot only needs to write its data folder at runtime, so
 # the whole install (code, venv, config) is mounted read-only for it.
 # Flags are conservative - unknown options on older systemd are ignored.
+#
+# DO NOT re-enable the two flags below. They were proven on a live box
+# (hilltop, 2026-09-12) to break shipped features, and the installed
+# unit had to be fixed by hand while a dashboard update was failing:
+#
+#   NoNewPrivileges=true  -> blocks sudo entirely, which kills the
+#       web-console updater: the bot must run scripts/update-trigger.sh
+#       through the one whitelisted sudoers rule (see install.sh, the
+#       sudoers section, and core/selfupdate.py).
+#   ProtectHome=true      -> hides /home from the service, so the
+#       update runner can never read the home clone that
+#       updates.clone_path points at (scripts/update-runner.sh).
+#
+#   (PrivateDevices=true was the same class of conflict for the SPI
+#   radio and was already fixed in v0.0.094 - history must not repeat,
+#   hence this note.)
+#
+# If the sandbox ever needs tightening again, it MUST ship together
+# with a tested alternative path for (a) the sudoers-gated update
+# trigger and (b) reading updates.clone_path - never as a drive-by.
+#
 # NOTE (2026-09-09): the bot may own an SPI radio (mcp: enabled). GPIO
 # (/dev/gpiochip*) and SPI (/dev/spidev*) must reach the service, so
 # PrivateDevices stays FALSE and the account gets the gpio+spi groups.
-NoNewPrivileges=true
+# NoNewPrivileges is intentionally ABSENT (see the warning above).
+# ProtectHome is intentionally ABSENT (see the warning above).
 PrivateTmp=true
 ProtectSystem=full
 ReadWritePaths={INSTALL_DIR}/data
-ProtectHome=true
 PrivateDevices=false
 SupplementaryGroups=gpio spi
 ProtectKernelTunables=true
