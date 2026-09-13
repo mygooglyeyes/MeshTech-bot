@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.126 - 2026-09-13 (stability-fixes branch)
+
+Deploys now PRUNE stale code files (Brett's &health crash report:
+"Handler meshhealth error: 'Store' object has no attribute
+'sender_windows'"). The old apply step only ever copied files in, so
+deleting a file in git left it in the runtime forever - when branches
+switched, handlers/meshhealth.py from the unreviewed feature/mesh-health
+branch survived, auto-registered as a handler (the bot discovers every
+handlers/*.py), and crashed &health. Now the apply step prunes before
+extracting, DATA-DRIVEN from the staged tarball (Brett's challenge:
+"what if folders are added or changed?"): every runtime top-level
+folder except known state (config.yaml + .bak-*, data/, venvs,
+dot-dirs/dotfiles, logs, databases, pid files) has its non-build files
+deleted, and emptied folders are tidied away - so a folder added,
+renamed or removed in git is handled with NO script edit. Proven with
+three offline dry-runs: renamed/new folders, stale handlers, and
+state-preservation all behave. (The stale files themselves were
+already removed on the box by hand as .bak-stale.)
+
 ## 0.0.125 - 2026-09-12 (stability-fixes branch)
 
 Dashboard flash fix (Brett: "the whole page flashes with decoded

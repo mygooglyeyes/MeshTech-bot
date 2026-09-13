@@ -80,9 +80,43 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   id "$SERVICE_USER" &>/dev/null || die "service account '$SERVICE_USER' missing - run install.sh first"
 
   log "Applying new code to $RUNTIME ..."
+  # v0.0.126 (Brett): prune stale code files BEFORE extracting. The old
+  # apply only copied files in - nothing was ever removed - so deleting
+  # a file in git left it in the runtime forever. That bit when
+  # handlers/meshhealth.py from the unreviewed feature/mesh-health
+  # branch survived branch switches, auto-registered as a handler (the
+  # bot discovers every handlers/*.py), and crashed &health.
+  #
+  # The prune is DATA-DRIVEN (Brett's challenge: "what if folders are
+  # added or changed?"): the list of code files comes from the staged
+  # tarball itself, so a folder added, renamed or removed in git is
+  # covered automatically - future builds need NO script edit. Only
+  # known STATE is exempt and never touched: config.yaml (+ .bak-*),
+  # data/, the venvs, dot-dirs/dotfiles, logs, databases, pid files.
+  STAGED_LIST="$(mktemp)"
+  tar tf "$APPLY_TARBALL" | grep -v '/$' | sed 's|^\./||' | grep -v '^$' \
+    | sort > "$STAGED_LIST"
+  # 1) files inside runtime top-level folders that are not state dirs
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    case "$d" in data|.venv|venv|.git|.freebuff) continue ;; esac
+    while IFS= read -r rel; do
+      [[ -n "$rel" ]] || continue
+      grep -qxF "$d/$rel" "$STAGED_LIST" || rm -f "$RUNTIME/$d/$rel"
+    done < <(cd "$RUNTIME/$d" && find . -type f | sed 's|^\./||')
+    # tidy: drop subfolders (and the folder itself) the prune emptied
+    find "$RUNTIME/$d" -depth -type d -empty -exec rmdir {} \; 2>/dev/null || true
+  done < <(cd "$RUNTIME" && find . -mindepth 1 -maxdepth 1 -type d \
+             | sed 's|^\./||' | grep -v '^\.')
+  # 2) top-level files: prune when absent from the build; never touch
+  # dotfiles, config.yaml or its backups, logs, databases, pid files.
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    grep -qxF "$rel" "$STAGED_LIST" || rm -f "$RUNTIME/$rel"
+  done < <(cd "$RUNTIME" && find . -maxdepth 1 -type f | sed 's|^\./||' \
+             | grep -v -E '^(\.|config\.yaml|.*\.(log|db|db-wal|db-shm|pid)$)')
+  rm -f "$STAGED_LIST"
   tar xf "$APPLY_TARBALL" -C "$RUNTIME"
-  # accept both member spellings ('./.git-commit' or '.git-commit' - tar
-  # stores whatever name it was given, and versions of this script differ)
   STAMP="$(tar xOf "$APPLY_TARBALL" ./.git-commit 2>/dev/null \
     || tar xOf "$APPLY_TARBALL" .git-commit 2>/dev/null \
     || true)"
