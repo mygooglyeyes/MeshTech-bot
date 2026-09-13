@@ -719,7 +719,7 @@ class Mcp:
         except Exception as exc:
             log.warning("Self-advert failed (non-fatal): %s", exc)
 
-    async    def _radio_up(self) -> None:
+    async def _radio_up(self) -> None:
         from pymc_core.hardware.sx1262_wrapper import SX1262Radio
 
         kwargs = self._radio_kwargs()
