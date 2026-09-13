@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.125 - 2026-09-12 (stability-fixes branch)
+
+Dashboard flash fix (Brett: "the whole page flashes with decoded
+packets open"). Both list cards rebuilt their DOM on every poll, and
+both did the wipe BEFORE deciding whether anything had changed - so a
+quiet channel still blanked/flashed the card every 15-30 s, and the
+packets card (full page height when open) made it read like a whole-
+page reload. Packets additionally signed its rows without the SNR/text
+columns, so live packets rebuilt the card every single poll. Now:
+both cards decide from a full-column signature first and never touch
+the DOM when nothing changed; when something did change, the
+replacement is built off-DOM and swapped in one reflow
+(replaceChildren), so an update is a single clean repaint instead of
+a wipe-then-rebuild flash.
+
 ## 0.0.124 - 2026-09-12 (stability-fixes branch)
 
 The &reload on-air reply, per Brett ("that is all it needs to say"): now
