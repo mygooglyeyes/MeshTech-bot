@@ -9,6 +9,30 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.123 - 2026-09-12 (stability-fixes branch)
+
+Two fixes from the v0.0.122 proving period (Brett's DM test, 21:37-21:46):
+
+**Over-busy clear-channel pre-check.** The pre-check was riding the
+radio's receiving-tuned CAD thresholds (15/7 - Brett's openHop tuning,
+which hears weak packets) and read "channel busy" on nearly every
+transmission, adding up to 4 s per packet while saving nothing. The
+pre-check now carries its own thresholds, mcp.precheck_cad_peak /
+mcp.precheck_cad_min (default 22/10, Semtech's recommended CAD pair for
+SF7), passed to each perform_cad() call; 0/0 rides along with the
+driver's thresholds as before. Receiving (cad_peak/cad_min) is
+untouched. Also fixed: two cap-warning/backoff lines were duplicated in
+the wait loop.
+
+**Stale RSSI/SNR on inbound log lines.** The driver's packet-status
+registers occasionally return impossible values (RSSI=0 dBm and SNR=14.0
+dB seen live on Brett's 21:45 DMs). RSSI/SNR are now plausibility-
+checked on arrival (RSSI must be -160..-10 dBm, SNR -21..+12.8 dB -
+point-blank -16/-20 readings are real and kept); impossible values are
+dropped to None: log lines omit them, the node store stores NULL, the
+modem feed carries the 0x80 sentinel, and a new signal_anomalies counter
+counts them.
+
 ## 0.0.122 - 2026-09-12 (stability-fixes branch)
 
 Clear-channel wait before every transmission (Brett's DM-loss report,
