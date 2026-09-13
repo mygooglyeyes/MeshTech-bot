@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.122 - 2026-09-12 (stability-fixes branch)
+
+Clear-channel wait before every transmission (Brett's DM-loss report,
+2026-09-12 evening): the radio driver's listen-before-talk gives up
+after ~5 attempts and transmits anyway; on a busy evening that
+ collision-destroyed every ACK and DM reply to Brett's phone (188
+garbled packets in 45 minutes) while the phone kept resending. The bot
+now runs its own CAD pre-check before handing a packet to the driver:
+busy -> wait 0.3s and re-check, up to
+mcp.clear_channel_wait_seconds (default 4.0s, 0 = old behavior), then
+ships the packet anyway with a warning. Waits are counted in the MCP
+stats. Also: inbound DM/channel log lines now show RSSI/SNR so "the
+phone never got the reply" can be judged with signal data.
+
 ## 0.0.121 - 2026-09-12
 
 Deploy log wording, per Brett: the config-sync line now reads

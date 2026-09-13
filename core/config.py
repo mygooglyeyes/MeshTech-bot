@@ -256,6 +256,12 @@ class McpCfg:
     # driver at radio start; 0/0 = use the driver's own defaults.
     cad_peak: int = 15
     cad_min: int = 7
+    # Clear-channel wait (v0.0.122, Brett): before each transmission the
+    # bot runs its own channel-activity pre-check; if the channel is busy
+    # it waits and re-checks up to this many seconds (0.3s apart) instead
+    # of colliding. Protects ACKs and DM replies - a collided ACK makes
+    # the phone resend, multiplying traffic. 0 = off (old behavior).
+    clear_channel_wait_seconds: float = 4.0
 
 
 @dataclass
@@ -715,6 +721,11 @@ def load(config_path: str = "config.yaml") -> Settings:
     if not 0 <= mcp_cad_peak <= 31 or not 0 <= mcp_cad_min <= 31:
         errors.append("mcp.cad_peak and mcp.cad_min must each be between 0 "
                       "and 31 (0/0 = use the driver's own CAD defaults).")
+    mcp_clear_wait = _float(mcp_raw, "clear_channel_wait_seconds", 4.0,
+                            errors, "mcp.clear_channel_wait_seconds")
+    if mcp_clear_wait < 0 or mcp_clear_wait > 30:
+        errors.append("mcp.clear_channel_wait_seconds must be between 0 "
+                      "and 30 (0 = transmit without a pre-check).")
     mcp = McpCfg(
         enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
         frequency_hz=freq,
@@ -726,6 +737,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         inter_packet_politeness_seconds=mcp_polite,
         cad_peak=mcp_cad_peak,
         cad_min=mcp_cad_min,
+        clear_channel_wait_seconds=mcp_clear_wait,
     )
 
     # --- modem_feed (push radio packets to meshtech-modem port 5056) ---

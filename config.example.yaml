@@ -276,6 +276,12 @@ mcp:
   # Brett found best on openHop for this board. 0/0 = driver defaults.
   cad_peak: 15
   cad_min: 7
+  # Before each transmission the bot runs its own channel-activity
+  # pre-check; if the air is busy it waits and re-checks up to this many
+  # seconds (0.3s apart) instead of sending into a collision. Protects
+  # ACKs and DM replies - a collided ACK makes the phone resend. 0 = off
+  # (old behavior).
+  clear_channel_wait_seconds: 4.0
 
 # --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
 # Pushes a copy of every packet the radio hears (and every packet the

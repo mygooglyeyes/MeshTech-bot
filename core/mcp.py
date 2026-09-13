@@ -28,6 +28,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import random
 import struct
 import time
 from pathlib import Path
@@ -268,6 +269,7 @@ class McpStats:
         self.dropped = 0
         self.decoded = 0
         self.decrypt_fail = 0
+        self.clear_channel_waits = 0   # v0.0.122: sends that waited for quiet
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +554,17 @@ class Mcp:
         # Serializes wait+TX so two concurrent sends cannot both sleep
         # past the gap and then transmit back-to-back anyway.
         self._tx_gate = asyncio.Lock()
+        # Clear-channel wait (v0.0.122, Brett): when the driver's LBT gives
+        # up ("channel busy, transmitting anyway" in the journal), the
+        # packet collides with whatever is on the air. A collided ACK or DM
+        # reply is the worst outcome - the phone never sees it, marks the
+        # DM failed, and resends, multiplying traffic on an already busy
+        # channel. So: before THIS packet goes out, run our own CAD pre-
+        # check; if the channel is busy, wait and re-check up to a cap.
+        self._clear_wait = max(
+            0.0, float(getattr(self.settings.mcp,
+                               "clear_channel_wait_seconds", 4.0)))
+        self.stats.clear_channel_waits = 0
 
     # ------------------------------------------------- client-interface shim
     # bot.py sets service.client = mcp in radio mode (the router's reply
@@ -1041,7 +1054,8 @@ class Mcp:
             self._deliver("GRP_TXT", channel["name"], name_for_log, msg,
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
-                              if (msg.hops or 0) > 0 else None))
+                              if (msg.hops or 0) > 0 else None),
+                          rssi=rssi, snr=snr)
             return                       # first validating candidate wins
         log.debug("GRP_TXT hash %02X: no channel key matched", channel_hash)
 
@@ -1097,7 +1111,8 @@ class Mcp:
             self._deliver("TXT_MSG", prefix, prefix, msg,
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
-                              if (msg.hops or 0) > 0 else None))
+                              if (msg.hops or 0) > 0 else None),
+                          rssi=rssi, snr=snr)
             return
         self.stats.decrypt_fail += 1
         # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
@@ -1174,12 +1189,17 @@ class Mcp:
 
     def _deliver(self, frame_type: str, label: str, sender: str,
                  msg: InboundMessage,
-                 path_hash_size: Optional[int] = None) -> None:
+                 path_hash_size: Optional[int] = None,
+                 rssi: Optional[int] = None,
+                 snr: Optional[float] = None) -> None:
         """Log + publish + hand to the router (never raises).
 
         path_hash_size (bytes per path hop, when the frame carried a path)
         lands in the capture so the !2byte report reflects MCP-mode
         radio traffic, not just companion-mode captures.
+        rssi/snr (v0.0.122, Brett): shown on the IN log line so a "the
+        phone never got the reply" report can be judged with signal
+        data instead of guesswork.
         """
         capture = getattr(self.service, "capture", None)
         if capture is not None:
@@ -1193,9 +1213,16 @@ class Mcp:
                     channel_name=msg.channel_name)
             except Exception:
                 pass
+        meta = ""
+        if msg.hops is not None:
+            meta += f" (hops={msg.hops}"
+            if rssi is not None:
+                meta += f", RSSI={rssi}dBm"
+            if snr is not None:
+                meta += f", SNR={snr}dB"
+            meta += ")"
         log.info("IN %s %s: %s%s", frame_type, label,
-                 _log_line(msg.text),
-                 f" (hops={msg.hops})" if msg.hops is not None else "")
+                 _log_line(msg.text), meta)
         handler = self._inbound
         if handler is None:
             return
@@ -1388,6 +1415,55 @@ class Mcp:
 
     # ------------------------------------------------------------- radio TX
 
+    async def _wait_for_clear_channel(self) -> bool:
+        """CAD pre-check before TX: wait out a busy channel, up to the cap.
+
+        v0.0.122 (Brett): the driver's LBT gives up after ~5 attempts
+        ("channel busy, transmitting anyway") and sends into a collision
+        - on 2026-09-12 that killed every ACK and DM reply to his phone
+        while the phone kept resending. This bot-side pre-check runs our
+        own CAD before handing the packet over: busy -> wait 0.3 s and
+        re-check, until the cap (mesh.clear_channel_wait_seconds, 0 =
+        off). Transmits anyway at the cap (a reply must still ship), but
+        the attempt is counted and logged. Never raises: if CAD is
+        unavailable (companion mode, odd driver) we send immediately.
+        Must be called while holding self._tx_gate.
+
+        Returns True if at least one wait round happened.
+        """
+        cap = self._clear_wait
+        if cap <= 0 or self.radio is None:
+            return False
+        perform_cad = getattr(self.radio, "perform_cad", None)
+        if not callable(perform_cad):
+            return False                 # fake/test radios, companion mode
+        deadline = time.monotonic() + cap
+        waited = False
+        while True:
+            try:
+                busy = await perform_cad()
+            except Exception as exc:
+                log.debug("CAD pre-check unavailable (%s) - sending.", exc)
+                return False
+            if not busy:
+                if waited:
+                    log.info("Clear-channel wait: quiet - sending.")
+                return waited
+            if time.monotonic() >= deadline:
+                log.warning("Clear-channel wait hit the %.1fs cap with the "
+                            "channel still busy - transmitting anyway "
+                            "(this packet may collide).", cap)
+                return True
+            if not waited:
+                log.info("Channel busy before TX - waiting for quiet "
+                         "(up to %.1fs).", cap)
+                waited = True
+            # Randomized backoff (the openhop family's recipe - KISS
+            # modem wrapper LBT_RETRY_DELAYS_MS): fixed spacing from many
+            # waiting stations re-collides on the next slot; jitter does
+            # not. 120/240/360 ms, same as their host-side LBT.
+            await asyncio.sleep(random.choice((0.12, 0.24, 0.36)))
+
     async def send(self, data: bytes) -> bool:
         """Transmit over the real radio, then loop back to the modem feed.
 
@@ -1421,6 +1497,13 @@ class Mcp:
                 log.info("Politeness gap: waiting %.1fs before TX (%dB).",
                          wait, len(data))
                 await asyncio.sleep(wait)
+            # Clear-channel wait (v0.0.122): the driver's own LBT gives up
+            # after ~5 tries and transmits anyway; a packet sent then is a
+            # guaranteed collision. Hold THIS packet back until the channel
+            # is quiet, up to mesh.clear_channel_wait_seconds (0 = off).
+            waited = await self._wait_for_clear_channel()
+            if waited:
+                self.stats.clear_channel_waits += 1
             try:
                 await self.radio.send(data)
             except Exception as exc:
