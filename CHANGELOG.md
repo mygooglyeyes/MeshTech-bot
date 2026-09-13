@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.119 - 2026-09-12
+
+The message-log export (messages.csv + summary_dms.csv, originally
+v0.0.087 on feature/mesh-health) now lives on DEV too. The 8 failing
+export tests were not stale - they were testing a feature that never
+made it into this branch's history: the fork point predates v0.0.087,
+so the exporter code existed only on feature/mesh-health while its
+tests rode along on every other branch. Restored verbatim from
+feature/mesh-health: _chunk_index, export_messages (messages.csv),
+dm_delivery_summary + _write_dm_summary (summary_dms.csv),
+export_packets ships messages.csv always and summary_dms.csv with the
+summaries, rows = packets + messages, CLI wording updated. Suite: 458
+pass, zero failures (the two pre-existing collection-error files stay
+skipped; feature/mesh-health itself is untouched).
+
 ## 0.0.118 - 2026-09-12
 
 Startup identity self-check (Brett, after asking "the bot's identity key
