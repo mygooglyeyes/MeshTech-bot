@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.132 - 2026-09-13 (small-repairs branch)
+
+Two full-editor fixes from Brett's first live run on hilltop:
+
+- logging.level (and every choice key) refused ALL input: the prompt
+  lowercased the typed answer but compared it against the uppercase
+  list, so Enter and "INFO" both bounced. Choice matching is now
+  case-insensitive and always returns the canonical value.
+- mesh.path_hash_size showed bare numbers (1|2|3) with no link to
+  openHop's convention, where the same setting counts from 0 (0 =
+  1 byte, 1 = 2 bytes, 2 = 3 bytes). Choices now read "1 = 1-byte hash
+  (openHop path.hash.size 0) - today's mesh" etc., and the help text
+  explains both scales and the migration caution. (Existing configs
+  are unaffected - the stored value stays a plain number.)
+
 ## 0.0.131 - 2026-09-13 (small-repairs branch)
 
 "Clean config" control-panel option (Brett's request: wipe the config

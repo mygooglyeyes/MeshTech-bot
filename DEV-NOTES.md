@@ -11,6 +11,13 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.132** - Two full-editor fixes from Brett's first live run:
+  choice keys (logging.level et al) accepted nothing because typed
+  answers were lowercased against an uppercase list - matching is now
+  case-insensitive with canonical returns; path_hash_size choices now
+  carry the openHop mapping (our 1/2/3 bytes = their path.hash.size
+  0/1/2) plus migration guidance. 3 new tests; suite 487 pass.
+
 - **v0.0.131 (not yet committed)** - New "Clean config" control-panel
   option (menu 8 now / `sudo ./manage.sh cleanconfig`): backs up,
   double-confirms, wipes the live config.yaml and rebuilds it from the

@@ -387,9 +387,15 @@ FULL_FIELDS = [
      "When the hop count can't be read: ignore (safe) or respond anyway."),
     ("mesh", "channel_sender_name", "choice", "trust", ["trust", "smart", "off"],
      "Trust the sender name embedded in channel text: trust / smart / off."),
-    ("mesh", "path_hash_size", "choice", "1", ["1", "2", "3"],
-     "Path bytes the bot announces on ITS OWN adverts/flood DMs (1 = today's "
-     "mesh). Raise only when the repeaters have migrated."),
+    ("mesh", "path_hash_size", "choice", "1",
+     [("1", "1-byte hash (openHop path.hash.size 0) - today's mesh"),
+      ("2", "2-byte hash (openHop path.hash.size 1) - mesh target"),
+      ("3", "3-byte hash (openHop path.hash.size 2)")],
+     "Path bytes per hop on the bot's OWN adverts/flood DMs. OUR value is "
+     "BYTES; openHop's own setting counts from 0 (0 = 1 byte, 1 = 2 bytes, "
+     "2 = 3 bytes). Set 2 here only when your repeaters have migrated to "
+     "2-byte hashes; a value the repeaters do not use yet gets the bot's "
+     "adverts unrelayed by older 1-byte stations."),
     # --- dm ---
     ("dm", "enabled", "bool", True, None,
      "Answer direct messages at all."),
@@ -530,6 +536,8 @@ def _render_full_value(value, kind: str) -> str:
         return "true" if value else "false"
     if kind in ("int", "num"):
         return repr(value)
+    if kind == "choice":
+        return str(value)     # controlled words/numbers - bare is valid YAML
     return json.dumps(str(value))     # quoting survives names with spaces
 
 
@@ -546,6 +554,33 @@ def set_full_key(text: str, dotted: str, rendered: str) -> str:
     return splice_scalar(text, dotted, rendered)
 
 
+def _choice_display(b) -> str:
+    """One choice as displayed: 'value' or 'value = label'."""
+    if isinstance(b, tuple):
+        value, label = b
+        return f"{value} = {label}" if label and str(label) != str(value) else str(value)
+    return str(b)
+
+
+def match_choice(raw: str, bounds):
+    """Match a typed answer against a choice list (case-insensitive).
+
+    Entries may be plain strings or (value, label) pairs; the canonical
+    VALUE is always returned so the file stores what the loader expects
+    (e.g. 'info' and 'INFO' both return 'INFO'). None = no match; the
+    caller decides what an empty answer means.
+    """
+    raw = str(raw).strip().lower()
+    if not raw:
+        return None
+    for b in bounds:
+        value, label = (b if isinstance(b, tuple) else (b, b))
+        value, label = str(value), str(label)
+        if raw == value.lower() or raw == label.lower():
+            return value
+    return None
+
+
 def _ask_full(kind: str, default, bounds, current, present: bool, commented: bool):
     """Ask one full-editor question. Returns _KEEP or the parsed answer."""
     if kind == "secret":
@@ -559,14 +594,17 @@ def _ask_full(kind: str, default, bounds, current, present: bool, commented: boo
     if kind == "bool":
         return ask_yes_no("value", bool(current if present else default))
     if kind == "choice":
-        wanted = str(current if present else default).lower()
+        wanted = str(current if present else default)
         while True:
-            raw = input(f"  value [{'|'.join(bounds)}] [{wanted}]: ").strip().lower()
+            disp = " | ".join(_choice_display(b) for b in bounds)
+            raw = input(f"  value [{disp}] [{wanted}]: ").strip()
             if not raw:
                 raw = wanted
-            if raw in bounds:
-                return raw
-            print("   -> please type one of: " + ", ".join(bounds))
+            canon = match_choice(raw, bounds)
+            if canon is not None:
+                return canon
+            print("   -> please type one of: "
+                  + ", ".join(str(b[0] if isinstance(b, tuple) else b) for b in bounds))
     lo, hi = bounds
     if kind == "int":
         return ask_int("value", int(current if present else default), lo, hi)
