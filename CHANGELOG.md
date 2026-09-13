@@ -9,6 +9,50 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.131 - 2026-09-13 (small-repairs branch)
+
+"Clean config" control-panel option (Brett's request: wipe the config
+and start from scratch, with the file rebuilt at the latest version):
+
+- New menu option 7 in manage.sh (and `sudo ./manage.sh cleanconfig`
+  as a direct subcommand): after offering a backup of config + data and
+  a double confirm, it deletes the live config.yaml and rebuilds it
+  from the config.example.yaml shipped with the RUNNING code - so the
+  fresh file carries every documented field at the current version by
+  construction, and the bot's config-sync keeps filling in any new
+  keys on future deploys. Database, captures and backups are never
+  touched; ownership/mode follow the install convention (meshtech,
+  640). It then offers the interactive configuration editor (option 1's
+  flow) and a restart, since the fresh file has no repeater IP,
+  channel keys, admins or dashboard password.
+- The config editor (used by Clean config and option 1) now walks
+  through more of what a fresh install needs: private-channel keys
+  (secret_hex) are asked per channel with hex validation, the admin
+  list warns when it still holds the example placeholder, and a new
+  question sets the dashboard's reachability (127.0.0.1 vs 0.0.0.0,
+  with a pointer to set-password.sh). After saving it explains that
+  everything NOT asked keeps the example values - the optional
+  features sit in the file commented out with their own
+  explanations, ready to uncomment by hand.
+- Fixed while there: the plain (non-whiptail) menu header never listed
+  option 6 (web-console updates), so keyboard-only users could not
+  reach it from the menu; the header now lists it again.
+- New "Edit full config" menu option (2; `sudo ./manage.sh
+  configurefull`): the same editor in FULL mode, walking EVERY
+  documented setting one by one - values, bounds and help text shown
+  for each, with the current value pre-filled. Keys that are commented
+  out in the file (the optional features) show "default unused":
+  Enter leaves them unused, typing a value uncomments the line with
+  that value (comments around it preserved). Structured settings keep
+  their own editors (channels, admin nodes, replies) or their console
+  card (modules), and the per-channel interval map stays hand-edit.
+  A guard test pins the field list against core/config.py so any new
+  documented key must be added to the full editor or the test fails.
+  Menu numbering shifts: update is now option 3 (3d = branch),
+  uninstall 4, restart 5, logs 6, web-update enable 7, clean config 8.
+  The essentials editor keeps its behavior and content (Brett's call:
+  option 1 unchanged apart from the walkthrough additions above).
+
 ## 0.0.127 - 2026-09-13 (stability-fixes branch)
 
 Git-side unit locks decided and fixed, so a reinstall can never

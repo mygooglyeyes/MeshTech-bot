@@ -9,6 +9,25 @@ Newest entries first within each branch.
 
 ---
 
+## small-repairs (current work)
+
+- **v0.0.131 (not yet committed)** - New "Clean config" control-panel
+  option (menu 8 now / `sudo ./manage.sh cleanconfig`): backs up,
+  double-confirms, wipes the live config.yaml and rebuilds it from the
+  latest config.example.yaml so every documented field exists at the
+  current version; then offers the config editor and a restart. Also
+  fixed: the plain menu header never listed the web-update option.
+  Brett's follow-ups built in: (1) the essentials editor walkthrough
+  now covers private-channel keys (hex-validated secret_hex per
+  channel), warns about the example admin placeholder, asks dashboard
+  reachability (127.0.0.1 vs 0.0.0.0), and after saving points at the
+  commented-out optional features and set-password.sh; (2) NEW "Edit
+  full config" menu option 2 (configurefull): walks EVERY documented
+  setting with help text and bounds, commented-out keys show "default
+  unused" and are uncommented in place when given a value; a guard
+  test pins the field list against core/config.py. Awaiting Brett's
+  OK before any commit.
+
 ## feature/branch-switcher (current work - contains the node-popup stack)
 
 - **v0.0.082** - Developer mode: a checkbox in the update popup widens
