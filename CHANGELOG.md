@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.121 - 2026-09-12
+
+Deploy log wording, per Brett: the config-sync line now reads
+"Checking for stale or missing config options..." - the old wording
+("Syncing documented default settings into your config...") read like a
+config reset, which it is not: the step only ADDS settings that are
+entirely absent, never modifies existing ones. One line in deploy.sh;
+no behavior change anywhere.
+
 ## 0.0.120 - 2026-09-12
 
 Fix web-console updates: deploy.sh no longer requires $HOME. The update

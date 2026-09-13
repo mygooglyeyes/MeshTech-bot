@@ -121,7 +121,7 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   # secrets are never auto-added; a backup is written first. Failure here
   # does not abort the deploy - config validation below still gates it.
   if [[ -f "$RUNTIME/config.example.yaml" && -f "$RUNTIME/config.yaml" ]]; then
-    log "Syncing documented default settings into your config..."
+    log "Checking for stale or missing config options..."
     "$PY" "$RUNTIME/scripts/sync_config_defaults.py" \
       --example "$RUNTIME/config.example.yaml" \
       --live "$RUNTIME/config.yaml" \
