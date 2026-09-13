@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.120 - 2026-09-12
+
+Fix web-console updates: deploy.sh no longer requires $HOME. The update
+runner starts deploy.sh from a systemd unit whose environment has no
+HOME, and the script's 'set -u' killed it on the very first variable
+assignment ("HOME: unbound variable" in the popup's update log). The
+default clone path now falls back to the invoking user's home from the
+user database (SUDO_USER when run under sudo, else the current user);
+the later home-resolution check uses that same default. Found while
+re-enabling web updates on the box (2026-09-12): first the service unit
+had to lose its NoNewPrivileges + ProtectHome locks (they blocked sudo
+and hid the clone; box fixed live, backup .bak-updates), then this
+script bug surfaced. Manual deploys never saw it - Brett's shell always
+has HOME set.
+
 ## 0.0.119 - 2026-09-12
 
 The message-log export (messages.csv + summary_dms.csv, originally

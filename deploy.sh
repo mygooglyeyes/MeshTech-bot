@@ -26,7 +26,18 @@
 # =============================================================================
 set -euo pipefail
 
-CLONE="${HOME}/meshtech-bot"
+# Default clone location. NEVER assume $HOME exists: the web-console
+# updater runs deploy.sh from a systemd unit whose environment has no
+# HOME, and 'set -u' killed the script on the very first assignment
+# (v0.0.119 web-update bug: "HOME: unbound variable"). Fall back to the
+# invoking user's home from the user database - SUDO_USER when invoked
+# via sudo (the normal manual path), else the current user.
+_default_home() {
+  local invoker="${SUDO_USER:-$(id -un)}"
+  getent passwd "$invoker" 2>/dev/null | cut -d: -f6
+}
+DEFAULT_HOME="$(printf '%s' "${HOME:-$(_default_home)}")"
+CLONE="${DEFAULT_HOME}/meshtech-bot"
 RUNTIME="/opt/meshtech-bot"
 SERVICE_USER="meshtech"
 SERVICE_GROUP="meshtech"
@@ -149,12 +160,15 @@ fi
 #  Phase 1 - pull phase: always runs AS THE INVOKING USER (never root),
 #  so the home clone never accumulates root-owned files.
 # ==============================================================================
+# Resolve the real clone: when the script is run under sudo, SUDO_USER's
+# home is the human's - the default above already points there, but keep
+# the explicit correction when HOME leaked in from the caller's shell.
 INVOKER="${SUDO_USER:-$(id -un)}"
 INVOKER_HOME=""
 if command -v getent &>/dev/null; then
   INVOKER_HOME="$(getent passwd "$INVOKER" 2>/dev/null | cut -d: -f6)"
 fi
-[[ "$CLONE" == "${HOME}/meshtech-bot" && -n "$INVOKER_HOME" ]] && CLONE="$INVOKER_HOME/meshtech-bot"
+[[ -n "$INVOKER_HOME" && "$CLONE" == "${DEFAULT_HOME}/meshtech-bot" ]] && CLONE="$INVOKER_HOME/meshtech-bot"
 
 if [[ ! -d "$CLONE/.git" ]]; then
   log "No clone at $CLONE - creating one (as $INVOKER, no sudo needed)..."
