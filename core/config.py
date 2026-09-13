@@ -252,10 +252,27 @@ class McpCfg:
     inter_packet_politeness_seconds: float = 2.0
     # CAD (channel-activity-detect) thresholds for the radio's
     # listen-before-talk: peak then min, 0-31 each. Brett tuned this
-    # board by ear on openHop - 15/7 heard the mesh best. Applied to the
-    # driver at radio start; 0/0 = use the driver's own defaults.
+    # board by ear on openHop for RECEIVING - 15/7 hears the mesh best.
+    # Applied to the driver at radio start; 0/0 = use the driver's own
+    # defaults.
     cad_peak: int = 15
     cad_min: int = 7
+    # Sensitivity of the bot's own clear-channel PRE-CHECK (v0.0.123).
+    # Kept separate from cad_peak/cad_min on purpose: 15/7 is tuned to
+    # HEAR weak packets, and heard "busy" on almost every send during
+    # the proving period (up to a 4 s delay per packet, saving nothing).
+    # The pre-check only answers "is anyone transmitting right now", so
+    # it uses a higher bar - 22/10 is Semtech's recommended CAD pair for
+    # SF7. 0/0 = ride along with whatever the driver is programmed with.
+    precheck_cad_peak: int = 22
+    precheck_cad_min: int = 10
+    # Clear-channel wait (v0.0.122, Brett): before each transmission the
+    # bot runs its own channel-activity pre-check; if the channel is busy
+    # it waits and re-checks (0.12/0.24/0.36 s jittered steps) up to this
+    # many seconds instead of colliding. Protects ACKs and DM replies - a
+    # collided ACK makes the phone resend, multiplying traffic. 0 = off
+    # (old behavior).
+    clear_channel_wait_seconds: float = 4.0
 
 
 @dataclass
@@ -715,6 +732,19 @@ def load(config_path: str = "config.yaml") -> Settings:
     if not 0 <= mcp_cad_peak <= 31 or not 0 <= mcp_cad_min <= 31:
         errors.append("mcp.cad_peak and mcp.cad_min must each be between 0 "
                       "and 31 (0/0 = use the driver's own CAD defaults).")
+    mcp_precheck_peak = _int(mcp_raw, "precheck_cad_peak", 22, errors,
+                             "mcp.precheck_cad_peak")
+    mcp_precheck_min = _int(mcp_raw, "precheck_cad_min", 10, errors,
+                            "mcp.precheck_cad_min")
+    if not 0 <= mcp_precheck_peak <= 31 or not 0 <= mcp_precheck_min <= 31:
+        errors.append("mcp.precheck_cad_peak and mcp.precheck_cad_min must "
+                      "each be between 0 and 31 (0/0 = the pre-check rides "
+                      "along with the driver's CAD thresholds).")
+    mcp_clear_wait = _float(mcp_raw, "clear_channel_wait_seconds", 4.0,
+                            errors, "mcp.clear_channel_wait_seconds")
+    if mcp_clear_wait < 0 or mcp_clear_wait > 30:
+        errors.append("mcp.clear_channel_wait_seconds must be between 0 "
+                      "and 30 (0 = transmit without a pre-check).")
     mcp = McpCfg(
         enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
         frequency_hz=freq,
@@ -726,6 +756,9 @@ def load(config_path: str = "config.yaml") -> Settings:
         inter_packet_politeness_seconds=mcp_polite,
         cad_peak=mcp_cad_peak,
         cad_min=mcp_cad_min,
+        precheck_cad_peak=mcp_precheck_peak,
+        precheck_cad_min=mcp_precheck_min,
+        clear_channel_wait_seconds=mcp_clear_wait,
     )
 
     # --- modem_feed (push radio packets to meshtech-modem port 5056) ---
@@ -997,7 +1030,9 @@ def sanitized_snapshot(settings: Settings) -> Dict[str, Any]:
                 "inter_packet_politeness_seconds":
                     settings.mcp.inter_packet_politeness_seconds,
                 "cad_peak": settings.mcp.cad_peak,
-                "cad_min": settings.mcp.cad_min},
+                "cad_min": settings.mcp.cad_min,
+                "precheck_cad_peak": settings.mcp.precheck_cad_peak,
+                "precheck_cad_min": settings.mcp.precheck_cad_min},
         "modem_feed": {"enabled": settings.modem_feed.enabled,
                        "host": settings.modem_feed.host,
                        "port": settings.modem_feed.port,

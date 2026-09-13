@@ -28,6 +28,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import random
 import struct
 import time
 from pathlib import Path
@@ -241,17 +242,27 @@ def parse_envelope(data: bytes) -> dict:
 FEED_HEADER = 0x01
 
 
-def encode_feed_push(rssi: int, snr: float, signal_rssi: int, data: bytes) -> bytes:
-    """One feed push frame, exactly what the modem's FeedClient parses."""
+def encode_feed_push(rssi, snr, signal_rssi, data: bytes) -> bytes:
+    """One feed push frame, exactly what the modem's FeedClient parses.
+
+    v0.0.123: rssi/snr/signal_rssi may be None (signal untrustworthy -
+    see _plausible_signal); None becomes the 0x80 (-128) sentinel, a
+    value no real signed dBm byte can carry for an audible packet. The
+    modem's parser already masks to one byte, so the wire format is
+    unchanged - openHop just sees the sentinel.
+    """
     length = len(data)
     if length > MAX_LORA_PAYLOAD:
         raise ValueError(f"radio payload too big for the feed: {length}B")
+    rssi_b = 0x80 if rssi is None else (int(rssi) & 0xFF)
+    snr_x10 = 0x80 if snr is None else (int(round(snr * 10)) & 0xFF)
+    sig_b = 0x80 if signal_rssi is None else (int(signal_rssi) & 0xFF)
     return (
         bytes((
             FEED_HEADER,
-            rssi & 0xFF,
-            int(round(snr * 10)) & 0xFF,
-            signal_rssi & 0xFF,
+            rssi_b,
+            snr_x10,
+            sig_b,
         ))
         + length.to_bytes(2, "little")
         + data
@@ -268,6 +279,10 @@ class McpStats:
         self.dropped = 0
         self.decoded = 0
         self.decrypt_fail = 0
+        self.clear_channel_waits = 0   # v0.0.122: sends that waited for quiet
+        # v0.0.123: packets whose RSSI the driver could not read cleanly
+        # (stale register values). Substituted values are never shown.
+        self.signal_anomalies = 0
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +567,22 @@ class Mcp:
         # Serializes wait+TX so two concurrent sends cannot both sleep
         # past the gap and then transmit back-to-back anyway.
         self._tx_gate = asyncio.Lock()
+        # Clear-channel wait (v0.0.122, Brett): when the driver's LBT gives
+        # up ("channel busy, transmitting anyway" in the journal), the
+        # packet collides with whatever is on the air. A collided ACK or DM
+        # reply is the worst outcome - the phone never sees it, marks the
+        # DM failed, and resends, multiplying traffic on an already busy
+        # channel. So: before THIS packet goes out, run our own CAD pre-
+        # check; if the channel is busy, wait and re-check up to a cap.
+        self._clear_wait = max(
+            0.0, float(getattr(self.settings.mcp,
+                               "clear_channel_wait_seconds", 4.0)))
+        # v0.0.123: the pre-check's own sensitivity. 0/0 = run the CAD the
+        # driver was programmed with (the LBT thresholds); set values pass
+        # det_peak/det_min straight to perform_cad(). Overwritten in
+        # _radio_up() from config once the real radio is up.
+        self._precheck_thresholds = (0, 0)
+        self.stats.clear_channel_waits = 0
 
     # ------------------------------------------------- client-interface shim
     # bot.py sets service.client = mcp in radio mode (the router's reply
@@ -692,6 +723,13 @@ class Mcp:
         from pymc_core.hardware.sx1262_wrapper import SX1262Radio
 
         kwargs = self._radio_kwargs()
+        # v0.0.123: pre-check sensitivity read once, here, so the wait
+        # loop never re-parses config per send. cfg is parsed below with
+        # the rest; fall back to the dataclass defaults.
+        cfg = self.settings.mcp
+        self._precheck_thresholds = (
+            int(getattr(cfg, "precheck_cad_peak", 0)),
+            int(getattr(cfg, "precheck_cad_min", 0)))
         log.info("Radio init: PiMesh-1W v2 profile, %.3fMHz SF%d %gkHz %ddBm",
                  kwargs["frequency"] / 1e6, kwargs["spreading_factor"],
                  kwargs["bandwidth"] / 1000, kwargs["tx_power"])
@@ -701,10 +739,10 @@ class Mcp:
             if not ok:
                 raise RuntimeError("radio.begin() returned False")
             # CAD thresholds for the radio's own LBT (mcp.cad_peak/cad_min,
-            # Brett's openHop tuning for this board: 15/7). 0/0 leaves the
-            # driver's defaults alone. Must succeed before first TX; a bad
-            # value here is a config error, so fail loud rather than drift
-            # silently onto different air sensitivity.
+            # Brett's openHop RX tuning for this board: 15/7). 0/0 leaves
+            # the driver's defaults alone. Must succeed before first TX; a
+            # bad value here is a config error, so fail loud rather than
+            # drift silently onto different air sensitivity.
             cfg = self.settings.mcp
             self._apply_cad_thresholds(
                 radio, int(getattr(cfg, "cad_peak", 0)),
@@ -746,6 +784,49 @@ class Mcp:
 
     # ------------------------------------------------------------- radio RX
 
+    # Plausible packet RSSI range (dBm), v0.0.123. RSSI is a *negative*
+    # quantity in dBm: warmer than PLAUSIBLE_RSSI_MAX_DBM is physically
+    # impossible for any packet the radio can decode (the live journal's
+    # RSSI=0 lines). Values like -16/-20 stay - they are legitimate
+    # point-blank readings (Brett's phone right next to the antenna).
+    PLAUSIBLE_RSSI_MAX_DBM = -10
+    PLAUSIBLE_RSSI_MIN_DBM = -160
+    # SNR plausibility (dB): the SX1262 datasheet caps the estimate at
+    # +12.75 (SF7); a register glitch can return +14 (the 21:45 &diag).
+    PLAUSIBLE_SNR_MAX_DB = 12.8
+    PLAUSIBLE_SNR_MIN_DB = -21.0
+
+    @classmethod
+    def _plausible_signal(cls, rssi: Optional[int], snr: Optional[float],
+                          signal_rssi: Optional[int]) -> tuple[Optional[int],
+                                                               Optional[float],
+                                                               Optional[int]]:
+        """Return (rssi, snr, signal_rssi) with implausible values -> None.
+
+        v0.0.123 (Brett): the driver's packet-status registers occasionally
+        come back stale or overflowed (RSSI=0 / -16 / -20 dBm and SNR=14.0
+        seen live on his 21:45 DMs), because the IRQ background task can
+        read them after the radio has already moved on. RSSI is a *negative*
+        quantity in dBm: warmer than -10 dBm is physically impossible for
+        any packet the radio can decode. Rather than show a made-up number,
+        the value is dropped to None - callers that only log skip it; the
+        store already treats None as 'unknown'. Never raises.
+        """
+        def _keep(value, lo, hi):
+            """value if plausible else None; per-field so one bad type
+            from a misbehaving driver cannot blank the other two."""
+            try:
+                if value is None or lo <= value <= hi:
+                    return value
+            except Exception:             # wrong type, unorderable, etc.
+                return None
+            return None
+        return (_keep(rssi, cls.PLAUSIBLE_RSSI_MIN_DBM,
+                      cls.PLAUSIBLE_RSSI_MAX_DBM),
+                _keep(snr, cls.PLAUSIBLE_SNR_MIN_DB, cls.PLAUSIBLE_SNR_MAX_DB),
+                _keep(signal_rssi, cls.PLAUSIBLE_RSSI_MIN_DBM,
+                      cls.PLAUSIBLE_RSSI_MAX_DBM))
+
     def _on_radio_rx(self, data: bytes) -> None:
         """Called from the driver's IRQ background task for every packet."""
         if not data:
@@ -754,8 +835,12 @@ class Mcp:
         rssi = self.radio.last_rssi if self.radio else -100
         snr = self.radio.last_snr if self.radio else 0.0
         signal_rssi = self.radio.last_signal_rssi if self.radio else -100
+        rssi, snr, signal_rssi = self._plausible_signal(rssi, snr, signal_rssi)
+        if rssi is None:
+            self.stats.signal_anomalies += 1
         if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._split, rssi, snr, signal_rssi, data)
+            self._loop.call_soon_threadsafe(self._split, rssi, snr,
+                                            signal_rssi, data)
 
     def _split(self, rssi: int, snr: float, signal_rssi: int, data: bytes) -> None:
         """Fan one packet out to both consumers - neither can starve the other."""
@@ -1041,7 +1126,8 @@ class Mcp:
             self._deliver("GRP_TXT", channel["name"], name_for_log, msg,
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
-                              if (msg.hops or 0) > 0 else None))
+                              if (msg.hops or 0) > 0 else None),
+                          rssi=rssi, snr=snr)
             return                       # first validating candidate wins
         log.debug("GRP_TXT hash %02X: no channel key matched", channel_hash)
 
@@ -1097,7 +1183,8 @@ class Mcp:
             self._deliver("TXT_MSG", prefix, prefix, msg,
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
-                              if (msg.hops or 0) > 0 else None))
+                              if (msg.hops or 0) > 0 else None),
+                          rssi=rssi, snr=snr)
             return
         self.stats.decrypt_fail += 1
         # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
@@ -1174,12 +1261,17 @@ class Mcp:
 
     def _deliver(self, frame_type: str, label: str, sender: str,
                  msg: InboundMessage,
-                 path_hash_size: Optional[int] = None) -> None:
+                 path_hash_size: Optional[int] = None,
+                 rssi: Optional[int] = None,
+                 snr: Optional[float] = None) -> None:
         """Log + publish + hand to the router (never raises).
 
         path_hash_size (bytes per path hop, when the frame carried a path)
         lands in the capture so the !2byte report reflects MCP-mode
         radio traffic, not just companion-mode captures.
+        rssi/snr (v0.0.122, Brett): shown on the IN log line so a "the
+        phone never got the reply" report can be judged with signal
+        data instead of guesswork.
         """
         capture = getattr(self.service, "capture", None)
         if capture is not None:
@@ -1193,9 +1285,16 @@ class Mcp:
                     channel_name=msg.channel_name)
             except Exception:
                 pass
+        meta = ""
+        if msg.hops is not None:
+            meta += f" (hops={msg.hops}"
+            if rssi is not None:
+                meta += f", RSSI={rssi}dBm"
+            if snr is not None:
+                meta += f", SNR={snr}dB"
+            meta += ")"
         log.info("IN %s %s: %s%s", frame_type, label,
-                 _log_line(msg.text),
-                 f" (hops={msg.hops})" if msg.hops is not None else "")
+                 _log_line(msg.text), meta)
         handler = self._inbound
         if handler is None:
             return
@@ -1388,6 +1487,65 @@ class Mcp:
 
     # ------------------------------------------------------------- radio TX
 
+    async def _wait_for_clear_channel(self) -> bool:
+        """CAD pre-check before TX: wait out a busy channel, up to the cap.
+
+        v0.0.122 (Brett): the driver's LBT gives up after ~5 attempts
+        ("channel busy, transmitting anyway") and sends into a collision
+        - on 2026-09-12 that killed every ACK and DM reply to his phone
+        while the phone kept resending. This bot-side pre-check runs our
+        own CAD before handing the packet over: busy -> wait 0.3 s and
+        re-check, until the cap (mesh.clear_channel_wait_seconds, 0 =
+        off). Transmits anyway at the cap (a reply must still ship), but
+        the attempt is counted and logged. Never raises: if CAD is
+        unavailable (companion mode, odd driver) we send immediately.
+        Must be called while holding self._tx_gate.
+
+        Returns True if at least one wait round happened.
+        """
+        cap = self._clear_wait
+        if cap <= 0 or self.radio is None:
+            return False
+        perform_cad = getattr(self.radio, "perform_cad", None)
+        if not callable(perform_cad):
+            return False                 # fake/test radios, companion mode
+        deadline = time.monotonic() + cap
+        waited = False
+        # v0.0.123: run the pre-check at its OWN sensitivity, not the
+        # LBT's. The always-busy finding (2026-09-12 proving period): the
+        # RX-tuned 15/7 read busy on nearly every send, adding up to 4 s
+        # per packet while saving nothing. Semtech's SF7 CAD default is
+        # 22/10 - a much higher bar for "activity" - so the config gains
+        # precheck_cad_peak/min (default 22/10) and they ride along on
+        # every perform_cad() call. 0/0 here means "no override".
+        det_peak, det_min = getattr(self, "_precheck_thresholds", (0, 0))
+        cad_kwargs = ({} if not det_peak and not det_min
+                      else {"det_peak": det_peak, "det_min": det_min})
+        while True:
+            try:
+                busy = await perform_cad(**cad_kwargs)
+            except Exception as exc:
+                log.debug("CAD pre-check unavailable (%s) - sending.", exc)
+                return False
+            if not busy:
+                if waited:
+                    log.info("Clear-channel wait: quiet - sending.")
+                return waited
+            if time.monotonic() >= deadline:
+                log.warning("Clear-channel wait hit the %.1fs cap with the "
+                            "channel still busy - transmitting anyway "
+                            "(this packet may collide).", cap)
+                return True
+            if not waited:
+                log.info("Channel busy before TX - waiting for quiet "
+                         "(up to %.1fs).", cap)
+                waited = True
+            # Randomized backoff (the openhop family's recipe - KISS
+            # modem wrapper LBT_RETRY_DELAYS_MS): fixed spacing from many
+            # waiting stations re-collides on the next slot; jitter does
+            # not. 120/240/360 ms, same as their host-side LBT.
+            await asyncio.sleep(random.choice((0.12, 0.24, 0.36)))
+
     async def send(self, data: bytes) -> bool:
         """Transmit over the real radio, then loop back to the modem feed.
 
@@ -1421,6 +1579,13 @@ class Mcp:
                 log.info("Politeness gap: waiting %.1fs before TX (%dB).",
                          wait, len(data))
                 await asyncio.sleep(wait)
+            # Clear-channel wait (v0.0.122): the driver's own LBT gives up
+            # after ~5 tries and transmits anyway; a packet sent then is a
+            # guaranteed collision. Hold THIS packet back until the channel
+            # is quiet, up to mesh.clear_channel_wait_seconds (0 = off).
+            waited = await self._wait_for_clear_channel()
+            if waited:
+                self.stats.clear_channel_waits += 1
             try:
                 await self.radio.send(data)
             except Exception as exc:

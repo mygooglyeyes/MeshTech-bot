@@ -9,6 +9,109 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.127 - 2026-09-13 (stability-fixes branch)
+
+Git-side unit locks decided and fixed, so a reinstall can never
+silently re-break web updates (Brett's open item: the box's installed
+unit had NoNewPrivileges + ProtectHome removed by hand - .bak-updates -
+to unblock the updater, while the template in git still carried them).
+Git history settled the question: the locks were added in the original
+hardening pass BEFORE the web-update feature existed, and the
+PrivateDevices=true radio conflict was the same class of bug, already
+fixed in v0.0.094. The template now matches the unit proven live on the
+box: NoNewPrivileges and ProtectHome REMOVED (sudo must reach the
+sudoers-gated update trigger, and the runner must read the home clone
+at updates.clone_path), everything else kept - PrivateTmp,
+ProtectSystem=full, kernel/control-group protections, LockPersonality,
+and the radio access lines (PrivateDevices=false + gpio/spi groups).
+The template itself now carries a loud DO-NOT-RE-ENABLE warning naming
+both features each flag would break, and five new tests pin the file:
+the two flags absent as directives, radio access present, remaining
+hardening present. (The test design itself matters: comments may
+MENTION the flags, so the checks parse active directive lines only.)
+Docs/INSTALL.md touches no unit flags, so nothing else needed changes.
+No effect on the running box - hilltop already runs the fixed unit.
+
+## 0.0.126 - 2026-09-13 (stability-fixes branch)
+
+Deploys now PRUNE stale code files (Brett's &health crash report:
+"Handler meshhealth error: 'Store' object has no attribute
+'sender_windows'"). The old apply step only ever copied files in, so
+deleting a file in git left it in the runtime forever - when branches
+switched, handlers/meshhealth.py from the unreviewed feature/mesh-health
+branch survived, auto-registered as a handler (the bot discovers every
+handlers/*.py), and crashed &health. Now the apply step prunes before
+extracting, DATA-DRIVEN from the staged tarball (Brett's challenge:
+"what if folders are added or changed?"): every runtime top-level
+folder except known state (config.yaml + .bak-*, data/, venvs,
+dot-dirs/dotfiles, logs, databases, pid files) has its non-build files
+deleted, and emptied folders are tidied away - so a folder added,
+renamed or removed in git is handled with NO script edit. Proven with
+three offline dry-runs: renamed/new folders, stale handlers, and
+state-preservation all behave. (The stale files themselves were
+already removed on the box by hand as .bak-stale.)
+
+## 0.0.125 - 2026-09-12 (stability-fixes branch)
+
+Dashboard flash fix (Brett: "the whole page flashes with decoded
+packets open"). Both list cards rebuilt their DOM on every poll, and
+both did the wipe BEFORE deciding whether anything had changed - so a
+quiet channel still blanked/flashed the card every 15-30 s, and the
+packets card (full page height when open) made it read like a whole-
+page reload. Packets additionally signed its rows without the SNR/text
+columns, so live packets rebuilt the card every single poll. Now:
+both cards decide from a full-column signature first and never touch
+the DOM when nothing changed; when something did change, the
+replacement is built off-DOM and swapped in one reflow
+(replaceChildren), so an update is a single clean repaint instead of
+a wipe-then-rebuild flash.
+
+## 0.0.124 - 2026-09-12 (stability-fixes branch)
+
+The &reload on-air reply, per Brett ("that is all it needs to say"): now
+exactly "The config has been successfully reloaded". The old reply
+broadcast the bot's full filesystem path over the mesh plus channel/
+handler counts a reader can't act on; those details still go to the
+journal and the dashboard notice, just not on the air.
+
+## 0.0.123 - 2026-09-12 (stability-fixes branch)
+
+Two fixes from the v0.0.122 proving period (Brett's DM test, 21:37-21:46):
+
+**Over-busy clear-channel pre-check.** The pre-check was riding the
+radio's receiving-tuned CAD thresholds (15/7 - Brett's openHop tuning,
+which hears weak packets) and read "channel busy" on nearly every
+transmission, adding up to 4 s per packet while saving nothing. The
+pre-check now carries its own thresholds, mcp.precheck_cad_peak /
+mcp.precheck_cad_min (default 22/10, Semtech's recommended CAD pair for
+SF7), passed to each perform_cad() call; 0/0 rides along with the
+driver's thresholds as before. Receiving (cad_peak/cad_min) is
+untouched. Also fixed: two cap-warning/backoff lines were duplicated in
+the wait loop.
+
+**Stale RSSI/SNR on inbound log lines.** The driver's packet-status
+registers occasionally return impossible values (RSSI=0 dBm and SNR=14.0
+dB seen live on Brett's 21:45 DMs). RSSI/SNR are now plausibility-
+checked on arrival (RSSI must be -160..-10 dBm, SNR -21..+12.8 dB -
+point-blank -16/-20 readings are real and kept); impossible values are
+dropped to None: log lines omit them, the node store stores NULL, the
+modem feed carries the 0x80 sentinel, and a new signal_anomalies counter
+counts them.
+
+## 0.0.122 - 2026-09-12 (stability-fixes branch)
+
+Clear-channel wait before every transmission (Brett's DM-loss report,
+2026-09-12 evening): the radio driver's listen-before-talk gives up
+after ~5 attempts and transmits anyway; on a busy evening that
+ collision-destroyed every ACK and DM reply to Brett's phone (188
+garbled packets in 45 minutes) while the phone kept resending. The bot
+now runs its own CAD pre-check before handing a packet to the driver:
+busy -> wait 0.3s and re-check, up to
+mcp.clear_channel_wait_seconds (default 4.0s, 0 = old behavior), then
+ships the packet anyway with a warning. Waits are counted in the MCP
+stats. Also: inbound DM/channel log lines now show RSSI/SNR so "the
+phone never got the reply" can be judged with signal data.
+
 ## 0.0.121 - 2026-09-12
 
 Deploy log wording, per Brett: the config-sync line now reads

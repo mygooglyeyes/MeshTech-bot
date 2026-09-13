@@ -80,17 +80,22 @@ class BotService:
                 except Exception:
                     pass
         self.schedule_module_pulses()
-        summary = (
+        # On-air reply (v0.0.124, Brett: "that is all it needs to say").
+        # The old text leaked the filesystem path over the mesh and gave
+        # handler counts a user can't act on; details stay in the log
+        # below, where they belong.
+        summary = "The config has been successfully reloaded"
+        detail = (
             f"Config reloaded from {settings.config_path}: "
             f"{len(settings.channels)} channel(s), {len(self.registry)} handler(s), "
             f"max hops={settings.mesh.max_inbound_hops}."
         )
         if settings.warnings:
-            summary += " Warnings: " + "; ".join(settings.warnings[:3])
+            detail += " Warnings: " + "; ".join(settings.warnings[:3])
         if old.web.enabled != settings.web.enabled:
-            summary += " (web server change needs a restart to take effect)"
-        log.info(summary)
-        self.feed.publish("notice", {"text": summary})
+            detail += " (web server change needs a restart to take effect)"
+        log.info(detail)
+        self.feed.publish("notice", {"text": detail})
         return summary
 
     def request_shutdown(self, reason: str = "requested") -> None:

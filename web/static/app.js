@@ -1187,22 +1187,23 @@ async function refreshMessages() {
   const data = await api("/api/messages?" + qs.toString());
   const rows = data.messages || [];
   const wrap = $("msg-list");
-  wrap.innerHTML = "";
+  // Refresh-glitch fix (v0.0.125, Brett: "the whole page flashes"): the
+  // decision to rebuild must happen BEFORE the DOM is touched. The old
+  // code wiped the list first, so an unchanged poll left the card blank
+  // and a changed one flashed. Signature of the rows we render decides.
+  const sig = rows.length
+    ? rows.map((r) =>
+        (r.recv_ts || 0) + "|" + (r.direction || "") + "|" + (r.text || "").slice(0, 60)
+      ).join(";")
+    : "";
+  if (sig === lastMsgKey) return;
+  lastMsgKey = sig;
   if (!rows.length) {
     const em = document.createElement("em");
     em.textContent = "no messages yet";
-    wrap.appendChild(em);
-    lastMsgKey = "";
+    wrap.replaceChildren(em);
     return;
   }
-  // Refresh-glitch fix: rebuild the table ONLY when something actually
-  // changed. Rebuilding every 15s reset scroll position and flickered
-  // (Brett, 2026-09-09); a signature of the rows we render decides.
-  const sig = rows.map((r) =>
-    (r.recv_ts || 0) + "|" + (r.direction || "") + "|" + (r.text || "").slice(0, 60)
-  ).join(";");
-  if (sig === lastMsgKey) return;
-  lastMsgKey = sig;
   const table = document.createElement("table");
   table.innerHTML = "<thead><tr><th>When</th><th>Dir</th><th>Target</th><th>Hops</th><th>Text</th></tr></thead>";
   const tbody = document.createElement("tbody");
@@ -1220,7 +1221,7 @@ async function refreshMessages() {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  wrap.appendChild(table);
+  wrap.replaceChildren(table);
 }
 
 async function loadMsgChannelOptions() {
@@ -1438,14 +1439,27 @@ async function refreshPackets() {
   const rows = data.packets || [];
   const stats = data.stats || {};
   const wrap = $("pkt-list");
-  // Same anti-flicker rule as the messages list: only rebuild when the
-  // visible rows actually changed.
+  // Refresh-glitch fix (v0.0.125, Brett: "the whole page flashes with
+  // decoded packets open"). Two bugs, both fixed:
+  // 1) the rebuild decision happened AFTER wrap.innerHTML = "" - so every
+  //    30 s poll wiped the card even when nothing changed (the messages
+  //    card had the same order bug; packets got it too), and
+  // 2) the signature ignored the SNR/text columns, so any packet that
+  //    differed only there rebuilt the card every poll, flashing the
+  //    whole page (full-height table removed and re-added = layout
+  //    thrash). Signature now covers every rendered column; a static
+  //    list is never touched at all.
   const pktSig = rows.map((r) =>
-    (r.ts || 0) + "|" + (r.layer || "") + "|" + (r.frame_type || "") + "|" + (r.size || 0)
-  ).join(";");
+    (r.ts || 0) + "|" + (r.direction || "") + "|" + (r.layer || "") + "|" +
+    (r.frame_type || "") + "|" + (r.hops ?? "") + "|" +
+    (r.path_hash_size ?? "") + "|" + (r.snr ?? "") + "|" +
+    (r.channel_name || r.sender || "") + "|" + (r.text || r.size || "")
+  ).join(";") + "#" + (data.total || 0);
   if (pktSig === lastPktKey) return;
   lastPktKey = pktSig;
-  wrap.innerHTML = "";
+
+  // Build the replacement off-DOM, then swap it in one reflow.
+  const fresh = document.createDocumentFragment();
 
   const caption = document.createElement("div");
   const byLayer = stats.by_layer || {};
@@ -1455,7 +1469,7 @@ async function refreshPackets() {
   caption.textContent = "total " + (data.total || 0) +
     " · decoded " + (byLayer.decoded || 0) +
     " · raw " + (byLayer.raw || 0);
-  wrap.appendChild(caption);
+  fresh.appendChild(caption);
 
   // If raw capture still isn't running after the auto-enable attempt (e.g.
   // packet capture is disabled in config), say so instead of looking broken.
@@ -1466,7 +1480,7 @@ async function refreshPackets() {
     warn.style.fontWeight = "400";
     warn.textContent = "raw capture could not be turned on - check that " +
       "storage.capture_packets is true in config.yaml";
-    wrap.appendChild(warn);
+    fresh.appendChild(warn);
   }
 
   // Raw link profile: packet size + inter-frame timing of the companion link
@@ -1488,14 +1502,15 @@ async function refreshPackets() {
         " (" + prof.rate_fps + "/s)</div>" +
         "<div>" + sizeLine + "</div>" +
         "<div>" + gapLine + "</div>";
-      wrap.insertBefore(block, caption.nextSibling);
+      fresh.appendChild(block);
     }
   } catch (e) { /* profile is best-effort */ }
 
   if (!rows.length) {
     const em = document.createElement("em");
     em.textContent = "no packets captured yet";
-    wrap.appendChild(em);
+    fresh.appendChild(em);
+    wrap.replaceChildren(fresh);
     return;
   }
   const table = document.createElement("table");
@@ -1518,7 +1533,8 @@ async function refreshPackets() {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  wrap.appendChild(table);
+  fresh.appendChild(table);
+  wrap.replaceChildren(fresh);
 }
 
 $("btn-load-packets").addEventListener("click", refreshPackets);
