@@ -32,6 +32,12 @@ from .store import Store, _path_hash_size
 
 log = logging.getLogger("meshtech-bot.capture")
 
+# Duplicate-packet feature (v0.0.129): how long after a decoded frame a
+# byte-identical copy (same sender + text) still counts as a repeat.
+# Brett's choice: 10 seconds. Flood relays deliver their copies within
+# this window; a genuine re-send later shows as its own packet.
+REPEAT_WINDOW_SECONDS = 10.0
+
 
 class PacketCapture:
     """Normalizes and persists captured companion traffic."""
@@ -134,6 +140,22 @@ class PacketCapture:
     # ------------------------------------------------------------------ store
 
     def _persist(self, row: Dict[str, Any]) -> None:
+        is_repeat = None
+        first_id = None
+        # Repeat marking (v0.0.129): only decoded IN frames can be relay
+        # copies. Key = sender + full text (a relay's copy is byte-identical
+        # to the original; timing and signal are what differ). The newest
+        # matching row inside the window is the copy every later repeat
+        # groups under. Marks, never deletes - the packets view's "hide
+        # repeats" switch simply skips these rows.
+        if (row.get("layer") == "decoded" and row.get("direction") == "in"
+                and (row.get("text") or "")):   # empty text = not a content frame
+            first_id = self.store.find_recent_duplicate_packet(
+                row.get("frame_type"), row.get("sender"), row["text"],
+                row["ts"], REPEAT_WINDOW_SECONDS,
+            )
+            if first_id is not None:
+                is_repeat = 1
         try:
             row_id = self.store.add_packet(
                 ts=row["ts"], layer=row["layer"], direction=row["direction"],
@@ -141,6 +163,7 @@ class PacketCapture:
                 hops=row["hops"], snr=row["snr"], channel_name=row["channel_name"],
                 text=row["text"], size=row["size"], payload_json=row["payload_json"],
                 path_hash_size=row["path_hash_size"],
+                is_repeat=is_repeat, repeat_of=first_id if is_repeat else None,
                 max_rows=self._cfg().packet_max_rows,
             )
         except Exception as exc:
@@ -209,8 +232,10 @@ class PacketCapture:
 
     # ------------------------------------------------------------------ queries
 
-    def recent(self, layer: Optional[str] = None, limit: int = 50):
-        return self.store.recent_packets(layer=layer, limit=limit)
+    def recent(self, layer: Optional[str] = None, limit: int = 50,
+               hide_repeats: bool = False):
+        return self.store.recent_packets(layer=layer, limit=limit,
+                                         hide_repeats=hide_repeats)
 
     def stats(self) -> Dict[str, Any]:
         return self.store.packet_stats()

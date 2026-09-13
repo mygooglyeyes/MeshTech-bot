@@ -1177,12 +1177,21 @@ $("node-filter").addEventListener("input", (e) => refreshNodes(e.target.value));
 
 let lastMsgKey = null;
 
+// Duplicate-packet feature (v0.0.129): "hide repeats" checkbox, remembered
+// per card across restarts. Later copies of a packet (relay repeats) start
+// hidden; unchecking shows every copy, tagged.
+function repPref(key) {
+  return localStorage.getItem(key) !== "off";   // default: hiding ON
+}
+
 async function refreshMessages() {
   const channel = $("msg-channel").value;
   const kind = $("msg-kind").value;
+  const hideRepeats = repPref("msgHideRepeats");
   const qs = new URLSearchParams();
   if (channel && channel !== "") qs.set("channel", channel);
   if (kind) qs.set("kind", kind);
+  if (hideRepeats) qs.set("hide_repeats", "true");
   qs.set("limit", "150");
   const data = await api("/api/messages?" + qs.toString());
   const rows = data.messages || [];
@@ -1191,11 +1200,11 @@ async function refreshMessages() {
   // decision to rebuild must happen BEFORE the DOM is touched. The old
   // code wiped the list first, so an unchanged poll left the card blank
   // and a changed one flashed. Signature of the rows we render decides.
-  const sig = rows.length
+  const sig = (hideRepeats ? "h" : "s") + "#" + (rows.length
     ? rows.map((r) =>
         (r.recv_ts || 0) + "|" + (r.direction || "") + "|" + (r.text || "").slice(0, 60)
       ).join(";")
-    : "";
+    : "");
   if (sig === lastMsgKey) return;
   lastMsgKey = sig;
   if (!rows.length) {
@@ -1212,12 +1221,15 @@ async function refreshMessages() {
       ? (r.direction === "in" ? "from " + (r.sender_prefix || "?") : "to " + (r.sender_prefix || "?"))
       : (r.channel_name || "?");
     const tr = document.createElement("tr");
+    if (r.is_repeat === 1) tr.classList.add("repeat-row");
     tr.innerHTML =
       "<td>" + new Date(r.recv_ts * 1000).toLocaleString() + "</td>" +
       "<td>" + (r.direction === "in" ? "in" : "out") + "</td>" +
       "<td>" + esc(target) + "</td>" +
       "<td>" + (r.hops == null ? "-" : r.hops) + "</td>" +
-      "<td>" + esc((r.text || "").slice(0, 120)) + "</td>";
+      "<td>" + esc((r.text || "").slice(0, 120)) +
+      (r.is_repeat === 1 ? " <span class='rep-tag'>repeat</span>" : "") +
+      "</td>";
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -1239,6 +1251,16 @@ async function loadMsgChannelOptions() {
 $("btn-load-msgs").addEventListener("click", refreshMessages);
 $("msg-kind").addEventListener("change", refreshMessages);
 $("msg-channel").addEventListener("change", refreshMessages);
+$("msg-hide-repeats").addEventListener("change", (e) => {
+  localStorage.setItem("msgHideRepeats", e.target.checked ? "on" : "off");
+  refreshMessages();
+});
+if (!repPref("msgHideRepeats")) $("msg-hide-repeats").checked = false;
+$("pkt-hide-repeats").addEventListener("change", (e) => {
+  localStorage.setItem("pktHideRepeats", e.target.checked ? "on" : "off");
+  refreshPackets();
+});
+if (!repPref("pktHideRepeats")) $("pkt-hide-repeats").checked = false;
 
 // ------------------------------------------------------------------ analysis
 
@@ -1409,8 +1431,10 @@ let lastPktKey = null;
 
 async function refreshPackets() {
   const layer = $("pkt-layer").value;
+  const hideRepeats = repPref("pktHideRepeats");
   const qs = new URLSearchParams();
   if (layer) qs.set("layer", layer);
+  if (hideRepeats) qs.set("hide_repeats", "true");
   qs.set("limit", "40");
   let data = await api("/api/packets?" + qs.toString());
   // Selecting "raw" turns raw capture on in the running bot - no config edit
@@ -1449,7 +1473,7 @@ async function refreshPackets() {
   //    whole page (full-height table removed and re-added = layout
   //    thrash). Signature now covers every rendered column; a static
   //    list is never touched at all.
-  const pktSig = rows.map((r) =>
+  const pktSig = (hideRepeats ? "h" : "s") + "#" + rows.map((r) =>
     (r.ts || 0) + "|" + (r.direction || "") + "|" + (r.layer || "") + "|" +
     (r.frame_type || "") + "|" + (r.hops ?? "") + "|" +
     (r.path_hash_size ?? "") + "|" + (r.snr ?? "") + "|" +
@@ -1468,7 +1492,8 @@ async function refreshPackets() {
   caption.style.fontWeight = "400";
   caption.textContent = "total " + (data.total || 0) +
     " · decoded " + (byLayer.decoded || 0) +
-    " · raw " + (byLayer.raw || 0);
+    " · raw " + (byLayer.raw || 0) +
+    (stats.repeats ? " · repeats " + stats.repeats : "");
   fresh.appendChild(caption);
 
   // If raw capture still isn't running after the auto-enable attempt (e.g.
@@ -1521,6 +1546,7 @@ async function refreshPackets() {
     const hash = r.path_hash_size == null ? "-" :
       (r.path_hash_size === 1 ? "1B" : r.path_hash_size === 2 ? "2B" : r.path_hash_size + "B");
     const tr = document.createElement("tr");
+    if (r.is_repeat === 1) tr.classList.add("repeat-row");
     tr.innerHTML =
       "<td>" + new Date(r.ts * 1000).toLocaleTimeString() + "</td>" +
       "<td>" + (r.direction === "out" ? "out" : "in") + "</td>" +
@@ -1529,7 +1555,8 @@ async function refreshPackets() {
       "<td title='bytes per path hash - 1B = 1-byte, 2B = 2-byte, 3B+ = longer addresses'>" + hash + "</td>" +
       "<td>" + (r.snr == null ? "-" : r.snr.toFixed(1)) + "</td>" +
       "<td>" + esc(target) + "</td>" +
-      "<td>" + esc((r.text || (r.size != null ? r.size + " bytes" : "")).slice(0, 100)) + "</td>";
+      "<td>" + esc((r.text || (r.size != null ? r.size + " bytes" : "")).slice(0, 100)) +
+      (r.is_repeat === 1 ? " <span class='rep-tag'>repeat</span>" : "") + "</td>";
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);

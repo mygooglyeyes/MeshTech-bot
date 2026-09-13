@@ -9,6 +9,16 @@ Newest entries first within each branch.
 
 ---
 
+## duplicate-packet (current work)
+
+- **v0.0.129 (not yet committed)** - Duplicate-packet inspection: relay
+  copies of a frame are marked at ingest (identical sender+text within
+  Brett's 10 s window; schema migration v9 adds is_repeat/repeat_of to
+  packets and messages) and the Messages/Packets cards get per-card
+  "hide repeats" switches (hidden by default, remembered, copies tagged
+  when shown). Nothing is ever deleted; bot mesh behavior unchanged.
+  Awaiting Brett's review, tests, then his OK before any commit.
+
 ## feature/branch-switcher (current work - contains the node-popup stack)
 
 - **v0.0.082** - Developer mode: a checkbox in the update popup widens

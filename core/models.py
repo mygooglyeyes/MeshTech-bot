@@ -52,6 +52,12 @@ class MsgRecord:
     # used to attribute channel traffic to a registry node for link-quality
     # history. Always None for DMs (which carry the cryptographic prefix).
     sender_name: Optional[str] = None
+    # Duplicate-packet feature (v0.0.129): set at ingest for a repeat copy
+    # (identical kind/sender/text within the window). None = unmarked;
+    # 1 = later copy; repeat_of = message id of the first copy. Display
+    # only - the "hide repeats" switches read these columns.
+    is_repeat: Optional[int] = None
+    repeat_of: Optional[int] = None
 
 
 @dataclass

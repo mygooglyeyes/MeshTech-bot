@@ -217,18 +217,21 @@ def build_app(service) -> FastAPI:
 
     @app.get("/api/messages", dependencies=[Depends(require_auth)])
     async def messages(channel: Optional[str] = None, kind: Optional[str] = None,
-                       limit: int = 100):
+                       limit: int = 100, hide_repeats: bool = False):
         rows = store.query_messages(channel=channel or None, kind=kind or None,
-                                    limit=max(1, min(limit, 500)))
+                                    limit=max(1, min(limit, 500)),
+                                    hide_repeats=hide_repeats)
         return {"messages": rows}
 
     @app.get("/api/packets", dependencies=[Depends(require_auth)])
-    async def packets(layer: Optional[str] = None, limit: int = 50):
+    async def packets(layer: Optional[str] = None, limit: int = 50,
+                      hide_repeats: bool = False):
         capture = service.capture
         if capture is None:
             return {"packets": [], "total": 0, "stats": {}, "raw_capture": False}
         layer = layer if layer in ("decoded", "raw") else None
-        rows = capture.recent(layer=layer, limit=max(1, min(limit, 500)))
+        rows = capture.recent(layer=layer, limit=max(1, min(limit, 500)),
+                              hide_repeats=hide_repeats)
         return {"packets": rows, "total": capture.stats()["total"],
                 "stats": capture.stats(),
                 "raw_capture": bool(capture.enabled and capture.raw_enabled()),
