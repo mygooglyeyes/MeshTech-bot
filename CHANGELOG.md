@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.124 - 2026-09-12 (stability-fixes branch)
+
+The &reload on-air reply, per Brett ("that is all it needs to say"): now
+exactly "The config has been successfully reloaded". The old reply
+broadcast the bot's full filesystem path over the mesh plus channel/
+handler counts a reader can't act on; those details still go to the
+journal and the dashboard notice, just not on the air.
+
 ## 0.0.123 - 2026-09-12 (stability-fixes branch)
 
 Two fixes from the v0.0.122 proving period (Brett's DM test, 21:37-21:46):
