@@ -877,6 +877,17 @@ class Mcp:
             capture.record_raw(ts, data)
         except Exception as exc:
             log.debug("raw capture failed: %s", exc)
+        # Duplicate-packet v0.0.130 (HASH+LONG): the frame's openhop wire
+        # fingerprint comes from the reference implementation itself
+        # (Packet.calculate_packet_hash) - zero reimplementation drift.
+        pkt_hash = None
+        try:
+            from pymc_core.protocol.packet import Packet
+            pkt = Packet()
+            pkt.read_from(data)
+            pkt_hash = pkt.calculate_packet_hash().hex().upper()
+        except Exception:
+            pkt_hash = None             # malformed frames just never mark
         try:
             info = parse_envelope(data)
             type_name = PAYLOAD_TYPE_NAMES.get(info.get("payload_type"),
@@ -890,6 +901,7 @@ class Mcp:
                             "hash_size": info.get("hash_size"),
                             "radio": "mcp-spi",
                             "note": "envelope only - payload encrypted"},
+                pkt_hash=pkt_hash,
             )
         except Exception as exc:
             log.debug("envelope record failed: %s", exc)
@@ -1018,6 +1030,17 @@ class Mcp:
 
     # -- adverts ---------------------------------------------------------
 
+    def _frame_hash(self, pkt) -> Optional[str]:
+        """Wire fingerprint for the duplicate-packet log (never raises).
+
+        openhop-core recipe via the reference Packet class itself; any
+        failure just means the frame never marks (display-only feature).
+        """
+        try:
+            return pkt.calculate_packet_hash().hex().upper()
+        except Exception:
+            return None
+
     def _handle_advert(self, pkt, rssi: int, snr: float) -> None:
         try:
             from pymc_core.protocol.utils import parse_advert_payload, decode_appdata
@@ -1127,7 +1150,8 @@ class Mcp:
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
                               if (msg.hops or 0) > 0 else None),
-                          rssi=rssi, snr=snr)
+                          rssi=rssi, snr=snr,
+                          pkt_hash=self._frame_hash(pkt))
             return                       # first validating candidate wins
         log.debug("GRP_TXT hash %02X: no channel key matched", channel_hash)
 
@@ -1184,7 +1208,8 @@ class Mcp:
                           path_hash_size=(
                               _hash_size_from_path_len(_path_len_byte(pkt))
                               if (msg.hops or 0) > 0 else None),
-                          rssi=rssi, snr=snr)
+                          rssi=rssi, snr=snr,
+                          pkt_hash=self._frame_hash(pkt))
             return
         self.stats.decrypt_fail += 1
         # INFO (v0.0.111): this used to hide at DEBUG, which turned "DM from
@@ -1263,7 +1288,8 @@ class Mcp:
                  msg: InboundMessage,
                  path_hash_size: Optional[int] = None,
                  rssi: Optional[int] = None,
-                 snr: Optional[float] = None) -> None:
+                 snr: Optional[float] = None,
+                 pkt_hash: Optional[str] = None) -> None:
         """Log + publish + hand to the router (never raises).
 
         path_hash_size (bytes per path hop, when the frame carried a path)
@@ -1282,7 +1308,8 @@ class Mcp:
                      "sender": sender, "hops": msg.hops, "snr": msg.snr,
                      "path_hash_size": path_hash_size},
                     attributes={"radio": "mcp-spi"},
-                    channel_name=msg.channel_name)
+                    channel_name=msg.channel_name,
+                    pkt_hash=pkt_hash)
             except Exception:
                 pass
         meta = ""

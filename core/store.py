@@ -185,6 +185,15 @@ _MIGRATIONS: List[tuple] = [
         "CREATE INDEX IF NOT EXISTS idx_packets_rep_lookup ON packets(sender, ts)",
         "CREATE INDEX IF NOT EXISTS idx_messages_rep_lookup ON messages(kind, sender_prefix, recv_ts)",
     ]),
+    (10, [
+        # Duplicate-packet v0.0.130 (HASH+LONG, Brett): repeats are now keyed
+        # on the openhop-core packet fingerprint (sha256 of payload type +
+        # payload bytes - verified against PacketHashingUtils, packet_utils.py
+        # L288) instead of sender+text, so adverts and acks mark too. pkt_hash
+        # stores the full hex fingerprint of the wire payload per decoded row.
+        "ALTER TABLE packets ADD COLUMN pkt_hash TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_packets_rep_hash ON packets(pkt_hash, ts)",
+    ]),
 ]
 
 
@@ -481,32 +490,31 @@ class Store:
         params.append(int(limit))
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
-    def find_recent_duplicate_packet(self, frame_type: str,
-                                     sender: Optional[str], text: str,
-                                     ts: float, window: float) -> Optional[int]:
-        """Id of an identical stored packet within ``window`` seconds, for
-        repeat marking (duplicate-packet feature, v0.0.129).
+    def find_recent_duplicate_hash(self, pkt_hash: str, ts: float,
+                                   window: float, content_row: bool) -> Optional[int]:
+        """Id of the newest earlier packet row carrying the same wire
+        fingerprint within ``window`` seconds (v0.0.130 HASH+LONG).
 
-        Matches frame type + sender + exact text (what a relay re-sends is
-        byte-identical to the original; only timing and signal differ).
-        Returns the NEWEST such row's id - the copy every later repeat
-        groups under - or None. Never raises: marking is cosmetic and
-        must not break capture.
+        ``content_row`` separates the two rows a single frame produces in
+        the log: envelope rows (text empty) and content rows (text set)
+        must only match their own kind, or a frame's second row would
+        mark against its first. Empty-string, not NULL: add_packet always
+        stores text as a string. Never raises: marking is cosmetic.
         """
         try:
             row = self._conn.execute(
                 """
                 SELECT id FROM packets
-                WHERE layer = 'decoded' AND direction = 'in'
-                  AND frame_type IS ? AND sender IS ? AND text = ?
+                WHERE layer = 'decoded' AND direction = 'in' AND pkt_hash = ?
+                  AND (CASE WHEN text IS NULL OR text = '' THEN 0 ELSE 1 END) = ?
                   AND ts >= ? AND ts <= ?
                 ORDER BY id DESC LIMIT 1
                 """,
-                (frame_type, sender, text, ts - window, ts),
+                (pkt_hash, 1 if content_row else 0, ts - window, ts),
             ).fetchone()
             return int(row[0]) if row else None
         except Exception as exc:
-            log.debug("find_recent_duplicate_packet failed: %s", exc)
+            log.debug("find_recent_duplicate_hash failed: %s", exc)
             return None
 
     def find_recent_duplicate_message(self, kind: str, sender_prefix: Optional[str],
@@ -869,6 +877,7 @@ class Store:
                    path_hash_size: Optional[int] = None,
                    is_repeat: Optional[int] = None,
                    repeat_of: Optional[int] = None,
+                   pkt_hash: Optional[str] = None,
                    max_rows: int = 200000) -> None:
         """Store one captured frame. Prunes to max_rows every 200 inserts.
         Returns the new row id (for JSONL cross-referencing)."""
@@ -880,12 +889,12 @@ class Store:
                 INSERT INTO packets (ts, layer, direction, frame_type, sender,
                                      hops, snr, channel_name, text, size,
                                      payload_json, path_hash_size,
-                                     is_repeat, repeat_of)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     is_repeat, repeat_of, pkt_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (ts, layer, direction, frame_type, sender, hops, snr,
                  channel_name, (text or "")[:2000], size, payload_json,
-                 path_hash_size, is_repeat, repeat_of),
+                 path_hash_size, is_repeat, repeat_of, pkt_hash),
             )
         self._packet_inserts += 1
         if self._packet_inserts % 200 == 0:

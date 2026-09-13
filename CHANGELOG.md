@@ -9,6 +9,34 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.130 - 2026-09-13 (duplicate-packet branch)
+
+Duplicate-packet detection upgraded to HASH+LONG (Brett's choice after a
+side-by-side comparison with openhop_repeater-dev's packet log, whose
+hide-duplicates feature was read from its source as the reference):
+
+- Fingerprint instead of text matching: each decoded packet row now
+  stores pkt_hash = the openhop-core packet fingerprint (SHA-256 of the
+  payload type byte + payload bytes, truncated to 32; computed by the
+  reference Packet.calculate_packet_hash() itself so the recipe can
+  never drift - schema migration v10 adds the column + lookup index).
+  A repeat is now "same fingerprint within the window", so sender and
+  text no longer matter and frames WITHOUT text - adverts, acks, all
+  the no-text traffic that previously never marked - are covered too.
+- 5-minute window (Brett's HASH+LONG choice): catches slow far-relay
+  copies that arrive minutes after the first copy. Honest trade-off,
+  Brett's call: a genuine re-send of identical content inside 5 minutes
+  now also flags as a repeat.
+- Every row of a repeated frame marks: a frame writes an envelope row
+  (no text) and often a content row (with text) sharing one
+  fingerprint; both mark against their own kind only, so the repeats
+  count now reflects the true number of heard copies, matching what
+  openhop's log shows.
+- Message-view behavior from v0.0.129 is unchanged (router still
+  stores-and-marks fast copies; reply-once logic untouched).
+- v0.0.129's 10-second sender+text marker is retired by this change;
+  the messages side keeps its own marking exactly as shipped.
+
 ## 0.0.129 - 2026-09-13 (duplicate-packet branch)
 
 Duplicate-packet inspection + per-card "hide repeats" switches

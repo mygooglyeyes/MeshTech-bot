@@ -21,6 +21,7 @@ logged at debug level only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -32,11 +33,27 @@ from .store import Store, _path_hash_size
 
 log = logging.getLogger("meshtech-bot.capture")
 
-# Duplicate-packet feature (v0.0.129): how long after a decoded frame a
-# byte-identical copy (same sender + text) still counts as a repeat.
-# Brett's choice: 10 seconds. Flood relays deliver their copies within
-# this window; a genuine re-send later shows as its own packet.
-REPEAT_WINDOW_SECONDS = 10.0
+# Duplicate-packet feature (v0.0.130, HASH+LONG): how long after a frame
+# a copy with the same openhop wire fingerprint still counts as a repeat.
+# Brett's choice: 5 minutes, to catch slow far-relay copies (at the cost
+# of flagging genuine re-sends inside the window as repeats).
+REPEAT_WINDOW_SECONDS = 300.0
+
+
+def packet_fingerprint(payload_type: int, payload: bytes) -> str:
+    """Openhop-core packet fingerprint (v0.0.130 HASH+LONG).
+
+    SHA-256 over (payload_type byte, payload bytes), truncated to 32
+    bytes - the same recipe openhop_core uses for ACKs and mesh dedup
+    (PacketHashingUtils.calculate_packet_hash, protocol/packet_utils.py
+    L288; verified against the READ-ONLY reference). path_len is NOT
+    hashed (except TRACE frames, which the bot never replays), so a
+    relay's copy with a longer path still matches the original.
+    """
+    sha = hashlib.sha256()
+    sha.update(bytes([payload_type & 0xFF]))
+    sha.update(payload)
+    return sha.digest()[:32].hex().upper()
 
 
 class PacketCapture:
@@ -79,7 +96,8 @@ class PacketCapture:
     def record_event(self, ts: float, event_type: Any,
                      payload: Dict[str, Any],
                      attributes: Optional[Dict[str, Any]] = None,
-                     channel_name: Optional[str] = None) -> None:
+                     channel_name: Optional[str] = None,
+                     pkt_hash: Optional[str] = None) -> None:
         """Record one decoded frame/event from the meshcore dispatcher."""
         if not self.enabled:
             return
@@ -99,6 +117,7 @@ class PacketCapture:
             "text": _text_of(payload),
             "size": None,
             "path_hash_size": _path_hash_size(payload),
+            "pkt_hash": pkt_hash,
             "payload_json": json.dumps({
                 "payload": _json_safe(payload),
                 "attributes": _json_safe(attributes or {}),
@@ -142,17 +161,20 @@ class PacketCapture:
     def _persist(self, row: Dict[str, Any]) -> None:
         is_repeat = None
         first_id = None
-        # Repeat marking (v0.0.129): only decoded IN frames can be relay
-        # copies. Key = sender + full text (a relay's copy is byte-identical
-        # to the original; timing and signal are what differ). The newest
-        # matching row inside the window is the copy every later repeat
-        # groups under. Marks, never deletes - the packets view's "hide
-        # repeats" switch simply skips these rows.
+        # Repeat marking (v0.0.130 HASH+LONG): any decoded IN frame whose
+        # wire fingerprint (sha256 of payload type + payload, openhop-core
+        # recipe) was already stored inside the window is a repeat - sender
+        # and text are no longer needed, so adverts and acks mark too. The
+        # envelope row and the content row of ONE frame share the same
+        # fingerprint, so they only match their own kind (content_row flag).
+        # Marks, never deletes - the packets view's "hide repeats" switch
+        # simply skips these rows.
         if (row.get("layer") == "decoded" and row.get("direction") == "in"
-                and (row.get("text") or "")):   # empty text = not a content frame
-            first_id = self.store.find_recent_duplicate_packet(
-                row.get("frame_type"), row.get("sender"), row["text"],
-                row["ts"], REPEAT_WINDOW_SECONDS,
+                and row.get("pkt_hash")):
+            content_row = bool(row.get("text") or "")
+            first_id = self.store.find_recent_duplicate_hash(
+                row["pkt_hash"], row["ts"], REPEAT_WINDOW_SECONDS,
+                content_row,
             )
             if first_id is not None:
                 is_repeat = 1
@@ -164,6 +186,7 @@ class PacketCapture:
                 text=row["text"], size=row["size"], payload_json=row["payload_json"],
                 path_hash_size=row["path_hash_size"],
                 is_repeat=is_repeat, repeat_of=first_id if is_repeat else None,
+                pkt_hash=row.get("pkt_hash"),
                 max_rows=self._cfg().packet_max_rows,
             )
         except Exception as exc:
