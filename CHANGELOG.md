@@ -9,6 +9,26 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.141 - 2026-09-13 (small-repairs branch)
+
+Dashboard nicety (Brett): the bot's own public key now shows in the
+web console, right under the bot name - truncated to 10 hex characters
+on screen, with a copy button that copies the FULL key (for sharing
+the bot's contact or adding it as an admin elsewhere).
+
+- core/service.py: /api/status now carries own_pubkey (hex, lowercased)
+  in both radio modes - MCP mode derives it from the bot's identity
+  file, companion mode from what the device reported at connect. The
+  field stays empty (and the line hidden) when unknown.
+- core/mcp.py + core/client.py: own_pubkey property / capture at
+  connect; a failure here can never block the radio from starting.
+- web: new key line under the bot name (label + 10-char preview +
+  copy button); clipboard with a non-secure-context fallback for
+  plain-HTTP dashboards, and a show-the-key prompt if the browser
+  refuses entirely.
+- tests: 4 new in test_status_own_pubkey.py (both modes + hidden-when-
+  unknown + the identity-derivation property).
+
 ## 0.0.140 - 2026-09-13 (small-repairs branch)
 
 CI now publishes a ready-made Docker image on every version tag

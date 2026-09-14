@@ -11,6 +11,13 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.141** - Dashboard (Brett): the bot's own public key shows
+  under the bot name in the web console header - 10 hex chars on
+  screen, copy button copies the FULL key. /api/status carries
+  own_pubkey in both radio modes (MCP: from the identity file;
+  companion: from the device's SELF_INFO at connect). Hidden until a
+  key is known. 4 new tests; suite 499.
+
 - **v0.0.140** - Docker CI (Brett): .github/workflows/docker.yml
   builds + pushes the image to ghcr.io/mygooglyeyes/meshtech-bot on
   every `v*` tag (version / major.minor / latest tags, GITHUB_TOKEN
