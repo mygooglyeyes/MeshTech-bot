@@ -24,6 +24,9 @@ project-id
 tests/
 requirements-dev.txt
 
+# Pasted evidence / scratch files
+openhoplog.txt
+
 # Editors / OS
 .idea/
 .vscode/
