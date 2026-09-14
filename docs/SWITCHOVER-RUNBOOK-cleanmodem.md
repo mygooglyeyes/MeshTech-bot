@@ -728,3 +728,52 @@ repeater. That is the only extra file.
   `clear_channel_wait_seconds`).
 - `lbt_max_attempts` (cleanmodem conf): reserved, no effect (v0.0.153).
 - `modem_feed:`: inert in modem mode (logged at start, by design).
+
+## Addendum - 2026-09-14 afternoon: the deaf-RX hunt
+
+### What happened after the bot flip
+
+Bot authenticated as controller, `Radio up via the modem` - but
+`rx=0` forever. A test DM on the air was never heard. Probes showed
+the radio "RX armed", noise floor plausible, no errors in the log:
+the receiver just never reported a packet, even after full stop /
+reset-pulse restarts.
+
+### Evidence trail (new diagnostics v0.0.155)
+
+`irq: polls=N edges=0 flags=0xAA00 poll_mode=True` - polling ran, the
+flags were garbage. 0xAA00 is an alternating-bit pattern in reserved
+bits: the classic signature of SPI reads not reaching the chip
+(BUSY/reset writes going nowhere, MISO floating). Full power cycle
+did NOT clear it -> not a wedged chip; the GPIO layer itself was
+under suspicion.
+
+### SPI speed ruled out (design review)
+
+Driver runs 2 MHz everywhere (config default, example conf; the "8
+MHz bench option" comment was never deployed). Both the working bench
+and today's failure ran at 2 MHz, so clock speed is not the variable.
+Keep 2 MHz; the BUSY handshake, not SPI speed, protects timing.
+
+### GPIO backend A/B (v0.0.156-0.0.158)
+
+- v0.0.156 added `gpio_backend` (auto | gpiod | rpi); forced modes
+  fail loud. First forced-gpiod start failed loud with "module
+  'gpiod' has no attribute 'Chip'" -> the backend mixed APIs and had
+  silently NEVER run (auto fell back to the shim every time).
+- v0.0.157 fixed the name to v1 (`gpiod.chip`); the box then failed
+  loud with "iter() returned non-iterator" - the 1.x pip bindings are
+  ABI-broken on Debian 13 (v1 Python over the v2 system libgpiod).
+- v0.0.158 rewrote the backend for the v2 API (gpiod.Chip +
+  request_lines + LineSettings). gpiod>=2.0 ships cp313 aarch64
+  wheels - installs clean on the box, no compiler needed.
+
+### Current hilltop state & next command
+
+Config in place: `gpio_backend=gpiod`, `irq_poll=true`. Stack stopped
+from the failed start. After deploying v0.0.158, start the modem,
+then the bot (plain `systemctl start cleanmodem.service` then
+`meshtech-bot`, with sleeps); expect `SX1262 up` with NO error lines.
+Then a test DM: if `rx` counts move and flags read sane values, the
+shim was the culprit and modem mode is proven; the switchover resumes
+at TX verification.

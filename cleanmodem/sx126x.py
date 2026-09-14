@@ -176,56 +176,77 @@ class _RpiGpio:
 
 
 class _GpiodGpio:
-    """GPIO backend using gpiod v1 (modern kernels)."""
+    """GPIO backend using the gpiod v2 Python bindings.
 
-    def __init__(self) -> None:
+    v0.0.158: targets the v2 API (gpiod.Chip + request_lines +
+    LineSettings). The earlier v1 attempt died twice on hilltop: first
+    the v2-only name in a v1 body (fixed in v0.0.157), then the v1 pip
+    bindings themselves crash on Debian 13's v2 C library ('iter()
+    returned non-iterator'). gpiod 2.5.0 ships cp313 aarch64 wheels and
+    links the v2 libgpiod Debian 13 already installs, so this backend
+    finally runs where it was always meant to.
+
+    Lines are owned via one request per pin, reconfigured in place for
+    edge waits - the SX126x BUSY line is input most of the time and
+    only needs an edge request while waiting on DIO1.
+    """
+
+    def __init__(self, path: str = "/dev/gpiochip0") -> None:
         import gpiod                    # lazy: optional dependency
         self._gpiod = gpiod
-        # v0.0.156: gpiod.chip (lowercase) - the v1 API this backend
-        # targets. The old gpiod.Chip (capital C) is the v2 name, so in
-        # auto mode the constructor ALWAYS raised AttributeError and the
-        # factory silently fell to RPi.GPIO - hiding this backend's
-        # existence (and any gpiod-only fix) behind the shim.
-        self._chip = gpiod.chip("/dev/gpiochip0")
-        self._lines: dict[int, Any] = {}
-        self._req_edge: dict[int, Any] = {}
+        self._chip = gpiod.Chip(path)
+        self._reqs: dict[int, Any] = {}
 
-    def _line(self, pin: int):
-        line = self._lines.get(pin)
-        if line is None:
-            line = self._chip.get_line(pin)
-            self._lines[pin] = line
-        return line
+    def _request(self, pin: int, settings: Any) -> Any:
+        req = self._reqs.get(pin)
+        if req is not None:
+            req.release()
+        req = self._chip.request_lines(
+            config={pin: settings}, consumer="cleanmodem")
+        self._reqs[pin] = req
+        return req
 
     def setup_out(self, pin: int, initial: int) -> None:
-        self._line(pin).request(
-            consumer="cleanmodem",
-            type=self._gpiod.LINE_REQ_DIR_OUT,
-            default_vals=[initial])
+        g = self._gpiod
+        self._request(pin, g.LineSettings(
+            direction=g.Direction.OUTPUT,
+            output_value=(g.Value.ACTIVE if initial else g.Value.INACTIVE)))
 
     def setup_in(self, pin: int) -> None:
-        self._line(pin).request(consumer="cleanmodem",
-                                type=self._gpiod.LINE_REQ_DIR_IN)
+        self._request(pin, self._gpiod.LineSettings(
+            direction=self._gpiod.Direction.INPUT,
+            bias=self._gpiod.Bias.PULL_DOWN))
 
     def read(self, pin: int) -> int:
-        return int(self._line(pin).get_value())
+        return int(self._reqs[pin].get_value(pin) == self._gpiod.Value.ACTIVE)
 
     def write(self, pin: int, value: int) -> None:
-        self._line(pin).set_value(value)
+        self._reqs[pin].set_value(
+            pin, self._gpiod.Value.ACTIVE if value else self._gpiod.Value.INACTIVE)
 
     def wait_edge(self, pin: int, timeout: float) -> bool:
-        event = self._req_edge.get(pin)
-        if event is None:
-            line = self._line(pin)
-            if line.is_requested():
-                line.release()
-            line.request(consumer="cleanmodem",
-                         type=self._gpiod.LINE_REQ_EV_RISING_EDGE)
-            event = line
-            self._req_edge[pin] = event
-        return bool(event.event_wait(timeout))
+        g = self._gpiod
+        req = self._reqs.get(pin)
+        if req is None:
+            req = self._request(pin, g.LineSettings(
+                direction=g.Direction.INPUT,
+                edge_detection=g.Edge.RISING))
+        else:
+            req.reconfigure_lines(config={pin: g.LineSettings(
+                direction=g.Direction.INPUT,
+                edge_detection=g.Edge.RISING)})
+        fired = req.wait_edge_events(timeout)
+        if fired:
+            req.read_edge_events()
+        return fired
 
     def close(self) -> None:
+        for req in self._reqs.values():
+            try:
+                req.release()
+            except Exception:  # nosec B110 - best-effort release  # pragma: no cover
+                pass
+        self._reqs.clear()
         try:
             self._chip.close()
         except Exception:  # nosec B110 - best-effort chip release  # pragma: no cover

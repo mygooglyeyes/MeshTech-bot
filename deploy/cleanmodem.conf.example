@@ -50,7 +50,12 @@ cad_min=10
 # --- GPIO backend (auto | gpiod | rpi) ---------------------------------
 # auto = try gpiod, fall back to RPi.GPIO-compatible. Pin one explicitly
 # to make the choice visible and fail loud (v0.0.156 lesson: a silent
-# backend fallback left hilltop's radio deaf). gpio_backend=auto
+# backend fallback left hilltop's radio deaf).
+# gpiod = the v2 Python bindings (gpiod>=2.0): cp313 aarch64 wheels
+# exist and they match Debian 13's system libgpiod. The old 1.x pip
+# package is ABI-broken on Debian 13 (v1 bindings, v2 C library).
+# Hilltop currently runs: gpio_backend=gpiod
+gpio_backend=auto
 
 # --- Board profile -----------------------------------------------------
 # Known presets: pimesh-1w-v2 (the working map: CS=8/CE0, busy=5,

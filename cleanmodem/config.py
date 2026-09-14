@@ -89,11 +89,13 @@ class ModemConfig:
     # little RX latency). Default off - edge mode is the proven path.
     irq_poll: bool = False
     # v0.0.156: force a GPIO backend. "auto" (default) = try gpiod, fall
-    # back to RPi.GPIO. "gpiod" = gpiod v1 only, fail loud. "rpi" =
+    # back to RPi.GPIO. "gpiod" = gpiod v2 only, fail loud. "rpi" =
     # RPi.GPIO-compatible only, fail loud. Hilltop 2026-09-14: the
     # rpi-lgpio shim left the radio deaf (BUSY/reset writes not reaching
     # the pins -> blind SPI -> 0xAA00 garbage flags); pinning the backend
-    # makes the choice explicit and A/B-testable.
+    # makes the choice explicit and A/B-testable. v0.0.158: gpiod means
+    # the v2 bindings (2.x), which ship cp313 aarch64 wheels and match
+    # Debian 13's libgpiod - the v1 1.x pip package is ABI-broken there.
     gpio_backend: str = "auto"
     # RESERVED, not implemented: retries are bounded by time
     # (clear_channel_wait_seconds), not attempt count. Accepted in

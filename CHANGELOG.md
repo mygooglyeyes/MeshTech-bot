@@ -9,6 +9,19 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.158 - 2026-09-14 (clean-modem branch)
+
+cleanmodem gpiod backend rewritten for the v2 Python API
+(gpiod.Chip + request_lines + LineSettings, in-place
+reconfigure_lines for edge waits). Hilltop history that forced this:
+v0.0.156's backend mixed APIs; v0.0.157 fixed it to v1 and the box
+then failed loud with 'iter() returned non-iterator' - the 1.x pip
+bindings are ABI-broken on Debian 13 (v1 Python over a v2 C library).
+gpiod>=2.0 ships cp313 aarch64 wheels and links the system libgpiod,
+so gpio_backend=gpiod finally runs as a real candidate fix for the
+deaf-RX problem. requirements.txt now pins gpiod>=2.0,<3 (never 1.x).
+Tests pin the v2 call shape and the auto-fallback order.
+
 ## 0.0.157 - 2026-09-14 (clean-modem branch)
 
 Bug fix (hilltop, found by the gpio_backend=gpiod attempt failing

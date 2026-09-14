@@ -40,7 +40,10 @@ _SHORT_LEN = 7
 # the old stack's empirically robust pattern) instead of three fixed delays.
 # 0.0.153: cleanmodem lbt_max_attempts documented as reserved (never
 # implemented; retry loop is bounded by clear_channel_wait_seconds).
-__version__ = "0.0.157"
+# 0.0.158: cleanmodem gpiod backend rewritten for the v2 Python API
+# (gpiod.Chip + request_lines) - the v1 pip bindings are ABI-broken on
+# Debian 13; 2.x ships cp313 aarch64 wheels.
+__version__ = "0.0.158"
 
 
 def _short(sha: str) -> str:
