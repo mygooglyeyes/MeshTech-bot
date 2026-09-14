@@ -545,8 +545,9 @@ class ModemServer:
             await self._send(writer, frames.CMD_TX_FAIL)
 
     async def _wait_clear_channel(self) -> bool:
-        """CAD pre-check with jittered retries (0.12/0.24/0.36 s), up to
-        the cap. Transmits anyway at the cap. True if it had to wait."""
+        """CAD pre-check with continuous random backoff (0.10-0.30 s),
+        up to the cap. Transmits anyway at the cap. True if it had to
+        wait."""
         cap = self.cfg.clear_channel_wait_seconds
         if cap <= 0 or not self.cfg.lbt_enabled:
             return False
@@ -565,9 +566,12 @@ class ModemServer:
                             "(this packet may collide)")
                 return True
             waited = True
-            # random.choice is fine here: LBT jitter needs only
-            # non-correlated timing, not cryptographic strength.
-            await asyncio.sleep(random.choice((0.12, 0.24, 0.36)))  # nosec B311
+            # uniform() is fine here: LBT jitter needs only
+            # non-correlated timing, not cryptographic strength. The
+            # range matches the proven old-stack backoffs (102-295 ms
+            # observed on air); a continuous spread keeps nodes from
+            # aligning on the same retry slots.
+            await asyncio.sleep(random.uniform(0.10, 0.30))  # nosec B311
 
     # ── plumbing ──────────────────────────────────────────────────────
     async def _send(self, writer: asyncio.StreamWriter, cmd: int,

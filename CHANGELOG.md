@@ -24,6 +24,17 @@ is now prose that can never parse as a key; proven with the sync
 script against a box-shaped config (inserts only modem_host +
 modem_port, once each) plus the project's sync tests.
 
+## 0.0.152 - 2026-09-14 (clean-modem branch)
+
+cleanmodem: LBT clear-channel retries move from three fixed delays
+(0.12/0.24/0.36 s) back to a continuous random backoff (uniform
+0.10-0.30 s), matching the old stack's empirically robust pattern
+(102-295 ms observed on air). Rationale: every cleanmodem node drew
+from the same tiny delay set, so concurrent retries could align on
+the same slots; a continuous spread decorrelates them. Worst case is
+unchanged: wait up to clear_channel_wait_seconds (4.0 s), then
+transmit anyway with a collision warning. No config changes.
+
 ## 0.0.150 - 2026-09-14 (clean-modem branch)
 
 Bench runbook for the clean-room modem: docs/BENCH-RUNBOOK-cleanmodem.md

@@ -1,180 +1,190 @@
 # cleanmodem bench runbook (hilltop) - verify before switching
 
-The goal: prove cleanmodem (v0.0.148) hears the real mesh at wire
+The goal: prove cleanmodem (v0.0.151) hears the real mesh at wire
 speed, BEFORE anything in the live stack changes permanently.
 
 Honest scope, stated up front:
 
-- TODAY the BOT owns the radio (`radio_mode: "spi"` in the bot's
-  config) and feeds the old modem process, which serves the
-  visualization tool. The old modem has NO radio of its own.
-- So benching cleanmodem on the real antenna means the BOT steps
-  aside for 15-30 minutes: the bot service stops, cleanmodem takes
-  the radio, we watch it hear traffic, then everything comes back.
-- During the bench: no bot on the channels, no feed to the
-  visualization tool. That is the whole cost, and it ends at the
-  rollback step.
-- TX through cleanmodem is NOT part of this bench. The bot's TX path
-  gets verified at the switchover session, with its own rollback.
+- The BOT owns the radio today (`radio_mode` defaults to "spi") and
+  feeds the old modem process, which serves the visualization tool.
+  The old modem has NO radio of its own.
+- Benching cleanmodem on the real antenna means the BOT and the OLD
+  MODEM step aside for 15-30 minutes: their services stop, cleanmodem
+  takes the radio, we watch it hear traffic, then everything comes
+  back. During the bench there is no bot on the channels and no feed
+  to the visualization tool. That is the whole cost, and it ends at
+  the rollback step.
+- TX through cleanmodem is NOT part of this bench (verified at the
+  switchover session, with its own runbook).
+
+Box facts confirmed on hilltop (Step 1 paste, 2026-09-14):
+
+- services: meshtech-bot (radio owner), meshtech-modem (old modem,
+  holds port 5055), openhop-repeater (observer, stays up)
+- bot service runs as User=meshtech, /opt/meshtech-bot,
+  .venv/bin/python
 
 One step at a time. Paste each output back before moving on.
 
-## Step 0 - get the branch onto hilltop
+PROGRESS (2026-09-14, after a lost session): Steps 2-4 are DONE -
+token files created, modem.conf written, radio handover executed.
+cleanmodem-bench holds the radio RIGHT NOW; the bot and old modem are
+stopped until the Step 7 rollback. NEXT: Step 5 metrics paste.
 
-👁️ READ - The branch is committed locally (3808d11 + the DEV merge)
-but NOT pushed, so the box cannot see it yet. After you say OK to the
-push, the box gets it like any other branch. This does not touch the
-running bot.
+## Step 0 - branch on the box (DONE 2026-09-14)
 
-▶️ DO - After the push is done, on hilltop:
+`manage.sh update clean-modem` succeeded on the second attempt
+(v0.0.151 after the config-sync incident fix). Box runs
+clean-modem@6a0d9b1 with radio_mode still "spi".
 
-```bash
-cd ~/meshtech-bot && sudo ./manage.sh update clean-modem
-```
+## Step 1 - service names + unit details (DONE 2026-09-14)
 
-📋 PASTE - the update output.
+Paste received and recorded above.
 
-## Step 1 - find the exact service names and paths
-
-👁️ READ - I will not guess the service names, the python path, or the
-user - the runbook must match your box exactly.
-
-▶️ DO - On hilltop:
-
-```bash
-systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater" ; systemctl cat meshtech-bot | grep -E "User=|WorkingDirectory=|ExecStart="
-```
-
-📋 PASTE - both outputs.
-
-## Step 2 - token files
+## Step 2 - token files (service-readable location) - DONE 2026-09-14
 
 👁️ READ - The modem refuses every client without two passwords. They
-live in mode-600 files (first line = password), created here as YOUR
-user so the service can read them later. Nothing goes into any config
-file.
+live as mode-600 files owned by the SERVICE user (meshtech), in the
+bot's own data area - the bench unit will read them from there.
+Nothing goes into any config file.
 
 ▶️ DO - On hilltop:
 
 ```bash
-mkdir -p ~/cleanmodem-etc && cd ~/cleanmodem-etc
-openssl rand -hex 32 > observer.token
-openssl rand -hex 32 > controller.token
-chmod 600 observer.token controller.token
-ls -l
+sudo mkdir -p /opt/meshtech-bot/data/cleanmodem-bench
+sudo bash -c 'umask 077; openssl rand -hex 32 > /opt/meshtech-bot/data/cleanmodem-bench/observer.token; openssl rand -hex 32 > /opt/meshtech-bot/data/cleanmodem-bench/controller.token; chown -R meshtech:meshtech /opt/meshtech-bot/data/cleanmodem-bench'
+ls -l /opt/meshtech-bot/data/cleanmodem-bench
+id meshtech
 ```
 
-📋 PASTE - the `ls -l` (both files should show `-rw-------`).
+📋 PASTE - the `ls -l` (two `-rw-------` files owned by meshtech) and
+the `id meshtech` line (I want to see whether gpio/spi groups ride
+along; the bench unit carries them explicitly either way).
 
-## Step 3 - modem.conf for the bench
+## Step 3 - modem.conf for the bench - DONE 2026-09-14
 
-👁️ READ - One page of settings; the radio numbers are already the
-live mesh values. The two token lines must point at the files from
-Step 2 - the example points elsewhere on purpose, so we fix them.
+👁️ READ - One page of settings; the radio numbers already match the
+live mesh. The two token lines must point at the Step 2 files.
 
 ▶️ DO - On hilltop:
 
 ```bash
-cp ~/meshtech-bot/deploy/cleanmodem.conf.example ~/cleanmodem-etc/modem.conf
-nano ~/cleanmodem-etc/modem.conf
+sudo cp /opt/meshtech-bot/deploy/cleanmodem.conf.example /opt/meshtech-bot/data/cleanmodem-bench/modem.conf
+sudo nano /opt/meshtech-bot/data/cleanmodem-bench/modem.conf
 ```
 
-In nano, make these two lines read (full paths, your home dir):
+In nano, make the two token lines read:
 
 ```yaml
-token_file: "/home/k6bps/cleanmodem-etc/observer.token"
-controller_file: "/home/k6bps/cleanmodem-etc/controller.token"
+token_file: "/opt/meshtech-bot/data/cleanmodem-bench/observer.token"
+controller_file: "/opt/meshtech-bot/data/cleanmodem-bench/controller.token"
 ```
 
-Save (Ctrl-O, Enter) and exit (Ctrl-X).
+Save (Ctrl-O, Enter), exit (Ctrl-X).
 
-📋 PASTE - `grep -E "host|port|token_file|controller_file|pin_profile|frequency" ~/cleanmodem-etc/modem.conf`
+📋 PASTE - `sudo grep -E "host|port|token_file|controller_file|pin_profile|frequency" /opt/meshtech-bot/data/cleanmodem-bench/modem.conf`
 
-## Step 4 - the radio handover (the one disruptive step)
+## Step 4 - the bench unit + the radio handover (the disruptive step) - DONE 2026-09-14
 
 👁️ READ - Two processes cannot share the SPI radio, and the old modem
-holds port 5055 that cleanmodem wants. So for the bench we stop the
-bot service AND the old modem service. The visualization tool's
-repeater stays up - it will just sit quiet, then reconnect at
-rollback. The outage ends at Step 8.
+holds port 5055. We stop bot + old modem, then install a small bench
+unit for cleanmodem that carries the same radio-access flags as the
+proven bot unit (PrivateDevices=false, gpio+spi groups). The repeater
+stays up and simply retries its connection. The outage ends at Step 8.
 
-▶️ DO - On hilltop (names from your Step 1 paste - I confirm them
-with you first):
+▶️ DO - On hilltop (writes the unit, then does the handover):
 
 ```bash
+sudo tee /etc/systemd/system/cleanmodem-bench.service > /dev/null <<'EOF'
+[Unit]
+Description=cleanmodem bench (temporary - RX parity test)
+After=network-online.target
+
+[Service]
+Type=simple
+User=meshtech
+Group=meshtech
+WorkingDirectory=/opt/meshtech-bot
+Environment=PYTHONPATH=/opt/meshtech-bot
+ExecStart=/opt/meshtech-bot/.venv/bin/python -m cleanmodem --config /opt/meshtech-bot/data/cleanmodem-bench/modem.conf
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=full
+PrivateDevices=false
+SupplementaryGroups=gpio spi
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
 sudo systemctl stop meshtech-bot meshtech-modem
+sudo systemctl start cleanmodem-bench
+sleep 5
+systemctl status cleanmodem-bench --no-pager -n 15
 ```
 
-📋 PASTE - `systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater"`
+📋 PASTE - the status output (looking for `active (running)` and
+`Radio up` in the log lines, or any SPI error).
 
-## Step 5 - first start of cleanmodem
+## Step 5 - RX parity: does it hear the mesh? - NEXT (paste metrics)
 
-👁️ READ - cleanmodem takes the radio and arms RX. What success looks
-like: `Radio up` (or similar) with no SPI errors. We run it in the
-foreground so everything is visible; Ctrl-C stops it cleanly.
-
-▶️ DO - On hilltop (python path from your Step 1 paste):
-
-```bash
-cd ~/meshtech-bot && sudo -u k6bps PYTHONPATH=/home/k6bps/meshtech-bot <PYBIN> -m cleanmodem --config /home/k6bps/cleanmodem-etc/modem.conf
-```
-
-(`<PYBIN>` = the ExecStart python from Step 1 - I fill it in with you.)
-
-📋 PASTE - the startup lines (looking for `Radio up` or an error).
-
-## Step 6 - RX parity: does it hear the mesh?
-
-👁️ READ - The pass bar: cleanmodem hears the same traffic the old
-stack logged, and crc errors stay at the mesh's normal background
-level. The metrics line prints once a minute with the counts and the
+👁️ READ - Pass bar: cleanmodem hears the same traffic the old stack
+logged, and CRC errors stay at the mesh's normal background level.
+The metrics line prints once a minute with the counts and the
 wire-speed numbers. Leave it listening 10-15 minutes.
 
-▶️ DO - Watch the terminal (or in a second ssh session):
+▶️ DO - On hilltop, after 10-15 minutes of real traffic:
 
 ```bash
-sudo journalctl -n 40 --no-pager | grep -E "metrics|RX_PACKET"
+sudo journalctl -u cleanmodem-bench -n 40 --no-pager | grep -E "metrics|RX_PACKET"
 ```
-
-(foreground run: just copy the `metrics:` lines from the terminal)
 
 📋 PASTE - the metrics lines.
 
-## Step 7 - latency (the "wire speed" claim, made into a number)
+## Step 6 - latency (the "wire speed" claim, made into a number)
 
-👁️ READ - The pass bar: p50 under ~20 ms and p99 under ~100 ms. The
-radio's airtime for one packet is already hundreds of ms - these
-numbers measure only the modem's internal path (IRQ to fan-out).
+👁️ READ - Pass bar: p50 under ~20 ms and p99 under ~100 ms. Radio
+airtime for one packet is already hundreds of ms - these numbers
+measure only the modem's internal path (IRQ to fan-out).
 
-▶️ DO - Copy the `irq→fanout p50/p99` numbers from the Step 6 metrics
+▶️ DO - Copy the `irq→fanout p50/p99` numbers from the Step 5 metrics
 line.
 
 📋 PASTE - them here (or "no traffic" - then we generate some).
 
-## Step 8 - rollback (everything back the way it was)
+## Step 7 - rollback (everything back the way it was)
 
 👁️ READ - However the bench went, the live stack comes back now: the
-old modem gets its port, the bot gets its radio, the visualization
-tool reconnects, and the bot is back on the channels.
+old modem gets its port back, the bot gets its radio, the
+visualization tool reconnects, and the bench unit is stopped.
 
 ▶️ DO - On hilltop:
 
 ```bash
+sudo systemctl stop cleanmodem-bench
 sudo systemctl start meshtech-modem meshtech-bot
+systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater|cleanmodem"
 ```
 
-(names confirmed from Step 1 first)
-
-📋 PASTE - `systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater"`
+📋 PASTE - the running-units list (cleanmodem-bench must be ABSENT,
+the other three present).
 
 ## Pass bar summary
 
-- `Radio up` with no SPI errors (Step 5)
-- rx climbs with real mesh traffic; crc_err stays at background level (Step 6)
-- irq→fanout p50 < ~20 ms, p99 < ~100 ms (Step 7)
-- Rollback leaves the live stack exactly as it was (Step 8)
+- `Radio up` with no SPI errors (Step 4)
+- rx climbs with real mesh traffic; crc_err stays at background (Step 5)
+- irq→fanout p50 < ~20 ms, p99 < ~100 ms (Step 6)
+- Rollback leaves the live stack exactly as it was (Step 7)
 
-After a pass: the NEXT session does the switchover - bot config
-flips to `radio_mode: "modem"`, token files move to their final
-homes, cleanmodem gets a systemd unit, and TX through cleanmodem is
-verified on the air. Own runbook, own rollback.
+After a pass: the bench unit can be removed (`sudo rm
+/etc/systemd/system/cleanmodem-bench.service && sudo systemctl
+daemon-reload`) and the NEXT session does the switchover - bot config
+flips to `radio_mode: "modem"`, tokens move to their final homes,
+cleanmodem gets its permanent systemd unit, and TX through cleanmodem
+is verified on the air. Own runbook, own rollback.

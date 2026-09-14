@@ -36,7 +36,9 @@ _SHORT_LEN = 7
 # the box) - next free number wins. 0.0.150: bench runbook (docs).
 # 0.0.151: example-config comment fix (the deploy's config-sync inserts
 # "# key: value" lines as ACTIVE settings - prose got into a live file).
-__version__ = "0.0.151"
+# 0.0.152: cleanmodem LBT retry jitter goes continuous (uniform 0.10-0.30 s,
+# the old stack's empirically robust pattern) instead of three fixed delays.
+__version__ = "0.0.152"
 
 
 def _short(sha: str) -> str:
