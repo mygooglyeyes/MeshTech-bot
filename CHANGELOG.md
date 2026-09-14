@@ -9,6 +9,15 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.164 - 2026-09-14 (clean-modem branch)
+
+Second half of the CAD fix: SetCadParams takes SEVEN parameter
+bytes (numSymbols, detPeak, detMin, exitMode, timeout[3]) - the
+driver sent four. Truncated commands are rejected by the chip, so
+SetCad ran with undefined parameters and CAD_DONE never came even
+after the v0.0.163 read alignment. Now sends the full 7-byte form
+(one-shot CAD, exit mode 0 = STANDBY, timeout field 0).
+
 ## 0.0.163 - 2026-09-14 (clean-modem branch)
 
 THE root cause of the deaf modem, found by a raw-probe experiment

@@ -649,7 +649,14 @@ class SX126xRadio(ThreadedHal):
         try:
             peak = det_peak or self._cad_peak
             smallest = det_min or self._cad_min
-            self._cmd(OP_SET_CAD_PARAMS, [0x04, peak, smallest, 0x00])
+            # v0.0.164: SetCadParams takes SEVEN param bytes
+            # (numSymbols, detPeak, detMin, exitMode, timeout[3]). The
+            # old 4-byte command was truncated -> rejected by the chip
+            # -> SetCad ran with undefined params and CAD_DONE never
+            # came (the second half of the CAD-timeout bug). Timeout
+            # field = 0: CAD is one-shot, exit mode 0 = back to STANDBY.
+            self._cmd(OP_SET_CAD_PARAMS,
+                      [0x04, peak, smallest, 0x00, 0x00, 0x00, 0x00])
             self._clear_irq(IRQ_ALL)
             self._cmd(OP_SET_CAD, [])           # 0xC5: enter CAD
             deadline = time.monotonic() + self.CAD_TIMEOUT_S

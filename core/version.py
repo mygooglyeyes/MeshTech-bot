@@ -55,7 +55,9 @@ _SHORT_LEN = 7
 # 0.0.163: _read_cmd misaligned by one byte - the chip status byte
 # was read as data, so IRQ flags never included the low byte
 # (RX_DONE/CAD_DONE/TX_DONE invisible; rx=0 from day one).
-__version__ = "0.0.163"
+# 0.0.164: SetCadParams sent 4 of its 7 required bytes - truncated
+# commands are rejected, so CAD never ran even with clean reads.
+__version__ = "0.0.164"
 
 
 def _short(sha: str) -> str:
