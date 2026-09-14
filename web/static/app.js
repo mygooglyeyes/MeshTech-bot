@@ -1319,14 +1319,16 @@ function vbarSvg(labels, valuesList, colors, unit) {
 }
 
 // SNR line chart: avg line + min/max band. points: [{ts, avg, min, max}]
-function snrSvg(points) {
+function snrSvg(points, yFloor = -10, yCeil = 15, minSpan = 8) {
+  // Generic min/avg/max band chart; the defaults fit SNR's -10..15 dB
+  // world. The noise-floor panel reuses it with noise-scale bounds.
   const n = Math.max(points.length, 1);
   const plotW = AN_W - AN_ML - AN_MR;
   const plotH = AN_H - AN_MT - AN_MB;
   const all = points.flatMap((p) => [p.min, p.max, p.avg]);
-  let yMin = Math.floor(Math.min(-10, ...all));
-  let yMax = Math.ceil(Math.max(15, ...all));
-  if (yMax - yMin < 8) yMax = yMin + 8;
+  let yMin = Math.floor(Math.min(yFloor, ...all));
+  let yMax = Math.ceil(Math.max(yCeil, ...all));
+  if (yMax - yMin < minSpan) yMax = yMin + minSpan;
   const xAt = (i) => AN_ML + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1));
   const yAt = (v) => AN_MT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
   let s = "";
@@ -1418,6 +1420,18 @@ async function refreshAnalysis() {
       "'></i>avg (band = min/max)</span></div></div>";
   } else {
     html += "<div class='an-none'><em>no SNR readings in window</em></div></div>";
+  }
+
+  // 5. noise-floor trend (hourly min/avg/max, from persisted samples)
+  const noise = (data.noise || []).map((p) => ({ ...p, ts: p.bucket, spanSec: 3600 }));
+  html += anPanel("Noise floor (dBm per hour)");
+  if (noise.length) {
+    html += "<svg viewBox='0 0 " + AN_W + " " + AN_H + "' preserveAspectRatio='xMidYMid meet'>" +
+      snrSvg(noise, -150, -50, 10) + "</svg><div class='an-legend'><span><i style='background:" +
+      AN_C.accent + "'></i>avg (band = min/max) · hourly</span></div></div>";
+  } else {
+    html += "<div class='an-none'><em>no noise-floor history in window " +
+      "(builds every 5 s while the bot runs)</em></div></div>";
   }
 
   grid.innerHTML = html;
@@ -1887,7 +1901,92 @@ async function refreshAll() {
     await refreshAnalysis();
     await refreshModules();
     await refreshUpdateStatus();
+    await refreshNoiseFloor();
   } catch (e) { /* auth or network handled elsewhere */ }
+}
+
+// ------------------------------------------------------------------ noise floor
+
+// The 30-minute noise-floor graph (noise-floor branch). One redraw per
+// poll; the canvas keeps its own 2x-DPR backing store so the line stays
+// crisp on hi-dpi screens.
+let noiseAvailable = null;   // null = not yet fetched (card hidden until known)
+
+async function refreshNoiseFloor() {
+  const card = $("card-noise");
+  let data;
+  try {
+    data = await api("/api/noisefloor");
+  } catch (e) {
+    return;  // auth/network handled elsewhere - keep whatever we showed
+  }
+  noiseAvailable = !!(data && data.available);
+  // Companion-mode bot (or old build): no local radio to sample.
+  card.hidden = !noiseAvailable;
+  if (!noiseAvailable) return;
+  const cur = data.current;
+  $("noise-current").textContent =
+    (cur == null ? "\u2013" : cur.toFixed(1) + " dBm");
+  drawNoiseGraph(data.points || []);
+}
+
+function drawNoiseGraph(points) {
+  const canvas = $("noise-graph");
+  if (!canvas || !canvas.offsetParent) return;  // collapsed - skip work
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 720;
+  const cssH = 140;
+  if (canvas.width !== Math.round(cssW * dpr)) {
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const styles = getComputedStyle(document.documentElement);
+  const line = (styles.getPropertyValue("--accent") || "#4cc2ff").trim();
+  const grid = (styles.getPropertyValue("--muted") || "#8a8f98").trim();
+
+  // Fixed x-window of 30 minutes so the graph breathes as points age;
+  // y-scale from the data with 3 dB headroom, floor at 6 dB span so a
+  // quiet hour doesn't turn one flat line into a single pixel row.
+  const now = Date.now() / 1000;
+  const WIN = 30 * 60;
+  let lo = Infinity, hi = -Infinity;
+  for (const [, v] of points) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (!isFinite(lo)) { lo = -110; hi = -100; }
+  let mid = (lo + hi) / 2, half = Math.max((hi - lo) / 2 + 3, 3);
+  const yLo = mid - half, yHi = mid + half;
+
+  const padL = 2, padR = 2, padT = 4, padB = 4;
+  const X = (t) => padL + ((now - t) / WIN) * (cssW - padL - padR);
+  const Y = (v) => padT + (1 - (v - yLo) / (yHi - yLo)) * (cssH - padT - padB);
+
+  // y-scale edge labels (also rendered in the axis row under the canvas)
+  $("noise-min-label").textContent = yLo.toFixed(0) + " dBm";
+  $("noise-max-label").textContent = yHi.toFixed(0) + " dBm";
+
+  // midline at the scale centre for visual anchoring
+  ctx.strokeStyle = grid;
+  ctx.globalAlpha = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(padL, (cssH + padT - padB) / 2);
+  ctx.lineTo(cssW - padR, (cssH + padT - padB) / 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (points.length === 1) points = [points[0], points[0]];
+  if (points.length >= 2) {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(X(points[0][0]), Y(points[0][1]));
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(X(points[i][0]), Y(points[i][1]));
+    }
+    ctx.stroke();
+  }
 }
 
 // ------------------------------------------------------------------ modules
@@ -2135,6 +2234,7 @@ function startPolling() {
   setInterval(() => { refreshNodes($("node-filter").value).catch(() => {}); }, 30000);
   setInterval(() => { refreshPackets().catch(() => {}); }, 30000);
   setInterval(() => { refreshAnalysis().catch(() => {}); }, 30000);
+  setInterval(() => { refreshNoiseFloor().catch(() => {}); }, 5000);
   // Update check status changes slowly; refresh the chip every 10 min
   // (the bot itself re-checks on its own schedule).
   setInterval(() => { refreshUpdateStatus().catch(() => {}); }, 600000);

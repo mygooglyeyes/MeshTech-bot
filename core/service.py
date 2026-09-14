@@ -34,6 +34,7 @@ class BotService:
         self.capture = None           # set by bot.py (core.capture.PacketCapture)
         self.mcp = None               # set by bot.py when mcp.enabled (core.mcp.Mcp)
         self.modem_feed = None        # set by bot.py when modem_feed.enabled
+        self.noise_monitor = None     # set by bot.py in MCP mode (core.noisefloor)
         self.registry: List = []      # sorted handler instances
         self.started_at: float = time.time()
         self.stop_requested = False
@@ -534,6 +535,8 @@ class BotService:
         return {
             "bot_name": "meshtech-bot",
             "companion_name": companion,
+            "noise_floor": (None if self.noise_monitor is None
+                            else self.noise_monitor.current),
             "mcp": mcp_state,
             "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),

@@ -232,6 +232,14 @@ async def _start_mcp(service, settings, tasks) -> None:
         log.info("Modem feed disabled - packets go to the bot only "
                  "(openHop will show nothing).")
 
+    # Noise-floor monitor (v0.0.143): records the driver's averaged floor
+    # every 5 s into a 30-minute buffer for the dashboard graph. MCP mode
+    # only - companion mode has no local radio to sample.
+    from core.noisefloor import NoiseFloorMonitor
+    monitor = NoiseFloorMonitor(mcp, store=service.store)
+    service.noise_monitor = monitor
+    tasks.append(asyncio.create_task(monitor.run(), name="noise-floor"))
+
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="MeshTech-Bot")
