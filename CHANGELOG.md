@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.140 - 2026-09-13 (small-repairs branch)
+
+CI now publishes a ready-made Docker image on every version tag
+(second half of the Docker audit): no more building on the target
+machine unless you want to.
+
+- .github/workflows/docker.yml (NEW): on a `v*` tag push, builds the
+  image and pushes it to ghcr.io/mygooglyeyes/meshtech-bot with three
+  tags - the exact version (v0.0.140), the major.minor track (0.0),
+  and latest. Uses the workflow's own GITHUB_TOKEN (no secrets to
+  configure) and Actions-layer caching. Runs alongside release.yml,
+  which keeps publishing the GitHub Release from the tag annotation.
+- docs/INSTALL.md: Docker option now mentions the published image as
+  the no-build alternative (docker pull + point compose at it).
+
 ## 0.0.139 - 2026-09-13 (small-repairs branch)
 
 Docker fix (from Brett's deployability audit): the compose file

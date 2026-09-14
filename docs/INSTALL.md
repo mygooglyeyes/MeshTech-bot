@@ -242,6 +242,17 @@ Other useful commands:
 - Stop: `docker compose down`
 - Rebuild and restart: `docker compose up -d --build`
 
+**Prefer not to build?** Each version tag publishes a ready-made image
+from CI. Pull it and use it instead of building locally:
+
+```bash
+docker pull ghcr.io/mygooglyeyes/meshtech-bot:v0.0.140
+```
+
+then point compose at it (replace `build:` + `image: meshtech-bot:latest`
+with `image: ghcr.io/mygooglyeyes/meshtech-bot:v0.0.140`) and
+`docker compose up -d`. `:latest` follows the newest tag.
+
 ---
 
 ## 3. Test that it works

@@ -11,6 +11,12 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.140** - Docker CI (Brett): .github/workflows/docker.yml
+  builds + pushes the image to ghcr.io/mygooglyeyes/meshtech-bot on
+  every `v*` tag (version / major.minor / latest tags, GITHUB_TOKEN
+  auth, gha cache). INSTALL.md Option C mentions the published image
+  as the no-build alternative. release.yml untouched.
+
 - **v0.0.139** - Docker fix (Brett's audit): compose config mount no
   longer :ro (web console writes + !trust failed in containers);
   docs/compose header now chown config.yaml to 1001 at setup.
