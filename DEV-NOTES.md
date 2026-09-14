@@ -11,6 +11,9 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.138** - Brett: !trust replies show "on" for the trust mode
+  (user-facing word), never the internal value "trust".
+
 - **v0.0.137** - !trust replies shortened to Brett's dictated wording:
   "Trust set to <mode>" after a change; "Trust is <current>" for a
   bare or invalid !trust. Tests updated to match exactly.

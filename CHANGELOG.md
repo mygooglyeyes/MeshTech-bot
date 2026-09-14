@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.138 - 2026-09-13 (small-repairs branch)
+
+Brett's wording: !trust replies use "on" for the trust mode - the
+user-facing word - instead of the internal value:
+
+- After a change: "Trust set to on" (was "Trust set to trust").
+- Bare/invalid !trust: "Trust is on" (was "Trust is trust").
+
 ## 0.0.137 - 2026-09-13 (small-repairs branch)
 
 !trust replies shortened to Brett's dictated wording (radio bytes are

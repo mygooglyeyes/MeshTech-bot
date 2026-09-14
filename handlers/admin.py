@@ -91,12 +91,16 @@ class AdminHandler(Handler):
         Writes config.yaml through the validated splicer, then reloads so
         every dependent state refreshes. The reload's on-air line stays
         the standard one; this reply is the one that names the new value.
+        Replies use the user-facing word 'on' for the trust mode (Brett):
+        "Trust set to on" / "Trust is on" - never the internal value.
         """
         raw = (ctx.args[0] if ctx.args else "").strip().lower()
         aliases = {"on": "trust", "trust": "trust", "smart": "smart",
                    "off": "off"}
+        labels = {"trust": "on", "smart": "smart", "off": "off"}
         if raw not in aliases:
-            current = ctx.settings.mesh.channel_sender_name
+            current = labels.get(ctx.settings.mesh.channel_sender_name,
+                                 ctx.settings.mesh.channel_sender_name)
             return HandlerResult(kind="text", data=f"Trust is {current}")
         mode = aliases[raw]
         from core.persist import set_mesh_sender_name
@@ -107,7 +111,7 @@ class AdminHandler(Handler):
             return HandlerResult(kind="text", data=(
                 "Could not save the setting - nothing was changed."))
         ctx.service.reload()               # refresh all dependent state
-        return HandlerResult(kind="text", data=f"Trust set to {mode}")
+        return HandlerResult(kind="text", data=f"Trust set to {labels[mode]}")
 
     # ------------------------------------------------------------------
 
