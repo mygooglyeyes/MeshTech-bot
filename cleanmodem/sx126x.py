@@ -209,32 +209,35 @@ class _GpiodGpio:
     def setup_out(self, pin: int, initial: int) -> None:
         g = self._gpiod
         self._request(pin, g.LineSettings(
-            direction=g.Direction.OUTPUT,
-            output_value=(g.Value.ACTIVE if initial else g.Value.INACTIVE)))
+            direction=g.line.Direction.OUTPUT,
+            output_value=(g.line.Value.ACTIVE if initial
+                          else g.line.Value.INACTIVE)))
 
     def setup_in(self, pin: int) -> None:
         self._request(pin, self._gpiod.LineSettings(
-            direction=self._gpiod.Direction.INPUT,
-            bias=self._gpiod.Bias.PULL_DOWN))
+            direction=self._gpiod.line.Direction.INPUT,
+            bias=self._gpiod.line.Bias.PULL_DOWN))
 
     def read(self, pin: int) -> int:
-        return int(self._reqs[pin].get_value(pin) == self._gpiod.Value.ACTIVE)
+        return int(self._reqs[pin].get_value(pin)
+                   == self._gpiod.line.Value.ACTIVE)
 
     def write(self, pin: int, value: int) -> None:
         self._reqs[pin].set_value(
-            pin, self._gpiod.Value.ACTIVE if value else self._gpiod.Value.INACTIVE)
+            pin, self._gpiod.line.Value.ACTIVE if value
+            else self._gpiod.line.Value.INACTIVE)
 
     def wait_edge(self, pin: int, timeout: float) -> bool:
         g = self._gpiod
         req = self._reqs.get(pin)
         if req is None:
             req = self._request(pin, g.LineSettings(
-                direction=g.Direction.INPUT,
-                edge_detection=g.Edge.RISING))
+                direction=g.line.Direction.INPUT,
+                edge_detection=g.line.Edge.RISING))
         else:
             req.reconfigure_lines(config={pin: g.LineSettings(
-                direction=g.Direction.INPUT,
-                edge_detection=g.Edge.RISING)})
+                direction=g.line.Direction.INPUT,
+                edge_detection=g.line.Edge.RISING)})
         fired = req.wait_edge_events(timeout)
         if fired:
             req.read_edge_events()

@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.159 - 2026-09-14 (clean-modem branch)
+
+gpiod 2.x enum location fix, caught by the clean-venv API probe on
+hilltop before any deploy: Direction/Edge/Value/Bias live in the
+gpiod.line submodule in 2.x, not top-level - the v0.0.158 backend
+would have AttributeError'd on every pin setup. Backend now uses
+gpiod.line.*; the fake-module test mirrors the real layout.
+
 ## 0.0.158 - 2026-09-14 (clean-modem branch)
 
 cleanmodem gpiod backend rewritten for the v2 Python API

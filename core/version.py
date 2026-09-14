@@ -43,7 +43,9 @@ _SHORT_LEN = 7
 # 0.0.158: cleanmodem gpiod backend rewritten for the v2 Python API
 # (gpiod.Chip + request_lines) - the v1 pip bindings are ABI-broken on
 # Debian 13; 2.x ships cp313 aarch64 wheels.
-__version__ = "0.0.158"
+# 0.0.159: gpiod 2.x enums live in the gpiod.line submodule, not
+# top-level (caught by the clean-venv API probe on hilltop).
+__version__ = "0.0.159"
 
 
 def _short(sha: str) -> str:
