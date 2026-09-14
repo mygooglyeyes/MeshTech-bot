@@ -359,9 +359,9 @@ DEFAULTS = {
 FULL_FIELDS = [
     # --- connection: the one radio source (companion mode) ---
     ("connection", "host", "text", "", None,
-     "LAN IP of the machine running the openHop companion."),
+     "LAN IP of the machine running the companion (repeater) software."),
     ("connection", "port", "int", 5000, (1, 65535),
-     "Companion port - must match openHop's tcp_port."),
+     "Companion port - must match the companion's tcp_port setting."),
     ("connection", "reconnect", "bool", True, None,
      "Keep trying if the connection drops."),
     ("connection", "reconnect_min_seconds", "num", 3.0, (0.0, 3600.0),
@@ -387,13 +387,12 @@ FULL_FIELDS = [
      "When the hop count can't be read: ignore (safe) or respond anyway."),
     ("mesh", "channel_sender_name", "choice", "trust", ["trust", "smart", "off"],
      "Trust the sender name embedded in channel text: trust / smart / off."),
-    # path hash size: the user types the 0/1/2 convention (openHop's
-    # path.hash.size); the file stores BYTES (value + 1). Typed choice:
+    # path hash size: the user types the mesh's 0/1/2 convention; the
+    # file stores BYTES (value + 1). Typed choice:
     ("mesh", "path_hash_size", "pathhash", 2, [0, 1, 2],
      "Path hash size - counts from 0: 0 = 1 byte, 1 = 2 bytes (our mesh's "
-     "setting), 2 = 3 bytes. Same convention as openHop's path.hash.size. "
-     "Caution: a value the repeaters do not use yet gets the bot's "
-     "adverts unrelayed by older 1-byte stations."),
+     "setting), 2 = 3 bytes. Caution: a value the repeaters do not use "
+     "yet gets the bot's adverts unrelayed by older 1-byte stations."),
     # --- dm ---
     ("dm", "enabled", "bool", True, None,
      "Answer direct messages at all."),
@@ -451,7 +450,7 @@ FULL_FIELDS = [
      "Let the dashboard's update popup click ANY branch (contributors)."),
     # --- radio: airtime statistics only (must MATCH the repeater) ---
     ("radio", "spreading_factor", "int", 7, (5, 12),
-     "Must MATCH your openHop repeater (statistics only, no radio setup)."),
+     "Must MATCH your repeater (statistics only, no radio setup)."),
     ("radio", "bandwidth_khz", "num", 62.5, (7.8, 500.0),
      "Must match the repeater (kHz)."),
     ("radio", "coding_rate_index", "int", 1, (1, 4),
@@ -513,7 +512,7 @@ FULL_FIELDS = [
     ("modem_feed", "host", "text", "127.0.0.1", None,
      "Box running meshtech-modem."),
     ("modem_feed", "port", "int", 5056, (1, 65535),
-     "The modem's FEED port (5055 is openHop's)."),
+     "The modem's FEED port (5055 is the companion's)."),
     ("modem_feed", "token_file", "text", "data/.modem_feed_token", None,
      "File holding the feed token (first line, mode 600) - never here."),
 ]
@@ -716,7 +715,7 @@ def _main_essentials(config_path: Path, original: str, data: dict) -> int:
     print("  without changing anything.")
     print("=" * 66)
 
-    host = ask("Repeater IP address (openHop companion host)",
+    host = ask("Repeater IP address (companion host)",
                str(conn.get("host", "")))
     port = ask_int("Companion port", int(conn.get("port", 5000)), 1, 65535)
     channels_new = ask_channels(channels)

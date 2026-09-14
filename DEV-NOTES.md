@@ -11,10 +11,21 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **OpenHop-reference purge (Brett's rule, 2026-09-13, on top of
+  v0.0.133, same commit):** no openHop mentions in anything I write -
+  editor prompts/help, example path-hash comment, my changelog
+  entries, and the example file's product mentions reworded to
+  "repeater/companion". A test now enforces it for the full editor.
+  (CHANGELOG's historical entries from older branches are left as
+  history.)
+
 - **v0.0.133** - BEHAVIOR CHANGE (Brett): 2-byte path hashes are the
   default (loader + example; editor asks the 0/1/2 convention and
   stores bytes). Text keys in the full editor keep their current value
-  on Enter instead of offering an empty one. Suite 488 pass.
+  on Enter instead of offering an empty one. NEW RULE (Brett): no
+  openHop references in comments/docs I write - stripped from the
+  editor, example path-hash comment, and changelog entries, with a
+  test enforcing it in the full editor. Suite 488 pass.
 
 - **v0.0.132** - Two full-editor fixes from Brett's first live run:
   choice keys (logging.level et al) accepted nothing because typed

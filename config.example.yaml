@@ -7,15 +7,15 @@
 #      python bot.py --check
 # ============================================================
 
-# --- Connection to your openHop Repeater --------------------
+# --- Connection to your Repeater (companion mode) -------------
 # The bot talks to ONE radio source. Pick ONE of the two:
 #   a) companion mode (default): fill in this connection block.
 #   b) radio mode: delete/leave out this block and set mcp: enabled: true
 #      below - the bot then owns a local SPI radio and needs no companion.
 connection:
-  host: "192.168.1.50"      # <-- LAN IP of the machine running openHop Repeater
+  host: "192.168.1.50"      # <-- LAN IP of the machine running the repeater
   port: 5000                # <-- companion port on the repeater. Must match the
-                            #     "tcp_port" set in openHop's own config.
+                            #     "tcp_port" set in the repeater's own config.
   reconnect: true           # keep trying if the connection drops
   reconnect_min_seconds: 3  # wait at least this long between attempts
   reconnect_max_seconds: 60 # ...and at most this long (backoff grows over time)
@@ -31,7 +31,7 @@ bot:
   #   true            = answer anyway - only for meshes where sender
   #                     identity is never available
   # Clock-sync the companion at startup? Leave false when the companion
-  # keeps its own time (openHop on a Linux box does).
+  # keeps its own time (a repeater on a Linux box does).
   answer_unknown_senders: false
   # The symbol that starts a command. Default '!'. Must be ONE visible
   # symbol. ':' '#' and '@' are refused (they already mean things:
@@ -55,11 +55,10 @@ mesh:
   #   "off"   = never strip (for gateways that relay messages WITHOUT names)
   channel_sender_name: "trust"  # Path hash size for the bot's OWN originated traffic (adverts,
   # flood-routed DMs) - counted in BYTES per hop: 1 = 1-byte (classic),
-  # 2 = 2-byte (our mesh's setting; openHop's own path.hash.size counts
-  # the same thing 0 | 1 | 2, so 2 bytes = path.hash.size 1). Replies
-  # to a specific node always echo back whatever hash size that node's
-  # advert taught the bot, per node. Caution: a value the repeaters do
-  # not use yet gets the bot's adverts unrelayed by older stations.
+  # 2 = 2-byte (our mesh's current setting). Replies to a specific node
+  # always echo back whatever hash size that node's advert taught the
+  # bot, per node. Caution: a value the repeaters do not use yet gets
+  # the bot's adverts unrelayed by older stations.
   path_hash_size: 2                        # bytes per hop: 1 | 2 | 3
 
 # --- Channels the bot listens on -------------------------------
@@ -216,7 +215,7 @@ web:
   developer_mode: false
 
 # --- Radio settings (for estimated-airtime statistics) --------------
-# These must MATCH what your openHop repeater already uses - they do NOT
+# These must MATCH what your repeater already uses - they do NOT
 # configure the radio. They drive the estimated-airtime numbers in the
 # node detail popup ("how much of the air this node's traffic occupies").
 radio:
@@ -251,7 +250,7 @@ logging:
 
 # --- MCP radio (the bot's own SPI radio) ------------------------
 # When enabled, the bot OWNS the PiMesh-1W v2 radio on this machine's
-# SPI pins and no longer talks to an openHop companion (the connection:
+# SPI pins and no longer talks to a companion repeater (the connection:
 # block above is then ignored and may be deleted). Pin wiring is
 # built in for the PiMesh-1W v2 (hard-coded; do not edit here).
 mcp:
@@ -271,7 +270,7 @@ mcp:
   inter_packet_politeness_seconds: 2.0
   # CAD (listen-before-talk) detection thresholds, 0-31 each - how
   # sensitive the radio's channel-activity check is. 15/7 is the RECEIVING
-  # tuning Brett found best on openHop for this board. 0/0 = driver
+  # tuning Brett found best for this board. 0/0 = driver
   # defaults. Note: these apply to the radio's own LBT; the bot's extra
   # pre-check (below) has its own pair.
   cad_peak: 15
@@ -291,13 +290,13 @@ mcp:
   # the phone resend. 0 = off (old behavior).
   clear_channel_wait_seconds: 4.0
 
-# --- Modem feed (radio packets -> meshtech-modem -> openHop) ----
+# --- Modem feed (radio packets -> meshtech-modem -> repeater) ----
 # Pushes a copy of every packet the radio hears (and every packet the
-# bot sends) to meshtech-modem's feed port, so openHop's packet log
+# bot sends) to meshtech-modem's feed port, so the repeater's packet log
 # stays complete. The token lives in its own protected file (first line
 # = password, chmod 600) - NEVER in this file.
 modem_feed:
   enabled: false
   host: "127.0.0.1"         # same box as meshtech-modem
-  port: 5056                # the modem's FEED port (5055 is openHop's)
+  port: 5056                # the modem's FEED port (5055 is the repeater's)
   token_file: "data/.modem_feed_token"

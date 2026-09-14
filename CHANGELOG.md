@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.134 - 2026-09-13 (small-repairs branch)
+
+Reference purge (Brett's rule): no mentions of other software by name
+in anything the project's own docs, prompts, or comments say.
+
+- The full editor's prompts and help texts, the example file's
+  path-hash comment, and the example file's connection/radio/modem
+  sections now say "repeater"/"companion" instead. No behavior
+  changes - wording only.
+- A new test enforces the rule for the full editor's help texts so it
+  cannot creep back in.
+
 ## 0.0.133 - 2026-09-13 (small-repairs branch)
 
 BEHAVIOR CHANGE (Brett): 2-byte path hashes are now the DEFAULT for
@@ -16,12 +28,13 @@ the bot's own originated traffic (adverts, flood-routed DMs).
 
 - core/config.py: mesh.path_hash_size defaults to 2 (was 1) when the
   key is absent; config.example.yaml ships 2 with the counting spelled
-  out (openHop's path.hash.size counts the same thing 0/1/2, so
-  2 bytes = path.hash.size 1). Existing configs with an explicit value
-  are untouched; hilltop's config says 1 and keeps 1 until edited.
+  out (the mesh counts hashes 0/1/2 in its own UI, so the counting
+  shown there is one less than the byte value stored here). Existing
+  configs with an explicit value are untouched; hilltop's config says
+  1 and keeps 1 until edited.
 - Full editor: path_hash_size is now asked in the 0/1/2 convention
-  ("value [0, 1, or 2] [1]") - matching openHop's UI - and converted
-  to bytes for storage; the old byte-count prompt is gone.
+  ("value [0, 1, or 2] [1]") and converted to bytes for storage; the
+  old byte-count prompt is gone.
 - Full editor: text keys no longer offer a silent empty default.
   logging.file and friends now show their current value and Enter
   keeps it (an empty answer can no longer disable a feature by
@@ -36,11 +49,10 @@ Two full-editor fixes from Brett's first live run on hilltop:
   list, so Enter and "INFO" both bounced. Choice matching is now
   case-insensitive and always returns the canonical value.
 - mesh.path_hash_size showed bare numbers (1|2|3) with no link to
-  openHop's convention, where the same setting counts from 0 (0 =
-  1 byte, 1 = 2 bytes, 2 = 3 bytes). Choices now read "1 = 1-byte hash
-  (openHop path.hash.size 0) - today's mesh" etc., and the help text
-  explains both scales and the migration caution. (Existing configs
-  are unaffected - the stored value stays a plain number.)
+  the mesh's own convention, where the same setting counts from 0
+  (0 = 1 byte, 1 = 2 bytes, 2 = 3 bytes). The help text now explains
+  both scales and the migration caution. (Existing configs are
+  unaffected - the stored value stays a plain number.)
 
 ## 0.0.131 - 2026-09-13 (small-repairs branch)
 
