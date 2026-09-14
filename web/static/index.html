@@ -20,6 +20,11 @@
 <body>
   <header>
     <h1><span id="title-bot">MeshTech-Bot</span> <span id="title-companion" class="companion-name"></span></h1>
+    <div id="own-key-line" hidden>
+      <span class="own-key-label">key</span>
+      <span id="own-key-text" class="own-key-text"></span>
+      <button class="btn small" id="btn-copy-key" title="Copy the FULL public key to the clipboard">copy</button>
+    </div>
     <div id="status-chips" class="chips">
       <button class="btn small" id="btn-logout" title="End this dashboard session (nothing on the mesh changes)">logout</button>
       <span class="chip" id="chip-conn">connecting…</span>

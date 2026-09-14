@@ -1,5 +1,35 @@
 # Changelog
 
+Every change gets its own version number - the version doubles as a
+commit counter, so you can always tell exactly which build a bot is
+running (dashboard header chip and startup log). This file records what
+each change does, in plain language, newest first. Milestone tags
+(`v0.0.004`, `v0.0.006`, `v0.0.012`, `v0.0.016`, ...) mark releases
+worth highlighting; ordinary commits just move the counter.
+
+Going forward: every commit that bumps the version adds its line here.
+
+## 0.0.148 - 2026-09-14 (small-repairs branch)
+
+Comment cleanup (Brett's standing rule), caught during the merge
+review: the path-hash comment in core/config.py no longer references
+other software, and its text now matches the actual default
+(2-byte hashes).
+
+## 0.0.147 - 2026-09-14 (small-repairs branch)
+
+New keyword `!repeats` (Brett): how much the mesh repeats itself.
+
+- handlers/repeats.py (NEW): public keyword, channel/DM. One short
+  line back - "3 repeats / 30% of total packets 10" - counted over
+  the last hour of decoded inbound packets (repeats / share / total).
+- core/store.py: repeat_stats(window) - one COUNT/SUM query. Returns
+  None on builds whose schema predates repeat marking (those columns
+  arrive with the duplicate-packet merge from DEV), so the keyword
+  answers "No repeat tracking on this build" instead of failing.
+- 4 new tests (reply format, hour window, empty window, pre-merge
+  schema); suite 503 on this branch's gate.
+
 ## 0.0.145 - 2026-09-13 (noise-floor branch)
 
 Noise-floor graph orientation CORRECTED (Brett's screenshot): v0.0.144
@@ -13,8 +43,6 @@ band chart's normal orientation (its own y-axis labels show scale).
 
 ## 0.0.144 - 2026-09-13 (noise-floor branch)
 
-## 0.0.144 - 2026-09-13 (noise-floor branch)
-
 Noise-floor graphs vertically REVERSED (Brett): a higher dBm value
 (lower noise floor) now plots LOWER, so a noise intrusion reads as the
 line dipping down and a quiet mesh rides high.
@@ -25,8 +53,6 @@ line dipping down and a quiet mesh rides high.
   ("reversed" added to its legend); the SNR trend keeps its normal
   orientation (the shared band chart gained an invert flag).
 - Frontend-only: no Python behavior changes.
-
-## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
 
 ## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
 
@@ -62,15 +88,214 @@ in the web console, so weak-signal conditions are visible at a glance.
   buckets + retention pruning, analysis wiring). Suite 478 pass on
   this branch's gate.
 
-Every change gets its own version number - the version doubles as a
-commit counter, so you can always tell exactly which build a bot is
-running (dashboard header chip and startup log). This file records what
-each change does, in plain language, newest first. Milestone tags
-(`v0.0.004`, `v0.0.006`, `v0.0.012`, `v0.0.016`, ...) mark releases
-worth highlighting; ordinary commits just move the counter.
+## 0.0.142 - 2026-09-13 (small-repairs branch)
 
-Going forward: every commit that bumps the version adds its line here.
+Box rebuild runbook (Brett): a fresh hilltop install without
+re-learning the steps git cannot carry across machines.
 
+- docs/REBUILD-RUNBOOK.md (NEW): backup list first (config.yaml, the
+  whole data folder - bot_radio_identity.txt IS the bot's mesh
+  identity), SPI enable, clone + install, THE THREE TRAPS (gpio/spi
+  groups for the service account; updates.clone_path ships
+  commented-out and the config sync never adds it; sudo manage.sh
+  webupdates writes the sudoers rule), ownership restore, start-and-
+  verify checklist (dashboard pubkey must match pre-rebuild), the
+  known-harmless update warnings, and the Docker-variant delta.
+- docs/INSTALL.md: the runbook linked from the files table.
+
+## 0.0.141 - 2026-09-13 (small-repairs branch)
+
+Dashboard nicety (Brett): the bot's own public key now shows in the
+web console, right under the bot name - truncated to 10 hex characters
+on screen, with a copy button that copies the FULL key (for sharing
+the bot's contact or adding it as an admin elsewhere).
+
+- core/service.py: /api/status now carries own_pubkey (hex, lowercased)
+  in both radio modes - MCP mode derives it from the bot's identity
+  file, companion mode from what the device reported at connect. The
+  field stays empty (and the line hidden) when unknown.
+- core/mcp.py + core/client.py: own_pubkey property / capture at
+  connect; a failure here can never block the radio from starting.
+- web: new key line under the bot name (label + 10-char preview +
+  copy button); clipboard with a non-secure-context fallback for
+  plain-HTTP dashboards, and a show-the-key prompt if the browser
+  refuses entirely.
+- tests: 4 new in test_status_own_pubkey.py (both modes + hidden-when-
+  unknown + the identity-derivation property).
+
+## 0.0.140 - 2026-09-13 (small-repairs branch)
+
+CI now publishes a ready-made Docker image on every version tag
+(second half of the Docker audit): no more building on the target
+machine unless you want to.
+
+- .github/workflows/docker.yml (NEW): on a `v*` tag push, builds the
+  image and pushes it to ghcr.io/mygooglyeyes/meshtech-bot with three
+  tags - the exact version (v0.0.140), the major.minor track (0.0),
+  and latest. Uses the workflow's own GITHUB_TOKEN (no secrets to
+  configure) and Actions-layer caching. Runs alongside release.yml,
+  which keeps publishing the GitHub Release from the tag annotation.
+- docs/INSTALL.md: Docker option now mentions the published image as
+  the no-build alternative (docker pull + point compose at it).
+
+## 0.0.139 - 2026-09-13 (small-repairs branch)
+
+Docker fix (from Brett's deployability audit): the compose file
+mounted config.yaml READ-ONLY, so the web console's config writes
+(developer-mode toggle, module settings) and the !trust command
+failed with a filesystem error inside containers.
+
+- docker-compose.yml: the config mount is now writable, and the
+  one-time setup (docs + compose header) chowns config.yaml to uid
+  1001 alongside the data folder so the container may save it.
+- Dockerfile: stale read-only wording removed. No image-content
+  changes - this is a runtime-mount fix only.
+
+## 0.0.138 - 2026-09-13 (small-repairs branch)
+
+Brett's wording: !trust replies use "on" for the trust mode - the
+user-facing word - instead of the internal value:
+
+- After a change: "Trust set to on" (was "Trust set to trust").
+- Bare/invalid !trust: "Trust is on" (was "Trust is trust").
+
+## 0.0.137 - 2026-09-13 (small-repairs branch)
+
+!trust replies shortened to Brett's dictated wording (radio bytes are
+precious):
+
+- After a change: "Trust set to <mode>" (was: mode + a sentence of
+  explanation).
+- Bare !trust or an invalid value: "Trust is <current>" (was: usage
+  line with the current value in parentheses).
+
+## 0.0.136 - 2026-09-13 (small-repairs branch)
+
+New admin DM command (Brett's request):
+
+- `!trust on|smart|off` - set how the bot treats the sender name
+  embedded in channel messages (mesh.channel_sender_name): on = always
+  split 'Name: message' (the protocol default), smart = split only
+  when the rest of the text would not already match a command, off =
+  never split (meshes without embedded names). 'trust' works as a
+  synonym for 'on'. Writes config.yaml through the validated splicer
+  (the whole file is checked before anything is replaced; a failed
+  write changes nothing), then reloads so every dependent state
+  refreshes immediately - no restart needed. Bare `!trust` replies
+  with the usage and the current value. Admins only, DM only.
+- Bonus fix found on the way: the router's argument splitter removed
+  EVERY occurrence of the command word, so a repeated word as an
+  argument ('!trust trust') arrived empty. Only the first occurrence
+  is dropped now.
+- !help's admin hint now includes trust.
+
+## 0.0.135 - 2026-09-13 (small-repairs branch)
+
+Full-editor wording reworks from Brett's live test (round 3):
+
+- mcp.enabled: now says the bot controls (owns) the hardware modem,
+  false = the modem is controlled by something else.
+- mcp.coding_rate_index: all four options are now shown in the
+  prompt (1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8) instead of just the
+  first; typed as a choice with validation.
+- mcp.cad_peak / cad_min: renamed from "LBT sensitivity" to
+  "Radio CAD sensitivity (peak)/(minimum)" with plain-language
+  anchors (15/7 = moderate; 0 = driver defaults) - no names.
+- mesh.path_hash_size caution reworded: "choosing a value higher
+  than the repeaters near you will make your packets unrelayable."
+- modem_feed.port: clarified WHY the default is 5056 (the modem's
+  second port for the bot's pushes; its main port is 5055) - the
+  value was verified against the modem's own code before rewording;
+  5056 stays the default.
+
+## 0.0.134 - 2026-09-13 (small-repairs branch)
+
+Reference purge (Brett's rule): no mentions of other software by name
+in anything the project's own docs, prompts, or comments say.
+
+- The full editor's prompts and help texts, the example file's
+  path-hash comment, and the example file's connection/radio/modem
+  sections now say "repeater"/"companion" instead. No behavior
+  changes - wording only.
+- A new test enforces the rule for the full editor's help texts so it
+  cannot creep back in.
+
+## 0.0.133 - 2026-09-13 (small-repairs branch)
+
+BEHAVIOR CHANGE (Brett): 2-byte path hashes are now the DEFAULT for
+the bot's own originated traffic (adverts, flood-routed DMs).
+
+- core/config.py: mesh.path_hash_size defaults to 2 (was 1) when the
+  key is absent; config.example.yaml ships 2 with the counting spelled
+  out (the mesh counts hashes 0/1/2 in its own UI, so the counting
+  shown there is one less than the byte value stored here). Existing
+  configs with an explicit value are untouched; hilltop's config says
+  1 and keeps 1 until edited.
+- Full editor: path_hash_size is now asked in the 0/1/2 convention
+  ("value [0, 1, or 2] [1]") and converted to bytes for storage; the
+  old byte-count prompt is gone.
+- Full editor: text keys no longer offer a silent empty default.
+  logging.file and friends now show their current value and Enter
+  keeps it (an empty answer can no longer disable a feature by
+  accident - e.g. wiping the log file path).
+
+## 0.0.132 - 2026-09-13 (small-repairs branch)
+
+Two full-editor fixes from Brett's first live run on hilltop:
+
+- logging.level (and every choice key) refused ALL input: the prompt
+  lowercased the typed answer but compared it against the uppercase
+  list, so Enter and "INFO" both bounced. Choice matching is now
+  case-insensitive and always returns the canonical value.
+- mesh.path_hash_size showed bare numbers (1|2|3) with no link to
+  the mesh's own convention, where the same setting counts from 0
+  (0 = 1 byte, 1 = 2 bytes, 2 = 3 bytes). The help text now explains
+  both scales and the migration caution. (Existing configs are
+  unaffected - the stored value stays a plain number.)
+
+## 0.0.131 - 2026-09-13 (small-repairs branch)
+
+"Clean config" control-panel option (Brett's request: wipe the config
+and start from scratch, with the file rebuilt at the latest version):
+
+- New menu option 7 in manage.sh (and `sudo ./manage.sh cleanconfig`
+  as a direct subcommand): after offering a backup of config + data and
+  a double confirm, it deletes the live config.yaml and rebuilds it
+  from the config.example.yaml shipped with the RUNNING code - so the
+  fresh file carries every documented field at the current version by
+  construction, and the bot's config-sync keeps filling in any new
+  keys on future deploys. Database, captures and backups are never
+  touched; ownership/mode follow the install convention (meshtech,
+  640). It then offers the interactive configuration editor (option 1's
+  flow) and a restart, since the fresh file has no repeater IP,
+  channel keys, admins or dashboard password.
+- The config editor (used by Clean config and option 1) now walks
+  through more of what a fresh install needs: private-channel keys
+  (secret_hex) are asked per channel with hex validation, the admin
+  list warns when it still holds the example placeholder, and a new
+  question sets the dashboard's reachability (127.0.0.1 vs 0.0.0.0,
+  with a pointer to set-password.sh). After saving it explains that
+  everything NOT asked keeps the example values - the optional
+  features sit in the file commented out with their own
+  explanations, ready to uncomment by hand.
+- Fixed while there: the plain (non-whiptail) menu header never listed
+  option 6 (web-console updates), so keyboard-only users could not
+  reach it from the menu; the header now lists it again.
+- New "Edit full config" menu option (2; `sudo ./manage.sh
+  configurefull`): the same editor in FULL mode, walking EVERY
+  documented setting one by one - values, bounds and help text shown
+  for each, with the current value pre-filled. Keys that are commented
+  out in the file (the optional features) show "default unused":
+  Enter leaves them unused, typing a value uncomments the line with
+  that value (comments around it preserved). Structured settings keep
+  their own editors (channels, admin nodes, replies) or their console
+  card (modules), and the per-channel interval map stays hand-edit.
+  A guard test pins the field list against core/config.py so any new
+  documented key must be added to the full editor or the test fails.
+  Menu numbering shifts: update is now option 3 (3d = branch),
+  uninstall 4, restart 5, logs 6, web-update enable 7, clean config 8.
+  The essentials editor keeps its behavior and content (Brett's call:
+  option 1 unchanged apart from the walkthrough additions above).
 ## 0.0.130 - 2026-09-13 (duplicate-packet branch)
 
 Duplicate-packet detection upgraded to HASH+LONG (Brett's choice after a

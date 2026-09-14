@@ -1,0 +1,68 @@
+# Builds the Docker image whenever a version tag is pushed and pushes
+# it to GitHub's container registry (ghcr.io) as mygooglyeyes/meshtech-bot.
+#
+# Tags produced for v0.0.140:
+#   ghcr.io/mygooglyeyes/meshtech-bot:v0.0.140   (the exact version)
+#   ghcr.io/mygooglyeyes/meshtech-bot:0.0        (major.minor track)
+#   ghcr.io/mygooglyeyes/meshtech-bot:latest
+#
+# Runs alongside release.yml (which publishes the GitHub Release from
+# the tag annotation); neither depends on the other. The image needs
+# no secrets: GITHUB_TOKEN is provided by Actions automatically, and
+# the package is created public if the repo is public (it can be
+# changed once in the package settings).
+#
+# On the box (or any Docker host) the image is then pulled instead of
+# built: see docs/INSTALL.md, "Docker install" - the pull line names
+# the registry image.
+
+name: Publish Docker image
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/mygooglyeyes/meshtech-bot
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Bake the tag's commit into the dashboard header stamp
+          # (same .git-commit file the compose build writes).
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

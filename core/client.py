@@ -91,6 +91,9 @@ class RadioClient:
         # The companion's own node name (read from the SELF_INFO the openHop
         # companion sends at connect) - how the bot presents itself in replies.
         self.own_name: str = ""
+        # The bot's own public key, hex, from the same SELF_INFO (or empty
+        # until known) - shown (truncated) in the dashboard header.
+        self.own_pubkey: str = ""
         self._slot_info: Dict[int, dict] = {}
         self._on_inbound: Optional[Callable[[InboundMessage], Awaitable[None]]] = None
         self._contact_sync_again_at = 0.0
@@ -152,6 +155,17 @@ class RadioClient:
         self.own_name = _companion_name(mc)
         if self.own_name:
             log.info("Companion node name: %s", self.own_name)
+        # Grab our own public key from the SELF_INFO the device sent at
+        # connect (may still be empty for a beat - then the header just
+        # waits for the next dashboard refresh).
+        try:
+            info = mc.self_info or {}
+            key = str(info.get("public_key", "") or "").strip().lower()
+            if key:
+                self.own_pubkey = key
+                log.info("Own public key: %s...", key[:12])
+        except Exception as exc:  # never let a display nicety break connect
+            log.debug("self_info unavailable for own pubkey: %s", exc)
 
         # Courtesy clock-sync: standalone companions have no clock of their
         # own. Off by default: firmware that keeps time already (openHop on

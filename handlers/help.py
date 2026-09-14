@@ -121,7 +121,7 @@ class HelpHandler(Handler):
 
         if ctx.verbosity == "brief":
             command_words = " ".join(sorted({kw for _, kw, _, _ in pairs}))
-            admin_hint = ("admin: reload shutdown diag up"
+            admin_hint = ("admin: reload shutdown diag up trust"
                           if ctx.is_admin else "")
             data = format_brief_help(command_words, canned_list, admin_hint,
                                      prefix=ctx.settings.bot.command_prefix)
