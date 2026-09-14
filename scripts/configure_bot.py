@@ -391,8 +391,8 @@ FULL_FIELDS = [
     # file stores BYTES (value + 1). Typed choice:
     ("mesh", "path_hash_size", "pathhash", 2, [0, 1, 2],
      "Path hash size - counts from 0: 0 = 1 byte, 1 = 2 bytes (our mesh's "
-     "setting), 2 = 3 bytes. Caution: a value the repeaters do not use "
-     "yet gets the bot's adverts unrelayed by older 1-byte stations."),
+     "setting), 2 = 3 bytes. Caution: choosing a value higher than the "
+     "repeaters near you will make your packets unrelayable."),
     # --- dm ---
     ("dm", "enabled", "bool", True, None,
      "Answer direct messages at all."),
@@ -479,7 +479,8 @@ FULL_FIELDS = [
      "feed packets only, never radio traffic."),
     # --- mcp: the bot's own SPI radio ---
     ("mcp", "enabled", "bool", False, None,
-     "true = the bot OWNS the PiMesh radio (connection: block is ignored)."),
+     "true = the bot controls (owns) the hardware modem. False = the "
+     "modem is controlled by something else."),
     ("mcp", "frequency_hz", "int", 910525000, (400000000, 1000000000),
      "Band center used by this network (US 915 MHz)."),
     ("mcp", "tx_power_dbm", "int", 20, (-9, 20),
@@ -488,17 +489,19 @@ FULL_FIELDS = [
      "Radio spreading factor."),
     ("mcp", "bandwidth_khz", "num", 62.5, (7.8, 500.0),
      "Radio bandwidth (kHz)."),
-    ("mcp", "coding_rate_index", "int", 1, (1, 4),
-     "Radio coding rate: 1 = 4/5."),
+    ("mcp", "coding_rate_index", "choice", "1",
+     [("1", "4/5"), ("2", "4/6"), ("3", "4/7"), ("4", "4/8")],
+     "Radio coding rate (error correction). Higher = more robust, slower."),
     ("mcp", "advert_interval_hours", "num", 24.0, (0.0, 720.0),
      "Re-flood the advert this often after the two start-up adverts. 0 = off."),
     ("mcp", "inter_packet_politeness_seconds", "num", 2.0, (0.0, 60.0),
      "Minimum gap between the bot's OWN radio packets. 0 = off."),
     ("mcp", "cad_peak", "int", 15, (0, 31),
-     "Radio LBT sensitivity (peak), 0-31. 15/7 = Brett's receiving tune. "
-     "0/0 = driver defaults."),
+     "Radio CAD sensitivity (peak), 0-31. 15 = moderate setting. "
+     "0 = driver defaults."),
     ("mcp", "cad_min", "int", 7, (0, 31),
-     "Radio LBT sensitivity (min), 0-31."),
+     "Radio CAD sensitivity (minimum), 0-31. 7 = moderate setting. "
+     "0 = driver defaults."),
     ("mcp", "precheck_cad_peak", "int", 22, (0, 31),
      "The bot's own clear-channel pre-check (peak). 22/10 = Semtech SF7 pair."),
     ("mcp", "precheck_cad_min", "int", 10, (0, 31),
@@ -512,7 +515,8 @@ FULL_FIELDS = [
     ("modem_feed", "host", "text", "127.0.0.1", None,
      "Box running meshtech-modem."),
     ("modem_feed", "port", "int", 5056, (1, 65535),
-     "The modem's FEED port (5055 is the companion's)."),
+     "The modem's FEED port - the second port the modem opens for the "
+     "bot's pushes (its main port is 5055). Default 5056."),
     ("modem_feed", "token_file", "text", "data/.modem_feed_token", None,
      "File holding the feed token (first line, mode 600) - never here."),
 ]

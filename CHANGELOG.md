@@ -9,6 +9,25 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.135 - 2026-09-13 (small-repairs branch)
+
+Full-editor wording reworks from Brett's live test (round 3):
+
+- mcp.enabled: now says the bot controls (owns) the hardware modem,
+  false = the modem is controlled by something else.
+- mcp.coding_rate_index: all four options are now shown in the
+  prompt (1 = 4/5, 2 = 4/6, 3 = 4/7, 4 = 4/8) instead of just the
+  first; typed as a choice with validation.
+- mcp.cad_peak / cad_min: renamed from "LBT sensitivity" to
+  "Radio CAD sensitivity (peak)/(minimum)" with plain-language
+  anchors (15/7 = moderate; 0 = driver defaults) - no names.
+- mesh.path_hash_size caution reworded: "choosing a value higher
+  than the repeaters near you will make your packets unrelayable."
+- modem_feed.port: clarified WHY the default is 5056 (the modem's
+  second port for the bot's pushes; its main port is 5055) - the
+  value was verified against the modem's own code before rewording;
+  5056 stays the default.
+
 ## 0.0.134 - 2026-09-13 (small-repairs branch)
 
 Reference purge (Brett's rule): no mentions of other software by name

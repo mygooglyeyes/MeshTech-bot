@@ -11,6 +11,14 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.135** - Brett's live-test wording round 3: mcp.enabled says
+  "controls (owns) the hardware modem"; coding_rate_index shows all
+  four 4/x options as a validated choice; cad_peak/cad_min renamed
+  "Radio CAD sensitivity (peak)/(minimum)" with moderate/default
+  anchors; path_hash_size caution reworded (higher than the repeaters
+  near you = unrelayable); modem_feed.port explains the 5056 default
+  (verified against the modem's own code - 5055 is its main port).
+
 - **OpenHop-reference purge (Brett's rule, 2026-09-13, on top of
   v0.0.133, same commit):** no openHop mentions in anything I write -
   editor prompts/help, example path-hash comment, my changelog
