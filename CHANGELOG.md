@@ -2087,4 +2087,30 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.
+  layout.## v0.0.167 - clean-modem
+
+### Fixed
+- **Opcode table was shifted by one - the real root cause.** Cross-check
+  against LoRaRF-Python (the proven driver vendored by openhop_core for
+  this exact E22 module) found four misnumbered commands:
+  - `SetDIO3AsTcxoCtrl` is **0x97**, not 0xD4 - our opcode did not
+    exist, so the chip answered EXEC_FAIL and the TCXO (32 MHz radio
+    clock) never armed. This is why every clocked command (Calibrate,
+    CalibImage, SetRx, SetCad, SetTx) failed while register writes kept
+    "succeeding".
+  - `SetTxParams` is **0x8E**, not 0x8D (nonexistent) - TX power was
+    never configured.
+  - `SetBufferBaseAddress` is **0x8F**, not 0x8E.
+  - There is **no SetSyncWord command**: the sync word lives in
+    register 0x0740 and is written via WriteRegister (0x0D). The old
+    "sync word" command was actually a stray buffer-pointer write.
+- `CalibrateImage` band pairs fixed per LoRaRF: 902-928 is
+  (0xE1, 0xE9) [was an invalid (0x7B, 0x81)], 863-870 is (0xD7, 0xDB).
+- TCXO settle timeout set to LoRaRF's proven 0x000560 (was 0).
+
+### Tests
+- New `tests/test_cleanmodem_lorarf_opcode_parity.py` pins the whole
+  corrected table to the LoRaRF values so this class of bug cannot
+  return.
+
+

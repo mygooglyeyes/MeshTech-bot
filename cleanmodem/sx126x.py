@@ -38,15 +38,25 @@ from .hal import RadioStatus, RxPacket, ThreadedHal, TxResult
 log = logging.getLogger("cleanmodem.sx126x")
 
 # ─── SX126x command opcodes (datasheet §13) ─────────────────────────
+# Opcode table (datasheet §13.1; cross-checked against LoRaRF-Python,
+# the proven driver vendored by openhop_core for this exact E22
+# module). v0.0.167 fixes four entries that were misnumbered and made
+# every clocked command EXEC_FAIL on the hilltop trace:
+#   SetTxParams        0x8D -> 0x8E  (old: nonexistent command)
+#   SetBufferBaseAddr  0x8E -> 0x8F  (old: SetTxParams was never sent)
+#   SetDIO3AsTcxoCtrl  0xD4 -> 0x97  (old: unknown opcode)
+#   SetSyncWord        0x8F (cmd) -> none: register write to 0x0740
+# The old block was shifted by one, and the "sync word" command was
+# actually a stray buffer-base write.
 OP_SET_STANDBY = 0x80
-OP_SET_TX_PARAMS = 0x8D
+OP_SET_TX_PARAMS = 0x8E
 OP_SET_CAD = 0xC5
 OP_SET_RF_FREQUENCY = 0x86
 OP_SET_PACKET_TYPE = 0x8A
 OP_SET_MODULATION_PARAMS = 0x8B
 OP_SET_PACKET_PARAMS = 0x8C
 OP_SET_CAD_PARAMS = 0x88
-OP_SET_BUFFER_BASE_ADDRESS = 0x8E
+OP_SET_BUFFER_BASE_ADDRESS = 0x8F
 OP_SET_DIO_IRQ_PARAMS = 0x08
 OP_CLEAR_IRQ_STATUS = 0x02
 OP_GET_IRQ_STATUS = 0x12
@@ -60,9 +70,9 @@ OP_SET_RX = 0x82
 OP_SET_TX_CONTINUOUS_WAVE = 0x81
 OP_SET_PA_CONFIG = 0x95
 OP_SET_REGULATOR_MODE = 0x96
-OP_SET_SYNC_WORD = 0x8F
+OP_WRITE_REGISTER = 0x0D        # register write (sync word lives there)
 OP_SET_DIO2_AS_RF_SWITCH = 0x9D
-OP_SET_DIO3_AS_TCXO_CTRL = 0xD4
+OP_SET_DIO3_AS_TCXO_CTRL = 0x97
 OP_CALIBRATE = 0x89
 OP_CALIBRATE_IMAGE = 0x98
 
@@ -101,13 +111,39 @@ TCXO_SETTLE_S = 0.005
 def _tcxo_ctrl_params(voltage: float) -> list[int]:
     """SetDIO3AsTcxoCtrl payload: voltage code + 3-byte timeout field.
 
-    v0.0.166: the FULL four bytes. The old 3-byte command was
-    truncated, the chip rejected it (CmdStatus EXEC_FAIL), the TCXO
-    never armed - and with no 32 MHz clock every clock-dependent
-    command (Calibrate, SetRx, SetCad, SetTx) failed while plain
-    register writes kept 'succeeding' (hilltop trace 2026-09-14).
+    v0.0.166: the FULL four bytes (the old 3-byte command was
+    truncated and rejected). v0.0.167: timeout 0x000560 (LoRaRF's
+    proven TCXO_DELAY for a 1.8 V module) - the old zero timeout is
+    another documented EXEC_FAIL source, and the hilltop trace still
+    failed with the 4-byte form.
     """
-    return [TCXO_VOLTAGE_CODES[voltage], 0x00, 0x00, 0x00]
+    return [TCXO_VOLTAGE_CODES[voltage], 0x00, 0x05, 0x60]
+
+
+def _calibrate_image_pair(frequency_hz: int) -> list[int]:
+    """CalibrateImage band pair (LoRaRF calibrateImagePairs).
+
+    v0.0.167: 902-928 is (0xE1, 0xE9) and 863-870 is (0xD7, 0xDB).
+    The old (0x7B, 0x81) was an invalid pair - the chip answered
+    EXEC_FAIL (hilltop trace 2026-09-14).
+    """
+    if 863_000_000 <= frequency_hz <= 870_000_000:
+        return [0xD7, 0xDB]
+    if 902_000_000 <= frequency_hz <= 928_000_000:
+        return [0xE1, 0xE9]
+    return []
+
+
+def _sync_word_bytes(word: int) -> bytes:
+    """Sync-word register bytes for register 0x0740.
+
+    Values <= 0xFF map to nibbles |0x04 (0x12 -> 0x1424), the
+    MeshCore convention per the reference driver.
+    """
+    if word <= 0xFF:
+        return bytes([(word & 0xF0) | 0x04,
+                      ((word << 4) | 0x04) & 0xFF])
+    return struct.pack(">H", word)
 
 XTAL_FREQ_HZ = 32_000_000
 PLL_STEP_SHIFT = 25               # freq * 2^25 / XTAL
@@ -494,24 +530,18 @@ class SX126xRadio(ThreadedHal):
             self._cmd(OP_SET_DIO2_AS_RF_SWITCH, [0x01])
         # Full calibration: RC64k/RC13M/PLL/ADC (image cal separately).
         self._cmd(OP_CALIBRATE, [0x7F])
-        if 863_000_000 <= self._radio["frequency_hz"] <= 870_000_000:
-            self._cmd(OP_CALIBRATE_IMAGE, [0x6B, 0x6F])
-        elif 902_000_000 <= self._radio["frequency_hz"] <= 928_000_000:
-            self._cmd(OP_CALIBRATE_IMAGE, [0x7B, 0x81])
+        pair = _calibrate_image_pair(self._radio["frequency_hz"])
+        if pair:
+            self._cmd(OP_CALIBRATE_IMAGE, pair)
 
         self._cmd(OP_SET_PACKET_TYPE, [PACKET_TYPE_LORA])
-        # Sync word nibbles: values <= 0xFF map to nibbles |0x04 (0x12
-        # -> 0x1424), the MeshCore convention - verified against the
-        # reference driver before shipping.
-        word = self._radio["sync_word"]
-        if word <= 0xFF:
-            # Low nibble shifts past 8 bits for values > 0x0F; the
-            # register is 8-bit, so mask (0x12 -> 0x14, 0x24 = 0x1424).
-            bytes_word = bytes([(word & 0xF0) | 0x04,
-                                ((word << 4) | 0x04) & 0xFF])
-        else:
-            bytes_word = struct.pack(">H", word)
-        self._cmd(OP_SET_SYNC_WORD, list(bytes_word))
+        # v0.0.167: the SX126x has NO SetSyncWord command - the sync
+        # word lives in register 0x0740 (LoRaRF's setSyncWord writes it
+        # there via WriteRegister 0x0D). The old code sent opcode 0x8F,
+        # which is actually SetBufferBaseAddress: the "sync word" was a
+        # stray buffer-pointer write.
+        self._write_register(SYNC_WORD_REGISTER,
+                             _sync_word_bytes(self._radio["sync_word"]))
         self._cmd(OP_SET_REGULATOR_MODE, [0x01])    # DC-DC converter
         self._cmd(OP_SET_PA_CONFIG, list(PA_CONFIG_SX1262))
         self._cmd(OP_SET_BUFFER_BASE_ADDRESS, [0x00, 0x00])
@@ -554,6 +584,13 @@ class SX126xRadio(ThreadedHal):
         """One command write (opcode + params), gated on BUSY."""
         self._wait_busy()
         self._spi.transfer(bytes([opcode]) + bytes(params))
+
+    def _write_register(self, addr: int, data: bytes) -> None:
+        """WriteRegister (0x0D): 16-bit BE address + data, gated on BUSY."""
+        self._wait_busy()
+        self._spi.transfer(bytes([OP_WRITE_REGISTER,
+                                  (addr >> 8) & 0xFF, addr & 0xFF])
+                           + bytes(data))
 
     def _read_cmd(self, opcode: int, size: int) -> bytes:
         """One command read (opcode + NOPs), gated on BUSY.
