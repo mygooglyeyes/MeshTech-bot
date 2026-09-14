@@ -27,6 +27,9 @@ requirements-dev.txt
 # Pasted evidence / scratch files
 openhoplog.txt
 
+# Local agent/IDE pointer file (not part of the project)
+AGENTS.md
+
 # Editors / OS
 .idea/
 .vscode/
