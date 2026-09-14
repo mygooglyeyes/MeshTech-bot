@@ -11,6 +11,16 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.137** - !trust replies shortened to Brett's dictated wording:
+  "Trust set to <mode>" after a change; "Trust is <current>" for a
+  bare or invalid !trust. Tests updated to match exactly.
+
+- **v0.0.136** - New admin DM command `!trust on|smart|off` (Brett):
+  sets mesh.channel_sender_name via the validated config splicer +
+  reload; usage reply shows the current value; admin/DM only; help
+  hint updated. Router bug fixed on the way: handler_args dropped
+  EVERY occurrence of the command word (now only the first).
+
 - **v0.0.135** - Brett's live-test wording round 3: mcp.enabled says
   "controls (owns) the hardware modem"; coding_rate_index shows all
   four 4/x options as a validated choice; cad_peak/cad_min renamed

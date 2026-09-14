@@ -9,6 +9,36 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.137 - 2026-09-13 (small-repairs branch)
+
+!trust replies shortened to Brett's dictated wording (radio bytes are
+precious):
+
+- After a change: "Trust set to <mode>" (was: mode + a sentence of
+  explanation).
+- Bare !trust or an invalid value: "Trust is <current>" (was: usage
+  line with the current value in parentheses).
+
+## 0.0.136 - 2026-09-13 (small-repairs branch)
+
+New admin DM command (Brett's request):
+
+- `!trust on|smart|off` - set how the bot treats the sender name
+  embedded in channel messages (mesh.channel_sender_name): on = always
+  split 'Name: message' (the protocol default), smart = split only
+  when the rest of the text would not already match a command, off =
+  never split (meshes without embedded names). 'trust' works as a
+  synonym for 'on'. Writes config.yaml through the validated splicer
+  (the whole file is checked before anything is replaced; a failed
+  write changes nothing), then reloads so every dependent state
+  refreshes immediately - no restart needed. Bare `!trust` replies
+  with the usage and the current value. Admins only, DM only.
+- Bonus fix found on the way: the router's argument splitter removed
+  EVERY occurrence of the command word, so a repeated word as an
+  argument ('!trust trust') arrived empty. Only the first occurrence
+  is dropped now.
+- !help's admin hint now includes trust.
+
 ## 0.0.135 - 2026-09-13 (small-repairs branch)
 
 Full-editor wording reworks from Brett's live test (round 3):
