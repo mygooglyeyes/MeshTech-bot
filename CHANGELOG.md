@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.162 - 2026-09-14 (clean-modem branch)
+
+CAD actually ran: SetCAD is only valid from STANDBY on the SX126x;
+issued during continuous RX it is silently ignored, so every
+clear-channel probe timed out ('CAD timed out', then 'BUSY stuck')
+and the first modem-mode TX failed (hilltop 2026-09-14). _hw_cad
+now exits RX, runs the CAD, and always re-arms RX afterwards.
+
 ## 0.0.161 - 2026-09-14 (clean-modem branch)
 
 Modem-mode TX worked again: the send() guard required self.radio,

@@ -624,22 +624,36 @@ class SX126xRadio(ThreadedHal):
                 log.error("re-entering RX after TX failed: %s", exc)
 
     def _hw_cad(self, det_peak: int, det_min: int) -> bool:
-        """One CAD probe. True = channel busy (activity detected)."""
-        peak = det_peak or self._cad_peak
-        smallest = det_min or self._cad_min
-        self._cmd(OP_SET_CAD_PARAMS, [0x04, peak, smallest, 0x00])
-        self._clear_irq(IRQ_ALL)
-        self._cmd(OP_SET_CAD, [])               # 0xC5: enter CAD
-        deadline = time.monotonic() + self.CAD_TIMEOUT_S
-        while time.monotonic() < deadline:
-            status = self._read_cmd(OP_GET_IRQ_STATUS, 2)
-            irq = (status[0] << 8) | status[1]
-            if irq & IRQ_CAD_DONE:
-                self._clear_irq(IRQ_ALL)
-                return bool(irq & IRQ_CAD_DETECTED)
-            time.sleep(0.001)
-        self._clear_irq(IRQ_ALL)
-        raise RadioHwError("CAD timed out")
+        """One CAD probe. True = channel busy (activity detected).
+
+        v0.0.162: SetCAD is only valid from STANDBY - issued while the
+        chip sits in continuous RX it is silently IGNORED, so CAD_DONE
+        never comes ('CAD timed out' at every probe, then a wedged
+        chip / 'BUSY stuck' on the next command - hilltop 2026-09-14
+        first modem-mode TX). Dance: RX -> STDBY -> CAD -> back to RX.
+        """
+        self._cmd(OP_SET_STANDBY, [0x00])       # STDBY_RC: exit RX
+        try:
+            peak = det_peak or self._cad_peak
+            smallest = det_min or self._cad_min
+            self._cmd(OP_SET_CAD_PARAMS, [0x04, peak, smallest, 0x00])
+            self._clear_irq(IRQ_ALL)
+            self._cmd(OP_SET_CAD, [])           # 0xC5: enter CAD
+            deadline = time.monotonic() + self.CAD_TIMEOUT_S
+            while time.monotonic() < deadline:
+                status = self._read_cmd(OP_GET_IRQ_STATUS, 2)
+                irq = (status[0] << 8) | status[1]
+                if irq & IRQ_CAD_DONE:
+                    self._clear_irq(IRQ_ALL)
+                    return bool(irq & IRQ_CAD_DETECTED)
+                time.sleep(0.001)
+            self._clear_irq(IRQ_ALL)
+            raise RadioHwError("CAD timed out")
+        finally:
+            # CAD leaves the chip in STDBY (exit mode 0x00) - arm RX
+            # again whatever happened, or the modem goes deaf.
+            self._in_rx = False
+            self._hw_enter_rx()
 
     def _hw_noise(self) -> float:
         """Instantaneous RSSI of the channel (dBm) as the noise floor."""

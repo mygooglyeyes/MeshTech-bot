@@ -50,7 +50,9 @@ _SHORT_LEN = 7
 # bring-up finishes.
 # 0.0.161: modem-mode TX no longer dropped - the TX guard required
 # self.radio, which is None by design in modem mode.
-__version__ = "0.0.161"
+# 0.0.162: CAD issued from continuous RX is ignored by the SX126x
+# (SetCAD is STANDBY-only) - the driver now dances RX->STDBY->CAD->RX.
+__version__ = "0.0.162"
 
 
 def _short(sha: str) -> str:
