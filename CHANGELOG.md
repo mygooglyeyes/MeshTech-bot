@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.150 - 2026-09-14 (clean-modem branch)
+
+Bench runbook for the clean-room modem: docs/BENCH-RUNBOOK-cleanmodem.md
+- staged hilltop steps to prove cleanmodem hears the real mesh at wire
+speed (RX parity + the IRQ->fan-out latency numbers) with the bot
+paused 15-30 minutes, then a full rollback to the live stack. TX
+through cleanmodem is deliberately NOT in this bench - it is verified
+at the switchover session, with its own runbook. Docs-only; no code
+changes.
+
 ## 0.0.149 - 2026-09-14 (clean-modem branch)
 
 Clean-room modem: the radio moves into its own process (cleanmodem),

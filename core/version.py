@@ -33,8 +33,8 @@ _SHORT_LEN = 7
 # which build a box is running).  The exact source of any running build is
 # still pinned by the commit stamp.
 # 0.0.149: DEV's small-repairs merge also took 0.0.148 (deployed on
-# the box) - next free number wins.
-__version__ = "0.0.149"
+# the box) - next free number wins. 0.0.150: bench runbook (docs).
+__version__ = "0.0.150"
 
 
 def _short(sha: str) -> str:
