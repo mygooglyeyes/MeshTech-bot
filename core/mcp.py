@@ -1669,7 +1669,14 @@ class Mcp:
         the bot's courtesy on top, not a replacement. Zero at radio-down,
         so a queued reply never stalls at shutdown.
         """
-        if not self.is_running or self.radio is None:
+        # v0.0.160: modem mode has self.radio None BY DESIGN (the
+        # cleanmodem process owns the radio; self._modem is the live
+        # link). The old guard required self.radio, so every modem-mode
+        # TX was dropped with "Radio not up" - the startup adverts and
+        # every reply never reached the air.
+        if (not self.is_running or
+                (self.radio is None
+                 and getattr(self, "_modem", None) is None)):
             log.warning("Radio not up - dropping TX (%dB).", len(data) if data else 0)
             return False
         # mesh.path_hash_size (v0.0.112): stamp our announced per-hop hash

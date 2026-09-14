@@ -9,6 +9,14 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.161 - 2026-09-14 (clean-modem branch)
+
+Modem-mode TX worked again: the send() guard required self.radio,
+which stays None in modem mode by design, so every transmission in
+modem mode was dropped with 'Radio not up' (startup adverts never
+reached the air; hilltop 2026-09-14). The guard now accepts a live
+modem link as 'radio up'; pinned by test.
+
 ## 0.0.160 - 2026-09-14 (clean-modem branch)
 
 Two cleanmodem-mode lifecycle bugs found live on hilltop after the

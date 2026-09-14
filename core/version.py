@@ -48,7 +48,9 @@ _SHORT_LEN = 7
 # 0.0.160: a failed modem init stops its client (two clients fighting
 # over the single controller slot); worker skips IRQ polls until
 # bring-up finishes.
-__version__ = "0.0.160"
+# 0.0.161: modem-mode TX no longer dropped - the TX guard required
+# self.radio, which is None by design in modem mode.
+__version__ = "0.0.161"
 
 
 def _short(sha: str) -> str:
