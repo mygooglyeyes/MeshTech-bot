@@ -194,6 +194,15 @@ _MIGRATIONS: List[tuple] = [
         "ALTER TABLE packets ADD COLUMN pkt_hash TEXT",
         "CREATE INDEX IF NOT EXISTS idx_packets_rep_hash ON packets(pkt_hash, ts)",
     ]),
+    (11, [
+        # Noise-floor history (v0.0.143, noise-floor branch): one row per
+        # accepted driver sample, so the analysis card can show hourly
+        # min/avg/max for day-to-day comparison (the 30-minute live graph
+        # keeps its in-memory buffer; this is the long-term record).
+        "CREATE TABLE IF NOT EXISTS noise_samples ("
+        "  ts REAL PRIMARY KEY,"
+        "  floor_dbm REAL NOT NULL)"
+    ]),
 ]
 
 
@@ -489,6 +498,45 @@ class Store:
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(int(limit))
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    # ------------------------------------------------------------------ noise floor
+
+    def add_noise_sample(self, ts: float, floor_dbm: float) -> None:
+        """Record one accepted noise-floor sample (v0.0.143). INSERT OR
+        REPLACE: two monitors should never duplicate a timestamp, and a
+        re-write of the same tick is always the same value anyway."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO noise_samples (ts, floor_dbm) "
+                "VALUES (?, ?)", (float(ts), float(floor_dbm)))
+
+    def prune_noise_samples(self, keep_seconds: float = 14 * 24 * 3600) -> int:
+        """Delete samples older than ``keep_seconds`` (default 14 days).
+        Called from the monitor roughly daily; returns rows removed."""
+        cutoff = _now() - float(keep_seconds)
+        with self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM noise_samples WHERE ts < ?", (cutoff,))
+            return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+    def noise_hourly(self, hours: float) -> List[Dict[str, Any]]:
+        """Hourly min/avg/max noise floor over the last ``hours`` hours,
+        oldest bucket first - buckets with no samples are absent (the
+        panel draws the gap, which is honest: the bot may have been
+        down)."""
+        hours = max(1.0, float(hours))
+        span = 3600
+        cutoff = _now() - hours * 3600
+        rows = self._conn.execute(
+            "SELECT CAST(ts / ? AS INTEGER) * ? AS bucket, MIN(floor_dbm) mn, "
+            "AVG(floor_dbm) avg_dbm, MAX(floor_dbm) mx, COUNT(*) AS n "
+            "FROM noise_samples WHERE ts >= ? "
+            "GROUP BY bucket ORDER BY bucket", (span, span, cutoff)).fetchall()
+        return [{"bucket": int(r["bucket"]),
+                 "min": round(r["mn"], 1),
+                 "avg": round(r["avg_dbm"], 1),
+                 "max": round(r["mx"], 1),
+                 "n": int(r["n"])} for r in rows]
 
     def find_recent_duplicate_hash(self, pkt_hash: str, ts: float,
                                    window: float, content_row: bool) -> Optional[int]:
@@ -1335,6 +1383,22 @@ class Store:
                 })
             bucket += span
         out["snr"] = snr_trend
+
+        # --- noise-floor trend per bucket (avg with min/max band)
+        # Hourly buckets beyond 24 h; the noise samples land on the same
+        # bucket boundaries the other panels use. Sampled every 5 s, so a
+        # bucket's n is ~720 when the bot was up the whole hour.
+        nf_rows = self.noise_hourly(hours)
+        nf_by_bucket = {r["bucket"]: r for r in nf_rows}
+        nf_trend: List[Dict[str, Any]] = []
+        nf_span = 3600
+        nf_bucket = int(cutoff // nf_span) * nf_span
+        while nf_bucket <= now:
+            row = nf_by_bucket.get(nf_bucket)
+            if row is not None:
+                nf_trend.append(row)
+            nf_bucket += nf_span
+        out["noise"] = nf_trend
         return out
 
     def _frame_type_mix(self, layer: str, cutoff: float,

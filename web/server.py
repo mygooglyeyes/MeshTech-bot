@@ -246,6 +246,21 @@ def build_app(service) -> FastAPI:
         service.capture.set_raw_enabled(bool(payload.get("enabled")))
         return {"raw_capture": service.capture.raw_enabled()}
 
+    @app.get("/api/noisefloor", dependencies=[Depends(require_auth)])
+    async def noisefloor():
+        """The last 30 minutes of radio noise floor, one point per 5 s.
+        Companion-mode bots have no local radio: available=false and the
+        dashboard hides the card."""
+        monitor = service.noise_monitor
+        if monitor is None:
+            return {"available": False, "points": [], "current": None,
+                    "window_minutes": 30}
+        pts = monitor.series()
+        return {"available": True,
+                "points": [[t, round(dbm, 1)] for t, dbm in pts],
+                "current": monitor.current,
+                "window_minutes": 30}
+
     @app.get("/api/packets/export", dependencies=[Depends(require_auth)])
     async def packets_export(layer: Optional[str] = None):
         """Download captured packets as a CSV file (browser attachment)."""
