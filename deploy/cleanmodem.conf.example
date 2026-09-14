@@ -35,7 +35,8 @@ spi_speed_hz: 2000000       # known working; bench-verify 8 MHz for ~3x faster b
 
 # --- Listen-before-talk (controller TX) -------------------------------
 lbt_enabled: true
-lbt_max_attempts: 5
+# lbt_max_attempts is reserved and currently unused - the retry loop is
+# bounded by clear_channel_wait_seconds, not by an attempt count.
 clear_channel_wait_seconds: 4.0
 politeness_seconds: 2.0
 cad_peak: 22

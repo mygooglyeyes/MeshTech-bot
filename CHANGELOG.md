@@ -24,6 +24,19 @@ is now prose that can never parse as a key; proven with the sync
 script against a box-shaped config (inserts only modem_host +
 modem_port, once each) plus the project's sync tests.
 
+## 0.0.153 - 2026-09-14 (clean-modem branch)
+
+cleanmodem: lbt_max_attempts is now documented as RESERVED, not
+implemented (comment in ModemConfig and cleanmodem.conf.example).
+Rationale: the proven retry policy bounds patience by TIME
+(clear_channel_wait_seconds, 4.0 s) - the old stack's observed 15-16
+attempts were an outcome of that budget, not a configured count - so
+an attempt cap would be a second, conflicting control. The key is
+still accepted when parsing (bench modem.conf on hilltop carries it);
+changing it has no effect. Also adds a test pinning the LBT retry
+delays to a continuous 0.10-0.30 s spread, so a future rework cannot
+silently narrow the jitter back to fixed slots.
+
 ## 0.0.152 - 2026-09-14 (clean-modem branch)
 
 cleanmodem: LBT clear-channel retries move from three fixed delays

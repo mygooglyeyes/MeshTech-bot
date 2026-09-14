@@ -38,7 +38,9 @@ _SHORT_LEN = 7
 # "# key: value" lines as ACTIVE settings - prose got into a live file).
 # 0.0.152: cleanmodem LBT retry jitter goes continuous (uniform 0.10-0.30 s,
 # the old stack's empirically robust pattern) instead of three fixed delays.
-__version__ = "0.0.152"
+# 0.0.153: cleanmodem lbt_max_attempts documented as reserved (never
+# implemented; retry loop is bounded by clear_channel_wait_seconds).
+__version__ = "0.0.153"
 
 
 def _short(sha: str) -> str:

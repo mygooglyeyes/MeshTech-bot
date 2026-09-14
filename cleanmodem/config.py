@@ -84,6 +84,9 @@ class ModemConfig:
     spi_speed_hz: int = 2_000_000   # known working; 8 MHz is a bench option
     # Listen-before-talk policy (controller TX).
     lbt_enabled: bool = True
+    # RESERVED, not implemented: retries are bounded by time
+    # (clear_channel_wait_seconds), not attempt count. Accepted in
+    # configs for compatibility; changing it has no effect.
     lbt_max_attempts: int = 5
     clear_channel_wait_seconds: float = 4.0
     politeness_seconds: float = 2.0
