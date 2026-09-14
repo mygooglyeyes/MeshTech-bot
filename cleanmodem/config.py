@@ -88,6 +88,13 @@ class ModemConfig:
     # DIO1 edge (works around GPIO event-detection breakage; costs a
     # little RX latency). Default off - edge mode is the proven path.
     irq_poll: bool = False
+    # v0.0.156: force a GPIO backend. "auto" (default) = try gpiod, fall
+    # back to RPi.GPIO. "gpiod" = gpiod v1 only, fail loud. "rpi" =
+    # RPi.GPIO-compatible only, fail loud. Hilltop 2026-09-14: the
+    # rpi-lgpio shim left the radio deaf (BUSY/reset writes not reaching
+    # the pins -> blind SPI -> 0xAA00 garbage flags); pinning the backend
+    # makes the choice explicit and A/B-testable.
+    gpio_backend: str = "auto"
     # RESERVED, not implemented: retries are bounded by time
     # (clear_channel_wait_seconds), not attempt count. Accepted in
     # configs for compatibility; changing it has no effect.
@@ -258,6 +265,12 @@ def build_config(raw: dict) -> ModemConfig:
         cfg.lbt_enabled = _as_bool("lbt_enabled", raw["lbt_enabled"])
     if "irq_poll" in raw:
         cfg.irq_poll = _as_bool("irq_poll", raw["irq_poll"])
+    if "gpio_backend" in raw:
+        cfg.gpio_backend = raw["gpio_backend"].strip().lower()
+        if cfg.gpio_backend not in ("auto", "gpiod", "rpi"):
+            raise ConfigError(
+                f"gpio_backend: {cfg.gpio_backend!r} unknown "
+                '(auto | gpiod | rpi)')
     if "lbt_max_attempts" in raw:
         cfg.lbt_max_attempts = _as_int("lbt_max_attempts",
                                        raw["lbt_max_attempts"], 1, 20)

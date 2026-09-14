@@ -77,7 +77,8 @@ def main(argv=None) -> int:
         spi_device=cfg.pins.get("cs_device", 0),
         spi_speed_hz=cfg.spi_speed_hz,
         cad_peak=cfg.cad_peak, cad_min=cfg.cad_min,
-        irq_poll_mode=cfg.irq_poll)
+        irq_poll_mode=cfg.irq_poll,
+        gpio_backend=cfg.gpio_backend)
 
     server = ModemServer(cfg, radio,
                          observer_token=observer_token,

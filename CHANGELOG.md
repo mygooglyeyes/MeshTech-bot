@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.156 - 2026-09-14 (clean-modem branch)
+
+gpio_backend config option (auto | gpiod | rpi; default auto): selects
+the GPIO backend explicitly instead of relying on a silent fallback.
+Context from the hilltop session: the rpi-lgpio shim left the radio
+deaf (BUSY/reset writes apparently not reaching the pins -> blind SPI
+-> the 0xAA00 garbage-flags signature in the new IRQ diagnostics, even
+after a full power cycle). Forcing the gpiod backend is the A/B test
+and, if it fixes RX, the documented permanent configuration. A forced
+backend now fails loud instead of falling back - the silent fallback
+is what hid the failure for hours.
+
 ## 0.0.155 - 2026-09-14 (clean-modem branch)
 
 Diagnostics + workaround (hilltop switchover session): after the

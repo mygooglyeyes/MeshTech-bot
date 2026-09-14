@@ -286,9 +286,20 @@ _make_gpio: Optional[Callable[[bool], Any]] = None
 _make_spi: Optional[Callable[[int, int, int], Any]] = None
 
 
-def _default_gpio(force_null: bool) -> Any:
+def _default_gpio(force_null: bool, backend: str = "auto") -> Any:
+    """GPIO backend factory. backend: auto | gpiod | rpi (v0.0.156).
+
+    "auto" keeps the historical order (gpiod, then RPi.GPIO). Explicit
+    selections fail loud instead of falling back - a silent backend
+    switch is exactly what made the hilltop RX deafness hard to see.
+    Tests may monkeypatch _make_gpio.
+    """
     if force_null:
         return _NullGpio()
+    if backend == "gpiod":
+        return _GpiodGpio()          # no fallback - fail loud
+    if backend == "rpi":
+        return _RpiGpio()            # no fallback - fail loud
     if _make_gpio is not None:
         return _make_gpio(False)
     try:
@@ -369,7 +380,8 @@ class SX126xRadio(ThreadedHal):
                  spi_speed_hz: int = 2_000_000,
                  cad_peak: int = 22, cad_min: int = 10,
                  force_null_hw: bool = False,
-                 irq_poll_mode: bool = False) -> None:
+                 irq_poll_mode: bool = False,
+                 gpio_backend: str = "auto") -> None:
         super().__init__()
         self._pins = dict(pins)
         self._radio = {
@@ -394,6 +406,7 @@ class SX126xRadio(ThreadedHal):
         # latency, proves the RF path); the counters make the failure
         # mode VISIBLE through the status probe.
         self.irq_poll_mode = irq_poll_mode
+        self.gpio_backend = gpio_backend
         self.irq_polls = 0
         self.irq_edges = 0
         self.last_irq_flags = 0
@@ -405,7 +418,7 @@ class SX126xRadio(ThreadedHal):
 
     # ── hardware bring-up (worker thread) ─────────────────────────────
     def _hw_begin(self) -> bool:
-        self._gpio = _default_gpio(self._force_null)
+        self._gpio = _default_gpio(self._force_null, self.gpio_backend)
         self._spi = (_NullSpi() if self._force_null
                      else _default_spi(self._spi_bus, self._spi_device,
                                        self._spi_speed_hz))

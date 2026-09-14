@@ -374,6 +374,70 @@ PROGRESS (2026-09-14, live session):
   restart, re-test the DM, read `irq:` metrics line. (Full suite
   re-run clean: 568 passed, 1 skipped - the earlier single failure
   was a flaky identity-clamp test, green on all retries.)
+  v0.0.155 COMMITTED + PUSHED (a72ef14).  DEPLOYED to hilltop
+  2026-09-14 (running a72ef14, config OK, bot restarted in SPI).
+- v0.0.156 BUILT (Brett chose the proper-fix path): gpio_backend
+  config option (auto|gpiod|rpi, default auto; a FORCED backend
+  fails loud instead of silently falling back - that fallback hid
+  the deaf RX for hours), 6 new tests, example conf documents it.
+  Full suite 575 passed, 1 skipped. NEXT: commit+push (Brett OK),
+  deploy, set gpio_backend=gpiod in modem.conf, restart, re-test
+  the DM, read irq flags.
+  NEXT:  set irq_poll=true in /etc/cleanmodem/modem.conf, redo the
+  handover (stop bot+old modem, start cleanmodem), restart bot,
+  test the DM, read the irq: metrics line. STEP 4+5 RE-RUN
+  PASSED 10:13 (poll mode on): SX1262 up, listening, bot authed
+  as controller, `Radio up via the modem`. NEXT: Brett sends a
+  DM; watch rx + the irq: diagnostics line.
+- Poll-mode diagnostics (10:15): polls=2388 (polling RUNS), edges=0
+  (expected in poll mode), flags=0xAA00 PERSISTENTLY. DECODED:
+  0xAA00 = 10101010 00000000 - bit 9 (IRQ_TIMEOUT/CAD_DETECTED) plus
+  11/13/15 (RESERVED bits). An alternating-bit byte (0xAA) in the
+ high byte + reserved bits set = the chip's status byte returning
+ the 'command timeout' pattern OR MISO floating garbage: the radio
+ is NOT answering SPI reads properly. So the deafness is BELOW the
+ GPIO layer: the SPI/radio link itself. BUT the radio 'came up'
+ (config commands seemed accepted), noise read plausible... yet  flags read garbage. Candidate: SPI bus contention or signal
+  integrity at this exact moment; or the chip wedged mid-command.
+  SPI SPEED REVIEW (Brett's ask): the design runs spi_speed_hz=2 MHz
+  everywhere (default in config.py:84, example conf, and the bench
+  conf never overrode it - both bench and today ran 2 MHz). The
+ '8 MHz is a bench option' comment was aspirational, NEVER deployed.
+ So lowering the rate would NOT explain/change today's failure:
+ nothing is running fast. HOWEVER: a design hardening is worth
+ taking - the SX126x datasheet allows up to 16 MHz for reads but
+ commands+BUSY handshaking are timing-sensitive; if we ever try  8 MHz it must be a deliberate bench test. For NOW: keep 2 MHz,
+  the wedge is not speed-related. FULL STOP/RESTART EXECUTED
+  10:23:01 - SX1262 up clean. NEXT: wait for the first metrics
+  lines, read the irq: flags (sane 0x0000/real activity = chip
+  re-synced; still 0xAA00 = deeper problem), then Brett's test DM.
+  NOTE: the 'sleep 120' pattern produced no output AGAIN (second
+  time) - long sleeps inside the paste window seem to swallow the
+ result. Workaround: read without sleeping; the runbook notes
+ the wait happened anyway.
+- DIAGNOSIS RESHAPED (10:27): flags=0xAA00 IMMEDIATELY after a full
+ stop/rest/restart - a fresh reset did NOT fix it. 0xAA00 decodes
+ to bit 9 (CAD_DETECTED/TIMEOUT) + reserved bits 11/13/15 = the
+ alternating 0xAA pattern = MISO floating / reads not reaching the
+ chip. Bring-up only 'worked' because writes have no read-back and
+ _wait_busy may have been gating on a mis-read BUSY. THE VARIABLE
+ VS THE (WORKING) BENCH IS THE GPIO BACKEND: bench ran classic
+ RPi.GPIO (pruned by tonight's dependency refresh); tonight runs
+ the rpi-lgpio shim - if its BUSY read / reset write do not reach
+ the real pins, every SPI transfer runs blind and reads return
+ floating garbage. EXACTLY matches all evidence. NEXT: force the
+ gpiod backend (still installed; our driver opens by PATH so the
+ earlier by-label iter bug does not apply; the earlier hand probe
+ failed only on LOOKUP mode + permissions as meshtech-in-login-  shell - the service may differ), or fix the shim. Ask Brett:
+ try gpiod backend first (one-line conf-independent patch or
+ env), restart, read flags. BRETT ASKED FOR THE CONSEQUENCES OF
+ EACH PATH - explained in plain terms; his call pending.
+ The 09:07 boot worked once (radio up line) then went deaf -
+ consistent with a wedge AFTER bring-up (e.g. during the first
+ cad/TX attempt at 09:08:47 - the dropped 115B advert!). NEXT:
+ power-cycle the radio path - full service stop, give the chip
+ reset line a rest, restart (a clean reset pulse re-syncs the
+ chip's SPI state machine).
   Box said 'No such file': the script was written LOCALLY after the
   last deploy - the box has not received it. Two options: scp the
   file over, or inline it via heredoc. NEXT: inline heredoc run

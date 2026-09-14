@@ -47,6 +47,11 @@ politeness_seconds=2.0
 cad_peak=22
 cad_min=10
 
+# --- GPIO backend (auto | gpiod | rpi) ---------------------------------
+# auto = try gpiod, fall back to RPi.GPIO-compatible. Pin one explicitly
+# to make the choice visible and fail loud (v0.0.156 lesson: a silent
+# backend fallback left hilltop's radio deaf). gpio_backend=auto
+
 # --- Board profile -----------------------------------------------------
 # Known presets: pimesh-1w-v2 (the working map: CS=8/CE0, busy=5,
 # DIO1=6, reset=18, DIO2-as-RF-switch, DIO3 TCXO 1.8V),
