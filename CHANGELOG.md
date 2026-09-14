@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.0.145 - 2026-09-13 (noise-floor branch)
+
+Noise-floor graph orientation CORRECTED (Brett's screenshot): v0.0.144
+reversed the wrong way. Now magnitude-oriented - values further from
+zero (quieter, -110) plot LOWER, values closer to zero (noise, -102)
+plot HIGHER, so rising noise reads as the line rising. Also: the
+corner dBm numbers (canvas hints + axis-row labels) are gone; only
+"last 30 minutes" remains, centered. Hourly panel back to the shared
+band chart's normal orientation (its own y-axis labels show scale).
+- Frontend-only: app.js, index.html, style.css.
+
+## 0.0.144 - 2026-09-13 (noise-floor branch)
+
+## 0.0.144 - 2026-09-13 (noise-floor branch)
+
+Noise-floor graphs vertically REVERSED (Brett): a higher dBm value
+(lower noise floor) now plots LOWER, so a noise intrusion reads as the
+line dipping down and a quiet mesh rides high.
+
+- web/static/app.js: the live card's y-mapping is inverted, with small
+  dBm hints at the true top/bottom edges so the reversed scale reads
+  at a glance; the analysis card's hourly panel flips to match
+  ("reversed" added to its legend); the SNR trend keeps its normal
+  orientation (the shared band chart gained an invert flag).
+- Frontend-only: no Python behavior changes.
+
+## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
+
+## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
+
+Live noise-floor card (Brett): a running graph of the last 30 minutes
+in the web console, so weak-signal conditions are visible at a glance.
+
+- core/noisefloor.py (NEW): the radio driver already does the hard
+  part - quiet-period RSSI sampling, peak rejection, 20-sample average
+  clamped to -150..-50 dBm (the repeater core's _sample_noise_floor /
+  get_noise_floor). The monitor records that averaged value every 5 s
+  into a 30-minute ring buffer (~360 points) via the executor, skips
+  the driver's 0.0 'transmitting/unknown' marker, and never lets a
+  failed read touch the radio or the event loop.
+- bot.py: the monitor starts in MCP mode only (companion mode has no
+  local radio; the card hides itself there).
+- web/server.py: GET /api/noisefloor (auth-gated) returns the series,
+  the current value, and an availability flag.
+- web console: new collapsible "Noise floor" card in the right column
+  - current value in dBm + canvas graph with a fixed 30-minute x
+  window, data-driven y-scale (6 dB minimum span), and y-edge labels;
+  5-second poll; hidden entirely when the bot has no local radio.
+- core/store.py: noise_samples table (migration 11, ts + floor_dbm)
+  with add/prune/noise_hourly helpers; packet_analysis() now returns a
+  per-hour min/avg/max noise series ("noise"). Retention: 14 days,
+  pruned roughly daily by the monitor. The live monitor persists every
+  accepted sample.
+- web console: the Packet analysis card gains a "Noise floor (dBm per
+  hour)" panel - the same min/max band + average line as the SNR
+  trend, with noise-scale y bounds (-150..-50 dBm); gaps between
+  buckets are drawn as gaps (honest: the bot was down).
+- tests: 10 total in test_noisefloor.py (accept/drop rules, 30-minute
+  pruning, sampler behavior, status wiring, persistence, hourly
+  buckets + retention pruning, analysis wiring). Suite 478 pass on
+  this branch's gate.
+
 Every change gets its own version number - the version doubles as a
 commit counter, so you can always tell exactly which build a bot is
 running (dashboard header chip and startup log). This file records what

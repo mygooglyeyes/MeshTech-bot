@@ -9,6 +9,28 @@ Newest entries first within each branch.
 
 ---
 
+## noise-floor (current work)
+
+- **v0.0.145** - Brett (screenshot): v0.0.144 flipped the WRONG way.
+  Now magnitude-oriented: further from zero = lower, closer to zero
+  (noise) = higher. Corner dBm numbers removed (canvas hints + axis
+  labels); "last 30 minutes" centered.
+
+- **v0.0.144** - Brett: noise-floor graphs vertically REVERSED -
+  higher dBm plots LOWER on both the live card and the hourly panel
+  (SNR trend unchanged); edge hints on the live card. SUPERSEDED by
+  v0.0.145 (wrong direction).
+
+- **v0.0.143** - Live noise-floor card (Brett): graph of the last 30
+  minutes in the web console. Records the driver's ALREADY-averaged
+  floor (SX1262 quiet-period sampling, peak-rejected, clamped
+  -150..-50 dBm) every 5 s into a ring buffer; /api/noisefloor serves
+  it; canvas card in the right column, 5 s poll, hides in companion
+  mode. PLUS hourly min/avg/max history for day-to-day comparison:
+  noise_samples table (migration 11, 14-day retention), a "Noise
+  floor (dBm per hour)" panel in the Packet analysis card reusing the
+  SNR band chart. 10 new tests; suite 478 on this branch's gate.
+
 ## duplicate-packet (current work)
 
 - **v0.0.130 (not yet committed)** - HASH+LONG (Brett's choice after
