@@ -406,4 +406,5 @@ unprivileged user that can only write inside its `data/` folder.
 | `set-password.sh` | Set or change the dashboard password |
 | `manage.sh` | The control panel: configure, update, uninstall, restart, logs |
 | `deploy.sh` | The update engine behind `manage.sh update` (rarely run by hand) |
+| `docs/REBUILD-RUNBOOK.md` | Fresh-install checklist: backups (the radio identity!), the web-update steps git can't carry, verify checklist |
 | `scripts/configure_bot.py` | The interactive config editor (menu option 1) |

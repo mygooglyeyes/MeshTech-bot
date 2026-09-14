@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.142 - 2026-09-13 (small-repairs branch)
+
+Box rebuild runbook (Brett): a fresh hilltop install without
+re-learning the steps git cannot carry across machines.
+
+- docs/REBUILD-RUNBOOK.md (NEW): backup list first (config.yaml, the
+  whole data folder - bot_radio_identity.txt IS the bot's mesh
+  identity), SPI enable, clone + install, THE THREE TRAPS (gpio/spi
+  groups for the service account; updates.clone_path ships
+  commented-out and the config sync never adds it; sudo manage.sh
+  webupdates writes the sudoers rule), ownership restore, start-and-
+  verify checklist (dashboard pubkey must match pre-rebuild), the
+  known-harmless update warnings, and the Docker-variant delta.
+- docs/INSTALL.md: the runbook linked from the files table.
+
 ## 0.0.141 - 2026-09-13 (small-repairs branch)
 
 Dashboard nicety (Brett): the bot's own public key now shows in the

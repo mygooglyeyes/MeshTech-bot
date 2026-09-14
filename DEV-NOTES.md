@@ -11,6 +11,11 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.142** - Docs (Brett): docs/REBUILD-RUNBOOK.md - fresh-box
+  checklist (backups incl. the radio identity file, the three
+  non-git steps: gpio/spi groups, updates.clone_path, webupdates
+  sudoers rule; verify checklist). Linked from INSTALL.md.
+
 - **v0.0.141** - Dashboard (Brett): the bot's own public key shows
   under the bot name in the web console header - 10 hex chars on
   screen, copy button copies the FULL key. /api/status carries
