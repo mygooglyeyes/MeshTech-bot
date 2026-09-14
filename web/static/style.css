@@ -402,6 +402,33 @@ a.btn { text-decoration: none; display: inline-block; }
 .muted-note { color: var(--warn); font-weight: 600; }
 em { color: var(--muted); }
 
+/* Duplicate-packet feature (v0.0.129): per-card "hide repeats" toggles in the
+   card headers, and the 'repeat' tag shown on later copies when visible. */
+.rep-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.rep-toggle input { cursor: pointer; }
+.rep-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(255, 180, 84, 0.15);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+tr.repeat-row { opacity: 0.62; }
+tr.repeat-row td:first-child { border-left: 2px solid var(--warn); }
+
 /* Collapsible cards: the caret lives in the section h2; clicking it (or the
    section title) collapses the whole card body so big lists stay out of the
    way. Header controls (refresh, pause, selects) keep working when closed. */

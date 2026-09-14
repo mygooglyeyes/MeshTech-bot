@@ -9,6 +9,64 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.130 - 2026-09-13 (duplicate-packet branch)
+
+Duplicate-packet detection upgraded to HASH+LONG (Brett's choice after a
+side-by-side comparison with openhop_repeater-dev's packet log, whose
+hide-duplicates feature was read from its source as the reference):
+
+- Fingerprint instead of text matching: each decoded packet row now
+  stores pkt_hash = the openhop-core packet fingerprint (SHA-256 of the
+  payload type byte + payload bytes, truncated to 32; computed by the
+  reference Packet.calculate_packet_hash() itself so the recipe can
+  never drift - schema migration v10 adds the column + lookup index).
+  A repeat is now "same fingerprint within the window", so sender and
+  text no longer matter and frames WITHOUT text - adverts, acks, all
+  the no-text traffic that previously never marked - are covered too.
+- 5-minute window (Brett's HASH+LONG choice): catches slow far-relay
+  copies that arrive minutes after the first copy. Honest trade-off,
+  Brett's call: a genuine re-send of identical content inside 5 minutes
+  now also flags as a repeat.
+- Every row of a repeated frame marks: a frame writes an envelope row
+  (no text) and often a content row (with text) sharing one
+  fingerprint; both mark against their own kind only, so the repeats
+  count now reflects the true number of heard copies, matching what
+  openhop's log shows.
+- Message-view behavior from v0.0.129 is unchanged (router still
+  stores-and-marks fast copies; reply-once logic untouched).
+- v0.0.129's 10-second sender+text marker is retired by this change;
+  the messages side keeps its own marking exactly as shipped.
+
+## 0.0.129 - 2026-09-13 (duplicate-packet branch)
+
+Duplicate-packet inspection + per-card "hide repeats" switches
+(Brett's request: "there aren't 4 or 5 of the same packets in the
+packet or message view"). Flood routing delivers one copy per relay
+heard; every copy is still STORED (the per-copy signal data is kept -
+nothing is deleted), but later copies are now MARKED at ingest so the
+dashboard can decide what to show:
+
+- Detection: a decoded inbound packet whose (frame type, sender, exact
+  text) matches a stored copy from within the last 10 seconds (Brett's
+  choice) is stamped is_repeat=1 with repeat_of = the first copy's id
+  (schema migration v9: is_repeat + repeat_of columns on packets and
+  messages, plus lookup indexes). Grouping is to the NEWEST earlier
+  copy, so repeats chain naturally.
+- Messages view: the router's 45 s in-memory dedupe used to drop fast
+  copies silently - they are now stored AND marked (the reply-once
+  behavior is unchanged, per the channels/bot-behavior rule);  slower
+  copies are caught by the same 10 s window check at ingest.
+- Dashboard: "hide repeats" checkbox on the Messages and Packets cards
+  (Brett's choice A: per-card, hidden by default), remembered across
+  restarts; unchecked, every visible copy carries a small "repeat" tag
+  and dimmed row. New is_repeat/repeat_of fields flow through
+  /api/packets and /api/messages (hide_repeats=1 param).
+- Raw-layer rows, outbound frames and empty-text frames are never
+  marked (a relay cannot make those look identical on purpose).
+- Bot behavior on the mesh is unchanged: this is a display-only
+  feature. The 0.0.122+ TX pipeline, dedupe-reply logic and handlers
+  are untouched.
+
 ## 0.0.127 - 2026-09-13 (stability-fixes branch)
 
 Git-side unit locks decided and fixed, so a reinstall can never

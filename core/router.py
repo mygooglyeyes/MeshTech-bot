@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import Settings, VerbosityCfg
+from .capture import REPEAT_WINDOW_SECONDS
 from .feed import FeedHub
 from .format import chunk_text
 from .models import HandlerResult, InboundMessage, MsgRecord, split_channel_text
@@ -307,16 +308,45 @@ class Router:
             msg.text,
             str(int(msg.sender_ts or msg.recv_ts)),
         ])
+        first_id = None
         if self._dedupe.seen_recently(key, time.time()):
+            # Duplicate-packet feature (v0.0.129): a copy inside the old
+            # dedupe window used to vanish silently. It is now STORED and
+            # marked, so the packets/messages views' "hide repeats"
+            # switches decide its visibility instead of the router. Lookup
+            # uses the dedupe's own window so every copy it catches is
+            # marked to its first copy.
+            first_id = self.service.store.find_recent_duplicate_message(
+                msg.kind, msg.sender_prefix, msg.text,
+                msg.recv_ts, self._dedupe.window,
+            )
+            self.service.store.add_message(MsgRecord(
+                kind=msg.kind, direction="in", channel_name=msg.channel_name,
+                sender_prefix=msg.sender_prefix, text=msg.text,
+                sender_ts=msg.sender_ts, recv_ts=msg.recv_ts,
+                hops=msg.hops, snr=msg.snr, sender_name=msg.sender_name,
+                is_repeat=1 if first_id is not None else None,
+                repeat_of=first_id,
+            ))
             return
         self._dedupe.add(key, time.time())
 
         # -- persist + publish (listen-only channels still log here)
+        # Duplicate-packet feature (v0.0.129): before storing, check for an
+        # identical message that arrived within the repeat window (a relay
+        # copy that outran the 45 s in-memory dedupe - e.g. a slow far
+        # relay). Brett's choice: 10 s window. Marked, never dropped.
+        first_id = self.service.store.find_recent_duplicate_message(
+            msg.kind, msg.sender_prefix, msg.text,
+            msg.recv_ts, REPEAT_WINDOW_SECONDS,
+        )
         self.service.store.add_message(MsgRecord(
             kind=msg.kind, direction="in", channel_name=msg.channel_name,
             sender_prefix=msg.sender_prefix, text=msg.text,
             sender_ts=msg.sender_ts, recv_ts=msg.recv_ts,
             hops=msg.hops, snr=msg.snr, sender_name=msg.sender_name,
+            is_repeat=1 if first_id is not None else None,
+            repeat_of=first_id,
         ))
         # -- per-node statistics: traffic rollup + route history ----------
         # Attribution matches the block list's trust level: DMs carry the

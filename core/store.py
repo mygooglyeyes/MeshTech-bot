@@ -168,6 +168,32 @@ _MIGRATIONS: List[tuple] = [
         # so a node taught in 2-byte hashes is answered in 2-byte hashes.
         "ALTER TABLE nodes ADD COLUMN route_path_len INTEGER",
     ]),
+    (9, [
+        # Duplicate-packet marking (v0.0.129): flood routing delivers one
+        # copy per relay heard, so the views show 4-5 copies of the same
+        # frame. Every copy is still STORED (never deleted - signal info
+        # differs per copy and the data is analysis gold); these columns
+        # only let the dashboard hide/tag later copies. For packets:
+        # is_repeat = later copy of an identical (sender, text) decoded
+        # frame within the window; repeat_of = packet id of the first copy.
+        # For messages: same idea keyed on (kind, sender, text) - catches
+        # copies slower than the router's in-memory dedupe window.
+        "ALTER TABLE packets ADD COLUMN is_repeat INTEGER",
+        "ALTER TABLE packets ADD COLUMN repeat_of INTEGER",
+        "ALTER TABLE messages ADD COLUMN is_repeat INTEGER",
+        "ALTER TABLE messages ADD COLUMN repeat_of INTEGER",
+        "CREATE INDEX IF NOT EXISTS idx_packets_rep_lookup ON packets(sender, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_rep_lookup ON messages(kind, sender_prefix, recv_ts)",
+    ]),
+    (10, [
+        # Duplicate-packet v0.0.130 (HASH+LONG, Brett): repeats are now keyed
+        # on the openhop-core packet fingerprint (sha256 of payload type +
+        # payload bytes - verified against PacketHashingUtils, packet_utils.py
+        # L288) instead of sender+text, so adverts and acks mark too. pkt_hash
+        # stores the full hex fingerprint of the wire payload per decoded row.
+        "ALTER TABLE packets ADD COLUMN pkt_hash TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_packets_rep_hash ON packets(pkt_hash, ts)",
+    ]),
 ]
 
 
@@ -431,16 +457,19 @@ class Store:
             self._conn.execute(
                 """
                 INSERT INTO messages (kind, direction, channel_name, sender_prefix,
-                                      text, sender_ts, recv_ts, hops, snr, sender_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                      text, sender_ts, recv_ts, hops, snr, sender_name,
+                                      is_repeat, repeat_of)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (record.kind, record.direction, record.channel_name,
                  record.sender_prefix, record.text[:2000], record.sender_ts,
-                 record.recv_ts, record.hops, record.snr, record.sender_name),
+                 record.recv_ts, record.hops, record.snr, record.sender_name,
+                 record.is_repeat, record.repeat_of),
             )
 
     def query_messages(self, channel: Optional[str] = None, kind: Optional[str] = None,
-                       max_hops: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+                       max_hops: Optional[int] = None, limit: int = 50,
+                       hide_repeats: bool = False) -> List[Dict[str, Any]]:
         sql = "SELECT * FROM messages WHERE 1=1"
         params: list = []
         if channel:
@@ -452,9 +481,68 @@ class Store:
         if max_hops is not None:
             sql += " AND hops IS NOT NULL AND hops <= ?"
             params.append(int(max_hops))
+        if hide_repeats:
+            # Repeats are marked at ingest; this only hides the later
+            # copies (first copy always shows). IS NOT 1 (not != 1) so
+            # unmarked rows - everything stored before v0.0.129 - stay.
+            sql += " AND (is_repeat IS NOT 1)"
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(int(limit))
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    def find_recent_duplicate_hash(self, pkt_hash: str, ts: float,
+                                   window: float, content_row: bool) -> Optional[int]:
+        """Id of the newest earlier packet row carrying the same wire
+        fingerprint within ``window`` seconds (v0.0.130 HASH+LONG).
+
+        ``content_row`` separates the two rows a single frame produces in
+        the log: envelope rows (text empty) and content rows (text set)
+        must only match their own kind, or a frame's second row would
+        mark against its first. Empty-string, not NULL: add_packet always
+        stores text as a string. Never raises: marking is cosmetic.
+        """
+        try:
+            row = self._conn.execute(
+                """
+                SELECT id FROM packets
+                WHERE layer = 'decoded' AND direction = 'in' AND pkt_hash = ?
+                  AND (CASE WHEN text IS NULL OR text = '' THEN 0 ELSE 1 END) = ?
+                  AND ts >= ? AND ts <= ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (pkt_hash, 1 if content_row else 0, ts - window, ts),
+            ).fetchone()
+            return int(row[0]) if row else None
+        except Exception as exc:
+            log.debug("find_recent_duplicate_hash failed: %s", exc)
+            return None
+
+    def find_recent_duplicate_message(self, kind: str, sender_prefix: Optional[str],
+                                      text: str, recv_ts: float,
+                                      window: float) -> Optional[int]:
+        """Id of an identical stored message within ``window`` seconds,
+        for repeat marking (duplicate-packet feature, v0.0.129).
+
+        Matches kind + sender prefix + exact text (what a relay re-sends
+        is byte-identical to what we already stored; only timing and
+        signal differ). Returns the NEWEST such message's id - the copy
+        every later repeat groups under - or None. Never raises:
+        marking is cosmetic and must not break ingest.
+        """
+        try:
+            row = self._conn.execute(
+                """
+                SELECT id FROM messages
+                WHERE kind = ? AND sender_prefix IS ? AND text = ?
+                  AND recv_ts >= ? AND recv_ts <= ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (kind, sender_prefix, text, recv_ts - window, recv_ts),
+            ).fetchone()
+            return int(row[0]) if row else None
+        except Exception as exc:
+            log.debug("find_recent_duplicate_message failed: %s", exc)
+            return None
 
     def message_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
@@ -787,6 +875,9 @@ class Store:
                    text: Optional[str] = None, size: Optional[int] = None,
                    payload_json: Optional[str] = None,
                    path_hash_size: Optional[int] = None,
+                   is_repeat: Optional[int] = None,
+                   repeat_of: Optional[int] = None,
+                   pkt_hash: Optional[str] = None,
                    max_rows: int = 200000) -> None:
         """Store one captured frame. Prunes to max_rows every 200 inserts.
         Returns the new row id (for JSONL cross-referencing)."""
@@ -797,12 +888,13 @@ class Store:
                 """
                 INSERT INTO packets (ts, layer, direction, frame_type, sender,
                                      hops, snr, channel_name, text, size,
-                                     payload_json, path_hash_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     payload_json, path_hash_size,
+                                     is_repeat, repeat_of, pkt_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (ts, layer, direction, frame_type, sender, hops, snr,
                  channel_name, (text or "")[:2000], size, payload_json,
-                 path_hash_size),
+                 path_hash_size, is_repeat, repeat_of, pkt_hash),
             )
         self._packet_inserts += 1
         if self._packet_inserts % 200 == 0:
@@ -1055,13 +1147,19 @@ class Store:
         self._conn.commit()
 
     def recent_packets(self, layer: Optional[str] = None,
-                       limit: int = 50) -> List[Dict[str, Any]]:
+                       limit: int = 50,
+                       hide_repeats: bool = False) -> List[Dict[str, Any]]:
         sql = "SELECT id, ts, layer, direction, frame_type, sender, hops, snr, " \
-              "channel_name, text, size, path_hash_size FROM packets WHERE 1=1"
+              "channel_name, text, size, path_hash_size, is_repeat, repeat_of " \
+              "FROM packets WHERE 1=1"
         params: list = []
         if layer in ("decoded", "raw"):
             sql += " AND layer = ?"
             params.append(layer)
+        if hide_repeats:
+            # Later copies only (first copy always shows); IS NOT 1 keeps
+            # unmarked pre-v0.0.129 rows visible.
+            sql += " AND (is_repeat IS NOT 1)"
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(int(limit))
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
@@ -1072,6 +1170,11 @@ class Store:
     def packet_stats(self) -> Dict[str, Any]:
         """Summary counts for the dashboard/diag: total, per layer, per type."""
         out: Dict[str, Any] = {"total": self.packet_count()}
+        try:
+            out["repeats"] = self._conn.execute(
+                "SELECT COUNT(*) FROM packets WHERE is_repeat = 1").fetchone()[0]
+        except Exception:
+            out["repeats"] = 0
         by_layer: Dict[str, int] = {}
         by_type: Dict[str, int] = {}
         for row in self._conn.execute(

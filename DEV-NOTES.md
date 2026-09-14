@@ -9,6 +9,23 @@ Newest entries first within each branch.
 
 ---
 
+## duplicate-packet (current work)
+
+- **v0.0.130 (not yet committed)** - HASH+LONG (Brett's choice after
+  reading openhop_repeater-dev's hide-duplicates as reference): repeats
+  key on the openhop wire fingerprint (sha256 of payload type + payload
+  via the reference Packet.calculate_packet_hash; migration v10 adds
+  packets.pkt_hash) with a 5-minute window, so adverts/acks/no-text
+  frames mark too and every row of a repeated frame marks. v0.0.129's
+  sender+text packet marker retired; message-side marking unchanged.
+- **v0.0.129 - Duplicate-packet inspection: relay
+  copies of a frame are marked at ingest (identical sender+text within
+  Brett's 10 s window; schema migration v9 adds is_repeat/repeat_of to
+  packets and messages) and the Messages/Packets cards get per-card
+  "hide repeats" switches (hidden by default, remembered, copies tagged
+  when shown). Nothing is ever deleted; bot mesh behavior unchanged.
+  Awaiting Brett's review, tests, then his OK before any commit.
+
 ## feature/branch-switcher (current work - contains the node-popup stack)
 
 - **v0.0.082** - Developer mode: a checkbox in the update popup widens

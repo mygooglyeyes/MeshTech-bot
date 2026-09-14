@@ -61,6 +61,7 @@
           <option value="channel">channel</option>
           <option value="dm">DM</option>
         </select>
+        <label class="rep-toggle" title="Later copies of the same packet (relay repeats) are hidden. Uncheck to see every copy, tagged 'repeat'."><input type="checkbox" id="msg-hide-repeats" checked> hide repeats</label>
         <button class="btn small" id="btn-load-msgs">load</button>
       </h2>
       <div id="msg-list"><em>loading…</em></div>
@@ -136,6 +137,7 @@
           <option value="decoded">decoded</option>
           <option value="raw">raw</option>
         </select>
+        <label class="rep-toggle" title="Later copies of the same packet (relay repeats) are hidden. Uncheck to see every copy, tagged 'repeat'."><input type="checkbox" id="pkt-hide-repeats" checked> hide repeats</label>
         <button class="btn small" id="btn-load-packets">load</button>
         <button class="btn small" id="btn-export-packets" title="Save the current layer's capture to a CSV file">export csv</button>
       </h2>
