@@ -380,9 +380,10 @@ PROGRESS (2026-09-14, live session):
   config option (auto|gpiod|rpi, default auto; a FORCED backend
   fails loud instead of silently falling back - that fallback hid
   the deaf RX for hours), 6 new tests, example conf documents it.
-  Full suite 575 passed, 1 skipped. NEXT: commit+push (Brett OK),
-  deploy, set gpio_backend=gpiod in modem.conf, restart, re-test
-  the DM, read irq flags.
+  Full  suite 575 passed, 1 skipped. COMMITTED + PUSHED: 2e457f1
+ (v0.0.156). NEXT: deploy on hilltop, set gpio_backend=gpiod,  restart, re-test the DM, read irq flags. v0.0.156 DEPLOYED to
+ hilltop (running 2e457f1, config OK). NEXT: gpio_backend=gpiod
+ in modem.conf, restart stack, test DM.
   NEXT:  set irq_poll=true in /etc/cleanmodem/modem.conf, redo the
   handover (stop bot+old modem, start cleanmodem), restart bot,
   test the DM, read the irq: metrics line. STEP 4+5 RE-RUN

@@ -9,6 +9,16 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.157 - 2026-09-14 (clean-modem branch)
+
+Bug fix (hilltop, found by the gpio_backend=gpiod attempt failing
+loud): _GpiodGpio constructed gpiod.Chip - the v2 API name - while
+every other call in the backend targeted the v1 API. With gpiod 1.5.4
+installed the constructor always raised AttributeError, so in auto
+mode the factory silently fell back to the RPi.GPIO shim and the gpiod
+backend had NEVER actually run. Fixed to gpiod.chip (v1, lowercase);
+two tests pin the v1 constructor and the auto-fallback order.
+
 ## 0.0.156 - 2026-09-14 (clean-modem branch)
 
 gpio_backend config option (auto | gpiod | rpi; default auto): selects

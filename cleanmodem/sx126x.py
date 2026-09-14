@@ -181,7 +181,12 @@ class _GpiodGpio:
     def __init__(self) -> None:
         import gpiod                    # lazy: optional dependency
         self._gpiod = gpiod
-        self._chip = gpiod.Chip("/dev/gpiochip0")
+        # v0.0.156: gpiod.chip (lowercase) - the v1 API this backend
+        # targets. The old gpiod.Chip (capital C) is the v2 name, so in
+        # auto mode the constructor ALWAYS raised AttributeError and the
+        # factory silently fell to RPi.GPIO - hiding this backend's
+        # existence (and any gpiod-only fix) behind the shim.
+        self._chip = gpiod.chip("/dev/gpiochip0")
         self._lines: dict[int, Any] = {}
         self._req_edge: dict[int, Any] = {}
 
