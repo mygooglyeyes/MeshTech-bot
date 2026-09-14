@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.165 - 2026-09-14 (clean-modem branch)
+
+Pinned by raw-probe evidence from hilltop: command-response DATA
+starts at MISO byte 3, one later than the datasheet layout. The
+capture read GetIrqStatus as aa aa 00 00 03 - flags 00 03
+(PreambleDetected|SyncWordValid = the radio HEARS RF traffic) at
+bytes 3-4 with the chip's byte-hold; the datasheet layout would
+leave the 0x03 unexplained. GetStatus corroborates (22 = STANDBY_RC,
+2A = RX in the data window). The chip has been healthy and hearing
+the air all along; every read was framed one byte early. ReadBuffer
+(a buffer read, not a command read) keeps its own layout.
+
 ## 0.0.164 - 2026-09-14 (clean-modem branch)
 
 Second half of the CAD fix: SetCadParams takes SEVEN parameter

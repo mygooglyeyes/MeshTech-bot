@@ -57,7 +57,9 @@ _SHORT_LEN = 7
 # (RX_DONE/CAD_DONE/TX_DONE invisible; rx=0 from day one).
 # 0.0.164: SetCadParams sent 4 of its 7 required bytes - truncated
 # commands are rejected, so CAD never ran even with clean reads.
-__version__ = "0.0.164"
+# 0.0.165: response data starts at MISO byte 3 on hilltop (raw
+# capture aa aa 00 00 03 -> flags 00 03 = real RF at bytes 3-4).
+__version__ = "0.0.165"
 
 
 def _short(sha: str) -> str:

@@ -542,21 +542,19 @@ class SX126xRadio(ThreadedHal):
     def _read_cmd(self, opcode: int, size: int) -> bytes:
         """One command read (opcode + NOPs), gated on BUSY.
 
-        v0.0.163: the SX126x read-command response on MISO is
-        [garbage, chip status, data0..dataN-1] - the byte right after
-        the opcode is the STATUS, data starts one byte later. The old
-        slice [1:1+size] returned the status byte as data and dropped
-        the last real byte: GetIrqStatus read [status, flags-high] and
-        NEVER saw the flags-low byte - CAD_DONE/RX_DONE/TX_DONE were
-        invisible (rx=0 from day one, 'CAD timed out', 'TX timeout',
-        and the constant 0xAA00 'garbage flags' = the status byte).
-        Confirmed live by the raw probe: GetStatus returned 0x2A (RX)
-        / 0x22 (STDBY) in the same position - the chip answers, we
-        were reading the wrong bytes.
+        v0.0.165: on hilltop the response data starts at MISO byte 3,
+        one later than the datasheet's [garbage, status, data...]: the
+        raw capture read GetIrqStatus as aa aa 00 00 03 - flags 00 03
+        (preamble + sync-word detected: REAL RF activity) at bytes 3-4
+        plus the chip's byte-hold; the datasheet layout would make the
+        flags 00 00 AND leave 0x03 unexplained. Same offset confirmed
+        by GetStatus (22 = STANDBY_RC / 2A = RX in the data window).
+        (v0.0.163 moved the window from byte 1 to byte 2 - necessary
+        but not sufficient; the probe evidence pins byte 3.)
         """
         self._wait_busy()
-        result = self._spi.transfer(bytes([opcode]) + bytes(size + 1))
-        return bytes(result[2:2 + size])
+        result = self._spi.transfer(bytes([opcode]) + bytes(size + 2))
+        return bytes(result[3:3 + size])
 
     def _wait_busy(self) -> None:
         deadline = time.monotonic() + self.BUSY_TIMEOUT_S
