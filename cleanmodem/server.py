@@ -588,7 +588,8 @@ class ModemServer:
             frames.STATUS_RESP_FMT,
             status.uptime_s, status.rx_count, status.tx_count,
             status.crc_errors, status.last_rssi, status.last_snr_x10,
-            status.noise_x10, 40, status.radio_state)
+            status.noise_x10, 40, status.radio_state,
+            status.irq_polls, status.irq_edges, status.last_irq_flags)
 
     @staticmethod
     def _unpack_config(payload: bytes) -> dict:
@@ -626,6 +627,16 @@ class ModemServer:
                 self.stats.rx_count, self.stats.tx_count,
                 self.stats.crc_errors, self.stats.dropped_packets,
                 self.stats.auth_failures, len(self._clients), lat)
+            # v0.0.155: IRQ diagnostics in the metrics line (poll/edge
+            # counters + last flag word) - makes a deaf RX visible.
+            try:
+                hs = await self.hal.status()
+                log.info(
+                    "irq: polls=%d edges=%d flags=0x%04X poll_mode=%s",
+                    hs.irq_polls, hs.irq_edges, hs.last_irq_flags,
+                    getattr(self.hal, "irq_poll_mode", False))
+            except Exception:                # noqa: BLE001
+                pass
 
     async def _demo_loop(self) -> None:
         """Synthetic signed advert every demo_interval (bench testing)."""

@@ -243,8 +243,141 @@ PROGRESS (2026-09-14, live session):
   requirements with its liblgpio-dev build note. NEXT: commit/push
   (Brett's OK), ONE `manage.sh update clean-modem` on hilltop, then
   the switchover re-runs from Step 5 (modem side already in place:
-  tokens, unit, =-conf).
-- NEXT: `pip list` in the venv for gpiod / RPi.GPIO variants, install
+  tokens, unit, =-conf). v0.0.154 DEPLOYED 2026-09-14: running
+  12f1ac5, config validated OK, bot restarted in SPI mode. NEXT:
+  re-run the handover (Step 4), then Steps 5-8 as written.
+- Step 4 re-run PASSED 09:07:39 - cleanmodem active, SX1262 up
+  (910.525MHz SF7 BW62.5kHz CR4/5 20dBm), listening 127.0.0.1:5055,
+  both tokens set. (The 2-3 s client pings are the repeater
+  reconnecting to its old address - its auth bounce is expected
+  until its token step.) Step 5 PASSED 09:08:45: bot reads the
+  config (`radio_mode: modem` in the startup line), `modem link up
+  - controller role`, cleanmodem `auth accepted ... as controller
+  (raw token)`, and the pass-bar line `Radio up via the modem - the
+  MCP drives the air.`. ONE WRINKLE: at 09:08:47 (2 s after up) the
+  bot dropped a TX (115B) - a startup advert fired before the link
+  was fully marked ready; look for it after Step 6 (likely benign
+  ordering, but note whether adverts resume). NEXT: Step 6 TX
+  verification on the air.
+- Step 6 attempt 1: metrics at 09:10:39 show rx=0 tx=0 (clients=1,
+  bot linked fine). No TX went out - either the DM did not reach
+  the bot (rx=0: the bot has heard NOTHING yet - RX is also flat!)
+  or the phone message hasn't been sent yet. rx=0 over ~2 min is
+  suspicious for a mesh that had 8-12 packets/min: RX PATH CHECK
+  needed. Could be a quiet mesh moment - wait/watch a couple of
+  minutes before diagnosing deep. NEXT: another metrics read.
+  Step 6 attempt 2: 'sleep 120; journalctl | grep metrics' returned
+  NO OUTPUT (odd - metrics prints every 60 s; either the sleep
+  blocked the paste or the grep pattern missed). Direct read at
+  09:16: rx=0 tx=0 STILL (8 min since radio up). The bot's link is
+  FINE (auth accepted, controller stays connected, one bot idle
+  timeout/reconnect visible - its own 120 s idle recycler). But
+  rx=0 for 8 min on a mesh that ran 8-12 packets/min means the
+  RX PATH IS DEAD: cleanmodem is not hearing the air (or not
+  counting what it hears). TX would also be untested (the phone
+  DM produced no rx). PRIME SUSPECT: RX not actually armed on the
+  radio (bench heard packets fine though - same driver). Diagnose:
+  noise floor probe (CMD_NOISE_REQ via a raw socket, or check hal
+  noise line), plus 'sudo lsof /dev/spidev*' sanity. CODE READ: RX
+  is armed at bring-up (continuous, DIO1 edge-wait loop, IRQ mask
+  correct) - the design is the same that heard packets on the bench.
+  The difference vs the bench: the bench ran the SAME driver with
+  the SAME pins... but on the OLD colon-style conf (all defaults).
+  Today's =-conf also carries only the two token lines (no radio
+  keys), so pins/params are identical to the bench. What ELSE
+  changed since the bench: the bot ran ITS radio on this box
+  between bench and now (bot SPI mode all morning) - and the bot
+  used pymc_core's driver with cad 15/7 on the SAME antenna/pins.
+  If the bot's radio process is STILL RUNNING (zombie/hung), it
+  could be holding the DIO1 line or the SPI chip: two SPI masters
+  fight. CHECK: any leftover bot python process. RESULT: only the
+  two expected processes (cleanmodem + bot.py) - no zombies; lsof
+  lines absent (no holders shown). So the radio is exclusively
+  cleanmodem's and RX is armed per the code... yet rx=0. NEXT
+  PROBE: read the noise floor through the modem's own protocol
+  (the driver's noise value comes from an actual register read -
+  a REAL number proves SPI + radio alive; a frozen -105 default
+  proves the radio path is dead). Craft a raw controller socket
+  probe using cleanmodem.frames. Probe WRITTEN:
+  scripts/probe_modem.py (raw socket, NOISE_REQ + STATUS_REQ,
+  prints values only). Run it on the box with the observer token.
+  PROBE RESULT (09:3x): noise = -105.0 EXACTLY (the driver's frozen
+  default), last_rssi=-100 (also default), rx_state=RX, uptime
+  1672 s. The modem CLAIMS RX is armed but the noise read returns
+  the default -> server.py's noise handler catches Exception and
+  substitutes -105.0, so the real read RAISED. Something is wrong
+  inside the radio thread's SPI path (or the thread is stuck and
+  _submit raises). NEXT: grep the modem journal since 09:07 for ANY
+  error/warning lines (radio thread error / IRQ handling failed /
+  radio work failed). RESULT: NO error lines at all - only metrics.
+  So _hw_noise did NOT raise; hal worked. REINTERPRETATION: 210/-2
+  = -105.0 EXACTLY - a raw RSSI-instant byte of 210 is a REAL,
+  PLAUSIBLE quiet-band noise floor. The radio may be HEALTHY and
+  simply hearing NOTHING (quiet moment) - OR genuinely deaf.
+  CONTROL EXPERIMENT: the repeater on the same box still points at
+  the OLD modem (stopped) - it hears nothing either. The bench
+  heard 8-12/min through the SAME radio. What differs now vs
+  bench: (1) time of day, (2) the bot is linked as controller but
+  its modem_feed is off (irrelevant to RX), (3) NOTHING radio-
+  side. Wait - critical: is anyone TRANSMITTING? The bot sent no
+  adverts since startup (the 115B advert was dropped at 09:08:47
+  and periodic adverts are 24 h). The repeater TXs nothing
+  (mode: no_tx). So the mesh may genuinely be silent with no one
+  pinging it. CONTROL: ask Brett to send a mesh message from his
+  phone NOW and watch rx.
+- Step 6 CONTROL RESULT (09:39-09:41): Brett sent the DM - rx
+  STAYED 0. THE RADIO IS DEAF. Not a quiet mesh: a real DM arrived
+  on air and cleanmodem heard nothing. New suspects (radio side):
+  (a) DIO1 IRQ never fires (wrong pin? old bench conf didn't set
+  pins so preset pimesh-1w-v2 used then too - same), (b) the
+  antenna/RF front-end path (DIO2 RF switch) mis-set by the GPIO
+  backend difference: bench used... WAIT. CRITICAL DIFFERENCE
+  FOUND: the bench ran with the OLD colon conf = NO pin keys =
+  preset pimesh-1w-v2 - same as today. The REAL difference: the
+  GPIO BACKEND. Bench: gpiod present? No - bench worked with RPi
+  module present (the venv had it before tonight's refresh pruned
+  it - that's the missing dep!). Today: rpi-lgpio (lgpio-based).
+  The lgpio backend's wait_edge uses... our _RpiGpio.wait_edge
+  arms add_event_detect via RPi.GPIO API - rpi-lgpio emulates it.
+  If its event detection never fires (callback thread broken),
+  the worker NEVER sees the IRQ -> packets sit unread in the
+  chip -> rx=0 forever, and NO errors logged. That fits ALL the
+  evidence. NEXT: test the IRQ edge detection in isolation on the
+  box (tiny python: set DIO1 input, poll its level while the radio
+  is in RX - a real packet SHOULD pulse it; even better, read the
+  IRQ flags register directly: if IRQ_RX_DONE is SET while waiting,
+  the edge callback is the broken layer).
+  PROBE RESULT: 'GPIO busy' on the reset-pin claim - the probe
+  fought the RUNNING service for the pins (only one radio owner is
+  allowed; by design). Cannot probe pins out-of-band while
+  cleanmodem runs. REDIRECT: restart the service first (re-arms
+  everything; rules out a one-time wedged IRQ arm at 09:07) and
+  watch rx for a few minutes. If still deaf, add an IRQ-poll
+  counter to the modem's status and read THAT via the probe (code
+  change + redeploy). RESTART DONE 09:45:56 - modem listening,
+  bot restarted with it. Step 6 test 2 (09:47): fresh receiver,
+  Brett's DM again NOT received - rx stays 0. CONFIRMED DEAF
+  across a clean re-arm. Diagnosis: the interrupt path never
+  delivers (rpi-lgpio's add_event_detect emulation is the prime
+  suspect) OR the IRQ flags themselves never set (RF path). NEXT:
+  code fix with in-service diagnostics: add an IRQ-poll counter +
+  last IRQ flags to RadioStatus (visible through the existing
+  status probe), plus a low-tech fallback POLLING mode (disable
+  edge-wait, poll flags every IRQ_WAIT_S) behind a config flag -
+  polling costs latency but PROVES the radio hears packets. Ship
+  as v0.0.155, deploy, test with polling on.
+- v0.0.155 BUILT (full suite: one flaky identity-clamp test failed
+  once in the full run, passed on retry and in the targeted rerun -
+  timing-sensitive, pre-existing, not ours): irq_poll conf flag,
+  IRQ counters in status + metrics, poll/edge/flags diagnostics.
+  NEXT: deploy, set irq_poll=true in /etc/cleanmodem/modem.conf,
+  restart, re-test the DM, read `irq:` metrics line. (Full suite
+  re-run clean: 568 passed, 1 skipped - the earlier single failure
+  was a flaky identity-clamp test, green on all retries.)
+  Box said 'No such file': the script was written LOCALLY after the
+  last deploy - the box has not received it. Two options: scp the
+  file over, or inline it via heredoc. NEXT: inline heredoc run
+  (no file transfer needed). for gpiod / RPi.GPIO variants, install
   the right one, restart. RESULT: venv has spidev only (no gpiod, no
   RPi.GPIO) - the factory falls through to the RPi.GPIO import, which
   raises. gpiod==1.6 does not exist on PyPI (latest 1.x is 1.5.4; 2.x

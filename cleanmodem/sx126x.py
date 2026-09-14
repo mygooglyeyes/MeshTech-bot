@@ -359,6 +359,7 @@ class SX126xRadio(ThreadedHal):
     TX_TIMEOUT_S = 2.0               # SetTx hardware timeout (SF7 mesh)
     CAD_TIMEOUT_S = 0.15
     IRQ_WAIT_S = 0.05                # idle edge-wait slice
+    POLL_IRQ_S = 0.05                # polling-mode flag-poll interval
 
     def __init__(self, pins: dict, *, frequency_hz: int = 910525000,
                  tx_power_dbm: int = 20, spreading_factor: int = 7,
@@ -367,7 +368,8 @@ class SX126xRadio(ThreadedHal):
                  spi_bus: int = 0, spi_device: int = 0,
                  spi_speed_hz: int = 2_000_000,
                  cad_peak: int = 22, cad_min: int = 10,
-                 force_null_hw: bool = False) -> None:
+                 force_null_hw: bool = False,
+                 irq_poll_mode: bool = False) -> None:
         super().__init__()
         self._pins = dict(pins)
         self._radio = {
@@ -385,6 +387,16 @@ class SX126xRadio(ThreadedHal):
         self._cad_peak = cad_peak
         self._cad_min = cad_min
         self._force_null = force_null_hw
+        # v0.0.155 diagnostics: hilltop RX deafness (2026-09-14) - the
+        # IRQ edge event never fired under the rpi-lgpio shim, so RX
+        # packets sat unread in the chip with no error logged. irq_poll
+        # mode replaces the edge wait with periodic flag polls (costs
+        # latency, proves the RF path); the counters make the failure
+        # mode VISIBLE through the status probe.
+        self.irq_poll_mode = irq_poll_mode
+        self.irq_polls = 0
+        self.irq_edges = 0
+        self.last_irq_flags = 0
         self._spi: Optional[SpiBus] = None
         self._gpio: Optional[Any] = None
         self._in_rx = False
@@ -602,7 +614,10 @@ class SX126xRadio(ThreadedHal):
             last_snr_x10=int(round(self.last_snr * 10)),
             noise_x10=int(round(self.noise * 10)),
             radio_state=1 if self._rx_mode else 0,
-            hal_alive=True)
+            hal_alive=True,
+            irq_polls=self.irq_polls,
+            irq_edges=self.irq_edges,
+            last_irq_flags=self.last_irq_flags)
 
     def _hw_apply_config(self, cfg: dict) -> bool:
         """Reprogram frequency/modulation/packet parameters."""
@@ -644,17 +659,36 @@ class SX126xRadio(ThreadedHal):
                 break
             # Block briefly on the DIO1 edge (instant wake on a packet,
             # no spin); after processing work, poll without waiting so a
-            # burst of packets is not delayed.
+            # burst of packets is not delayed. irq_poll mode replaces the
+            # edge wait with a straight flag poll (v0.0.155 hilltop RX
+            # deafness diagnostics).
             dio1 = self._pins.get("dio1", -1)
-            try:
-                if dio1 >= 0 and self._gpio is not None and \
-                        self._gpio.wait_edge(dio1,
-                                             0.0 if ran_work else self.IRQ_WAIT_S):
-                    self._handle_irq()
-            except RadioHwError as exc:
-                log.error("IRQ handling failed: %s", exc)
-            except Exception as exc:            # noqa: BLE001
-                log.error("radio thread error: %s", exc)
+            if self.irq_poll_mode:
+                time.sleep(0.0 if ran_work else self.POLL_IRQ_S)
+                self.irq_polls += 1
+                try:
+                    status = self._read_cmd(OP_GET_IRQ_STATUS, 2)
+                    self.last_irq_flags = (status[0] << 8) | status[1]
+                    if self.last_irq_flags & (IRQ_RX_DONE | IRQ_CRC_ERR |
+                                              IRQ_TIMEOUT | IRQ_HEADER_ERR |
+                                              IRQ_TX_DONE | IRQ_CAD_DONE |
+                                              IRQ_CAD_DETECTED):
+                        self._handle_irq()
+                except RadioHwError as exc:
+                    log.error("IRQ poll failed: %s", exc)
+                except Exception as exc:            # noqa: BLE001
+                    log.error("radio thread error: %s", exc)
+            else:
+                try:
+                    if dio1 >= 0 and self._gpio is not None and \
+                            self._gpio.wait_edge(dio1,
+                                                 0.0 if ran_work else self.IRQ_WAIT_S):
+                        self.irq_edges += 1
+                        self._handle_irq()
+                except RadioHwError as exc:
+                    log.error("IRQ handling failed: %s", exc)
+                except Exception as exc:            # noqa: BLE001
+                    log.error("radio thread error: %s", exc)
             if time.monotonic() - last_probe >= self.WATCHDOG_INTERVAL_S:
                 last_probe = time.monotonic()
                 self._watchdog()

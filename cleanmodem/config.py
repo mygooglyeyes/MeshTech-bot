@@ -84,6 +84,10 @@ class ModemConfig:
     spi_speed_hz: int = 2_000_000   # known working; 8 MHz is a bench option
     # Listen-before-talk policy (controller TX).
     lbt_enabled: bool = True
+    # v0.0.155 diagnostics: poll the IRQ flags instead of waiting on the
+    # DIO1 edge (works around GPIO event-detection breakage; costs a
+    # little RX latency). Default off - edge mode is the proven path.
+    irq_poll: bool = False
     # RESERVED, not implemented: retries are bounded by time
     # (clear_channel_wait_seconds), not attempt count. Accepted in
     # configs for compatibility; changing it has no effect.
@@ -252,6 +256,8 @@ def build_config(raw: dict) -> ModemConfig:
                                    100_000, 32_000_000)
     if "lbt_enabled" in raw:
         cfg.lbt_enabled = _as_bool("lbt_enabled", raw["lbt_enabled"])
+    if "irq_poll" in raw:
+        cfg.irq_poll = _as_bool("irq_poll", raw["irq_poll"])
     if "lbt_max_attempts" in raw:
         cfg.lbt_max_attempts = _as_int("lbt_max_attempts",
                                        raw["lbt_max_attempts"], 1, 20)

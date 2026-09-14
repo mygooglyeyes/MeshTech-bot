@@ -9,6 +9,22 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.155 - 2026-09-14 (clean-modem branch)
+
+Diagnostics + workaround (hilltop switchover session): after the
+v0.0.154 flip the modem's receiver was DEAF - a real on-air DM never
+appeared in rx (0 packets across two clean restarts), while the
+hardware probe showed a plausible noise floor and no errors logged.
+Prime suspect: the IRQ edge event never fires under the rpi-lgpio
+shim, so received packets sit unread in the chip with no error.
+
+- `irq_poll` modem.conf flag (default false): the radio thread polls
+  the IRQ flag register every 50 ms instead of waiting on the DIO1
+  edge - costs a little RX latency, bypasses the GPIO event path.
+- RadioStatus gains irq_polls / irq_edges / last_irq_flags, and the
+  per-minute metrics line prints `irq: polls= edges= flags= poll_mode=`
+  so a deaf receiver is VISIBLE instead of silent.
+
 ## 0.0.154 - 2026-09-14 (clean-modem branch)
 
 Bug fix (found live during the hilltop switchover, owned): the bot's

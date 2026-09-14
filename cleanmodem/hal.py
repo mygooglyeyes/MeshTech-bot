@@ -59,6 +59,12 @@ class RadioStatus:
     noise_x10: int = -1050
     radio_state: int = 1      # 1 = RX (the modem's steady state)
     hal_alive: bool = True
+    # v0.0.155 RX-deafness diagnostics (hilltop): poll/edge counts and
+    # the last raw IRQ flag word make the interrupt path visible
+    # through the status probe instead of failing silently.
+    irq_polls: int = 0
+    irq_edges: int = 0
+    last_irq_flags: int = 0
 
 
 class RadioHal:

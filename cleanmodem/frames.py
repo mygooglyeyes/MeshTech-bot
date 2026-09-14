@@ -75,7 +75,7 @@ RADIO_CONFIG_SIZE = struct.calcsize(RADIO_CONFIG_FMT)
 
 # StatusResp (24 B): uptime | rx_count | tx_count | crc_errors
 #                    | last_rssi | snr×10 | noise×10 | temp_c | radio_state
-STATUS_RESP_FMT = "<IIIIhhhbB"
+STATUS_RESP_FMT = "<IIIIhhhbBIII"
 STATUS_RESP_SIZE = struct.calcsize(STATUS_RESP_FMT)
 
 # RX_PACKET metadata (6 B) before the raw radio bytes:
