@@ -9,6 +9,29 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.166 - 2026-09-14 (clean-modem branch)
+
+**The root cause of the whole day, named by the chip itself.** A
+per-command trace (GetStatus CmdStatus bits) showed every clocked
+operation - Calibrate, SetRx, SetCad - returning EXEC_FAIL while
+register writes succeeded: the TCXO was never armed, so the chip sat
+in STANDBY_RC the entire time with no 32 MHz radio clock. Two fixes
+plus one correction:
+
+- `SetDIO3AsTcxoCtrl` takes FOUR bytes (voltage + 3-byte timeout); the
+  driver sent 3, the chip rejected it, the radio stage never ran. Deaf
+  RX, CAD timeouts, TX timeouts - all this one truncation.
+- The PiMesh-1W v2 preset now carries `en = 26`, the radio power-enable
+  pin from openHop's proven map for the E22-900M30S, driven HIGH before
+  the reset pulse (and LOW again on shutdown).
+- v0.0.165's read-window shift to byte 3 is reverted to the datasheet
+  layout ([garbage, status, data...]) - the probe that suggested it was
+  misdecoded (GetStatus repeats its status byte; the "extra header
+  byte" was an artifact of the chip never leaving standby).
+- The watchdog probe now does a real mode dance (STANDBY -> RX) instead
+  of a flags read, so "chip answers SPI but the radio never runs" can
+  never hide again.
+
 ## 0.0.165 - 2026-09-14 (clean-modem branch)
 
 Pinned by raw-probe evidence from hilltop: command-response DATA

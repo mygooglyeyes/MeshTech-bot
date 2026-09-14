@@ -59,7 +59,7 @@ _SHORT_LEN = 7
 # commands are rejected, so CAD never ran even with clean reads.
 # 0.0.165: response data starts at MISO byte 3 on hilltop (raw
 # capture aa aa 00 00 03 -> flags 00 03 = real RF at bytes 3-4).
-__version__ = "0.0.165"
+__version__ = "0.0.166"
 
 
 def _short(sha: str) -> str:

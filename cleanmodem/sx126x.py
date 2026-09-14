@@ -97,6 +97,18 @@ PA_CONFIG_SX1262 = bytes([0x04, 0x07, 0x00, 0x01])
 # TCXO needs a settle delay after powering up (datasheet: 5 ms typical)
 TCXO_SETTLE_S = 0.005
 
+
+def _tcxo_ctrl_params(voltage: float) -> list[int]:
+    """SetDIO3AsTcxoCtrl payload: voltage code + 3-byte timeout field.
+
+    v0.0.166: the FULL four bytes. The old 3-byte command was
+    truncated, the chip rejected it (CmdStatus EXEC_FAIL), the TCXO
+    never armed - and with no 32 MHz clock every clock-dependent
+    command (Calibrate, SetRx, SetCad, SetTx) failed while plain
+    register writes kept 'succeeding' (hilltop trace 2026-09-14).
+    """
+    return [TCXO_VOLTAGE_CODES[voltage], 0x00, 0x00, 0x00]
+
 XTAL_FREQ_HZ = 32_000_000
 PLL_STEP_SHIFT = 25               # freq * 2^25 / XTAL
 
@@ -452,6 +464,11 @@ class SX126xRadio(ThreadedHal):
                      else _default_spi(self._spi_bus, self._spi_device,
                                        self._spi_speed_hz))
         pins = self._pins
+        if pins.get("en", -1) >= 0:
+            # Radio power-enable (openHop's proven PiMesh-1W v2 map
+            # drives this HIGH before the reset pulse).
+            self._gpio.setup_out(pins["en"], 1)
+            time.sleep(0.05)
         self._gpio.setup_out(pins["reset"], 1)
         self._gpio.setup_in(pins["busy"])
         if pins.get("dio1", -1) >= 0:
@@ -467,12 +484,11 @@ class SX126xRadio(ThreadedHal):
         self._gpio.write(pins["reset"], 1)
         time.sleep(0.01)
 
-        self._cmd(OP_SET_STANDBY, [0x0C])           # STDBY_XOSC (needed for TCXO ctrl)
+        self._cmd(OP_SET_STANDBY, [0x00])           # STDBY_RC: required before TCXO ctrl
         tcxo = self._pins.get("dio3_tcxo", 0.0)
         if tcxo:
-            code = TCXO_VOLTAGE_CODES[tcxo]
-            self._cmd(OP_SET_DIO3_AS_TCXO_CTRL,
-                      [code, 0x00, 0x00])           # ~3.1 ms timeout field
+            # Four bytes, from STDBY_RC (see _tcxo_ctrl_params).
+            self._cmd(OP_SET_DIO3_AS_TCXO_CTRL, _tcxo_ctrl_params(tcxo))
             time.sleep(TCXO_SETTLE_S)
         if self._pins.get("dio2_rf_switch"):
             self._cmd(OP_SET_DIO2_AS_RF_SWITCH, [0x01])
@@ -542,19 +558,18 @@ class SX126xRadio(ThreadedHal):
     def _read_cmd(self, opcode: int, size: int) -> bytes:
         """One command read (opcode + NOPs), gated on BUSY.
 
-        v0.0.165: on hilltop the response data starts at MISO byte 3,
-        one later than the datasheet's [garbage, status, data...]: the
-        raw capture read GetIrqStatus as aa aa 00 00 03 - flags 00 03
-        (preamble + sync-word detected: REAL RF activity) at bytes 3-4
-        plus the chip's byte-hold; the datasheet layout would make the
-        flags 00 00 AND leave 0x03 unexplained. Same offset confirmed
-        by GetStatus (22 = STANDBY_RC / 2A = RX in the data window).
-        (v0.0.163 moved the window from byte 1 to byte 2 - necessary
-        but not sufficient; the probe evidence pins byte 3.)
+        Datasheet layout: MISO = [garbage, status, data...]. v0.0.163
+        sliced [2:] (right); v0.0.165 shifted to [3:] because a probe
+        'aa aa 00 00 03' looked like flags at 3-4 - but the GetStatus
+        decode later proved the chip was stuck in STANDBY (TCXO bug,
+        v0.0.166) and that GetStatus repeats its status byte across
+        the data window, which is what fooled that decode. Back to
+        [2:2+size] - the layout the Semtech driver and the bench both
+        use.
         """
         self._wait_busy()
         result = self._spi.transfer(bytes([opcode]) + bytes(size + 2))
-        return bytes(result[3:3 + size])
+        return bytes(result[2:2 + size])
 
     def _wait_busy(self) -> None:
         deadline = time.monotonic() + self.BUSY_TIMEOUT_S
@@ -701,14 +716,29 @@ class SX126xRadio(ThreadedHal):
         return True
 
     def _hw_probe(self) -> None:
-        """Watchdog liveness probe: a cheap register transaction."""
+        """Watchdog liveness probe: check the chip actually obeys.
+
+        A plain flags read succeeds even on a wedged chip. v0.0.166:
+        also enter STANDBY and back out - a mode change is a clocked
+        operation, so this catches the 'chip answers SPI but the radio
+        never runs' failure class (the TCXO bug sat here for hours:
+        flags read fine, chip in standby, deaf RX). Re-arms RX after.
+        """
         self._read_cmd(OP_GET_IRQ_STATUS, 2)
+        self._cmd(OP_SET_STANDBY, [0x00])
+        self._hw_enter_rx()
 
     def _hw_shutdown(self) -> None:
         try:
             self._cmd(OP_SET_STANDBY, [0x00])
         except Exception:  # nosec B110 - best-effort: the radio may already be gone
             pass
+        pins = self._pins
+        if pins.get("en", -1) >= 0 and self._gpio is not None:
+            try:
+                self._gpio.write(pins["en"], 0)
+            except Exception:  # nosec B110 - best-effort power-down
+                pass
         if self._spi is not None:
             self._spi.close()
             self._spi = None

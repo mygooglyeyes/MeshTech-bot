@@ -27,14 +27,20 @@ from typing import Dict, Optional
 # needed); `dio3_tcxo` is the TCXO voltage in volts (0 = don't touch).
 
 PIN_PRESETS: Dict[str, dict] = {
-    # The working map (proven on air on the PiMesh-1W v2): hardware CS
-    # on CE0, DIO2 as the RF switch, TCXO powered through DIO3 at 1.8 V.
+    # The working map (proven on air on the PiMesh-1W v2 by openHop):
+    # hardware CS on CE0, DIO2 as the RF switch, TCXO powered through
+    # DIO3 at 1.8 V - and pin 26 as the radio power-enable ("en").
+    # v0.0.166: en was missing here for months; openHop drives it HIGH
+    # at init, and the hilltop trace showed why it matters - with the
+    # enable line untouched the chip answered SPI from standby but the
+    # radio stage never ran.
     "pimesh-1w-v2": {
         "spi_bus": 0,
         "cs": 8,               # CE0, hardware chip select
         "busy": 5,
         "dio1": 6,
         "reset": 18,
+        "en": 26,
         "dio2_rf_switch": True,
         "dio3_tcxo": 1.8,
         "txen": -1, "rxen": -1, "lna": -1,
@@ -55,7 +61,8 @@ PIN_PRESETS: Dict[str, dict] = {
 }
 
 # Keys a preset/override map may carry, and their valid domains.
-_PIN_KEYS = ("spi_bus", "cs", "busy", "dio1", "reset", "txen", "rxen", "lna")
+_PIN_KEYS = ("spi_bus", "cs", "busy", "dio1", "reset", "en",
+             "txen", "rxen", "lna")
 _FLAG_KEYS = ("dio2_rf_switch",)
 _FLOAT_KEYS = ("dio3_tcxo",)
 
