@@ -258,6 +258,17 @@ logging:
 # built in for the PiMesh-1W v2 (hard-coded; do not edit here).
 mcp:
   enabled: false            # <-- true = the bot owns the radio
+  # HOW the bot gets to the air when mcp: enabled is true:
+  #   radio_mode: "spi"   = this process owns the radio directly
+  #   radio_mode: "modem" = the cleanmodem process owns the radio and
+  #     the bot connects to it as its controller client (RX feed +
+  #     exclusive TX over TCP). The modem runs LBT + the TX loopback.
+  # radio_mode: "spi"
+  # modem_host: "127.0.0.1"      # controller link for radio_mode: modem
+  # modem_port: 5055
+  # The controller password lives in its own mode-600 file (first line
+  # = password), NEVER here - the modem would refuse every TX without it.
+  # modem_token_file: "data/.modem_token"
   frequency_hz: 910525000   # US 915MHz band center used by this network
   tx_power_dbm: 20          # hard ceiling: 20 (set lower per your local rules)
   spreading_factor: 7

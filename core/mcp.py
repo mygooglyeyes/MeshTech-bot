@@ -583,6 +583,11 @@ class Mcp:
         # _radio_up() from config once the real radio is up.
         self._precheck_thresholds = (0, 0)
         self.stats.clear_channel_waits = 0
+        # Radio-via-modem mode (radio_mode: "modem"): the cleanmodem
+        # process owns the SX1262; the bot is its controller client.
+        # Exactly one of self.radio (SPI) / self._modem (link) is live.
+        self._modem = None
+        self._modem_task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------- client-interface shim
     # bot.py sets service.client = mcp in radio mode (the router's reply
@@ -720,6 +725,9 @@ class Mcp:
             log.warning("Self-advert failed (non-fatal): %s", exc)
 
     async def _radio_up(self) -> None:
+        if getattr(self.settings.mcp, "radio_mode", "spi") == "modem":
+            await self._modem_up()
+            return
         from pymc_core.hardware.sx1262_wrapper import SX1262Radio
 
         kwargs = self._radio_kwargs()
@@ -762,6 +770,64 @@ class Mcp:
             raise
         self.radio = radio
         log.info("Radio up - the MCP owns the air.")
+
+    async def _modem_up(self) -> None:
+        """Radio-via-modem mode: connect to the cleanmodem process as its
+        controller (RX feed + exclusive TX). The modem runs the radio,
+        the LBT pre-check and the TX loopback - the bot keeps decode,
+        replies, and its own politeness gap."""
+        from cleanmodem.client import ModemClient
+        mcp = self.settings.mcp
+        host = mcp.modem_host
+        port = int(mcp.modem_port)
+        token = ""
+        if mcp.modem_token_file:
+            try:
+                with open(mcp.modem_token_file, encoding="utf-8") as handle:
+                    token = handle.readline().strip()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"modem token file unreadable ({mcp.modem_token_file}): "
+                    f"{exc}") from exc
+        if not token:
+            raise RuntimeError(
+                "no modem controller token - the modem would refuse every "
+                "TX; set mcp.modem_token_file (mode-600 file, first line "
+                "= the modem's controller password)")
+        log.info("Radio init: modem mode, controller -> %s:%s", host, port)
+
+        async def _on_rx(rssi: int, snr: float, signal_rssi: int,
+                         data: bytes) -> None:
+            self._on_modem_rx(rssi, snr, signal_rssi, data)
+
+        client = ModemClient(host, port, token, _on_rx, service=self.service)
+        self._modem = client
+        self._modem_task = asyncio.create_task(client.run(),
+                                               name="modem-link")
+        deadline = time.monotonic() + 20.0
+        while not client.connected and time.monotonic() < deadline:
+            if self.service.stop_requested:
+                raise RuntimeError("stopped while waiting for the modem link")
+            await asyncio.sleep(0.2)
+        if not client.connected:
+            raise RuntimeError("modem link did not come up in time")
+        log.info("Radio up via the modem - the MCP drives the air.")
+
+    def _on_modem_rx(self, rssi: int, snr: float, signal_rssi: int,
+                     data: bytes) -> None:
+        """One packet from the modem link - same fan-out as a local radio
+        packet (feed queue + bot pipeline), with the same plausibility
+        guard the SPI path uses."""
+        if not data:
+            return
+        self.stats.rx_count += 1
+        rssi, snr, signal_rssi = self._plausible_signal(rssi, snr,
+                                                        signal_rssi)
+        if rssi is None:
+            self.stats.signal_anomalies += 1
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._split, rssi, snr,
+                                            signal_rssi, data)
 
     @staticmethod
     def _apply_cad_thresholds(radio, cad_peak: int, cad_min: int) -> None:
@@ -1614,7 +1680,17 @@ class Mcp:
             if waited:
                 self.stats.clear_channel_waits += 1
             try:
-                await self.radio.send(data)
+                # getattr: tests (and defensive construction) may build
+                # an Mcp without __init__ - modem mode is optional state.
+                if getattr(self, "_modem", None) is not None:
+                    # The modem server runs LBT/CAD and the TX loopback;
+                    # the bot-side clear-channel pre-check would double-
+                    # wait, so it is intentionally skipped here.
+                    if not await self._modem.send(data):
+                        log.error("TX failed (modem refused or timed out)")
+                        return False
+                else:
+                    await self.radio.send(data)
             except Exception as exc:
                 log.error("TX failed: %s", exc)
                 return False
@@ -1625,12 +1701,13 @@ class Mcp:
         key = self._bytes_hash(data)
         if key:
             self._recent_tx_hashes[key] = time.time()
-        # TX loopback: the modem re-broadcasts this so openHop sees bot
-        # traffic. Synthetic metadata like the modem's own design expects.
-        try:
-            self._push_queue.put_nowait((-100, 0.0, -100, bytes(data)))
-        except asyncio.QueueFull:
-            self.stats.dropped += 1
+        # TX loopback to the modem feed only in SPI mode - the modem
+        # server loops bot transmissions back to observers itself.
+        if getattr(self, "_modem", None) is None:
+            try:
+                self._push_queue.put_nowait((-100, 0.0, -100, bytes(data)))
+            except asyncio.QueueFull:
+                self.stats.dropped += 1
         return True
 
     @staticmethod
@@ -1653,6 +1730,15 @@ class Mcp:
         if self._advert_task is not None:
             self._advert_task.cancel()
             self._advert_task = None
+        if getattr(self, "_modem", None) is not None:
+            self._modem.stop()
+            task = getattr(self, "_modem_task", None)
+            if task is not None:
+                task.cancel()
+                self._modem_task = None
+            self._modem = None
+            log.info("Modem link released.")
+            return
         radio, self.radio = self.radio, None
         if radio is not None:
             try:

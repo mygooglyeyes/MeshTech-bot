@@ -9,6 +9,62 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.148 - 2026-09-14 (clean-modem branch)
+
+Clean-room modem: the radio moves into its own process (cleanmodem),
+written from the SX126x datasheet and this project's requirements
+checklist - no code from the reference modem stack. Two ways to run
+the bot's radio now:
+
+- `radio_mode: "spi"` (unchanged default): the bot owns the PiMesh-1W
+  directly, exactly as before.
+- `radio_mode: "modem"` (new): the cleanmodem process owns the radio
+  and the bot connects as its controller client (RX feed + exclusive
+  TX over TCP). Same packet pipeline either way.
+
+cleanmodem (new `cleanmodem/` package, run as `python -m cleanmodem`):
+
+- SX1262 driver on a dedicated radio thread (all SPI + GPIO off the
+  asyncio loop), DIO1 as a real edge event, radio watchdog re-init.
+- One authenticated TCP port, two roles: observer (RX mirror for the
+  visualization tool) and controller (the bot; exclusive TX). Raw
+  token handshake for the controller, framed AUTH for the observer;
+  constant-time compares, per-connection brute-force throttling.
+- Own wire protocol: SYNC/CMD/LEN/PAYLOAD/CRC16 frames, table-driven
+  CRC-16/CCITT-FALSE; RX_PACKET carries RSSI + SNR + signal-RSSI
+  metadata with every payload. Layouts verified against the wire the
+  existing clients already speak.
+- TX policy: serialized TX, CAD listen-before-talk with configurable
+  thresholds, politeness gap, TX loopback so the observer sees the
+  bot's own sends, TX_DONE carries airtime.
+- Fully configurable pin map (named presets + per-pin overrides),
+  fail-loud validation at startup; the working PiMesh-1W v2 map is the
+  default preset.
+- Ops: deploy/cleanmodem.conf.example, deploy/cleanmodem.service
+  (same radio-access flags as the proven bot unit), cleanmodem/README
+  + PROTOCOL docs.
+
+Bot side:
+
+- `mcp.radio_mode` / `modem_host` / `modem_port` / `modem_token_file`
+  config keys (documented in config.example.yaml; the token stays in a
+  mode-600 file, never the config).
+- cleanmodem.client: reconnect-with-backoff controller link, idle
+  probe so a dead link on a quiet mesh is noticed in minutes, TX
+  gate + stale-reply drain.
+- bot.py: modem feed is ignored in radio_mode "modem" (the modem
+  serves the observer directly) - the dual-RX-line topology is
+  preserved, one line per client role.
+
+Tests: frames, config/pins, driver register sequences (fake SPI),
+server behavior + security suite (parser fuzzing, auth matrix, DoS
+caps, log-injection), client pump. Local-only as always. Full suite
+542 pass with the usual branch-foreign exclusions (verified against a
+clean DEV worktree); bandit 0 med/high, pip-audit clean.
+
+Bench gate before box deployment: RX parity vs the current modem,
+IRQ->fan-out latency metrics, 24 h soak.
+
 ## 0.0.130 - 2026-09-13 (duplicate-packet branch)
 
 Duplicate-packet detection upgraded to HASH+LONG (Brett's choice after a

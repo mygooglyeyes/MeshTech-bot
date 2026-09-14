@@ -210,19 +210,29 @@ async def _start_companion(service, settings, tasks) -> None:
 
 
 async def _start_mcp(service, settings, tasks) -> None:
-    """MCP radio path: the bot owns the SPI radio + feeds the modem."""
+    """MCP radio path: the bot owns the SPI radio + feeds the modem
+    (radio_mode: spi), or rides the cleanmodem process as its controller
+    (radio_mode: modem - the feed is the modem's job there)."""
     from core.mcp import Mcp
     from core.modemfeed import ModemFeed
 
+    modem_mode = getattr(settings.mcp, "radio_mode", "spi") == "modem"
     push_queue: asyncio.Queue = asyncio.Queue(
         maxsize=settings.modem_feed.queue_size)
     mcp = Mcp(service, service.router.on_inbound, push_queue)
     service.mcp = mcp
     # The router replies through ONE client interface. In MCP mode that
     # client is the radio itself: the adapter below turns channel replies
-    # and DMs into real encrypted packets on the SPI radio.
+    # and DMs into real radio packets - over SPI, or through the modem
+    # link in radio_mode: modem.
     service.client = mcp
     tasks.append(asyncio.create_task(mcp.start(), name="mcp-radio"))
+
+    if modem_mode:
+        if settings.modem_feed.enabled:
+            log.info("Modem feed ignored in radio_mode: modem - the modem "
+                     "process serves the observer directly.")
+        return
 
     if settings.modem_feed.enabled:
         feed = ModemFeed(service, push_queue)

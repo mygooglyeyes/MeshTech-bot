@@ -231,6 +231,17 @@ class McpCfg:
     radio-settings.json) - only the radio settings live in config.
     """
     enabled: bool = False
+    # Radio mode: "spi" = this process owns the PiMesh-1W directly
+    # (the original MCP design); "modem" = the cleanmodem process owns
+    # the radio and the bot connects as its controller client (RX feed
+    # + exclusive TX over TCP). Same packet pipeline either way.
+    radio_mode: str = "spi"
+    # Controller link for radio_mode: "modem". The token NEVER lives in
+    # this file - modem_token_file points at a mode-600 file whose first
+    # line is the modem's controller password.
+    modem_host: str = "127.0.0.1"
+    modem_port: int = 5055
+    modem_token_file: str = "data/.modem_token"
     frequency_hz: int = 910525000
     tx_power_dbm: int = 20
     spreading_factor: int = 7

@@ -1,0 +1,51 @@
+# cleanmodem - standalone LoRa modem process
+#
+# Install: sudo cp deploy/cleanmodem.conf.example /etc/cleanmodem/modem.conf
+# (or keep it beside the bot: config dir = the bot's config dir).
+# The modem passwords NEVER live in this file: token_file /
+# controller_file point at mode-600 files whose FIRST LINE is the
+# password (same pattern as the bot's dashboard password file).
+
+# --- Listen address ---------------------------------------------------
+# 127.0.0.1 = loopback only (default, safe). The observer token belongs
+# to the visualization tool's own box; if that tool runs on another
+# machine, bind_lan: true is required AND the token is the only thing
+# between the air and the LAN.
+host: "127.0.0.1"
+port: 5055
+# bind_lan: false
+
+# --- Auth (REQUIRED - fail closed) -----------------------------------
+# Mode-600 files; first line = password. Missing file = that role has
+# no access (fail closed). Never commit these.
+# token_file: "/etc/cleanmodem/observer.token"
+# controller_file: "/etc/cleanmodem/controller.token"
+token_file: "data/.cleanmodem_observer_token"
+controller_file: "data/.modem_token"
+
+# --- Radio (defaults = the live mesh, verified on air) ----------------
+frequency_hz: 910525000
+tx_power_dbm: 20
+spreading_factor: 7
+coding_rate: 1              # config index 1..4 = CR 4/5..4/8
+bandwidth_khz: 62.5
+sync_word: 0x12
+preamble_length: 32
+spi_speed_hz: 2000000       # known working; bench-verify 8 MHz for ~3x faster buffer reads
+
+# --- Listen-before-talk (controller TX) -------------------------------
+lbt_enabled: true
+lbt_max_attempts: 5
+clear_channel_wait_seconds: 4.0
+politeness_seconds: 2.0
+cad_peak: 22
+cad_min: 10
+
+# --- Board profile ----------------------------------------------------
+# Known presets: pimesh-1w-v2 (the working map: CS=8/CE0, busy=5,
+# DIO1=6, reset=18, DIO2-as-RF-switch, DIO3 TCXO 1.8V),
+# pimesh-v2-draft (external LNA + RF-switch front end on MCU pins).
+pin_profile: pimesh-1w-v2
+# Per-pin overrides (explicit values beat the preset), e.g.:
+# pins.busy: 6
+# pins.dio1: 27
