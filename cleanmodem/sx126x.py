@@ -707,6 +707,13 @@ class SX126xRadio(ThreadedHal):
             dio1 = self._pins.get("dio1", -1)
             if self.irq_poll_mode:
                 time.sleep(0.0 if ran_work else self.POLL_IRQ_S)
+                # v0.0.160: bring-up runs as a work item on this same
+                # thread - before it completes, _gpio/_spi are still
+                # None and a poll here can only crash (the harmless
+                # 'NoneType' object has no attribute read' at every
+                # start). Skip until the hardware is up.
+                if self._gpio is None or self._spi is None:
+                    continue
                 self.irq_polls += 1
                 try:
                     status = self._read_cmd(OP_GET_IRQ_STATUS, 2)

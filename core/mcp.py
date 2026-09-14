@@ -811,14 +811,25 @@ class Mcp:
 
         client = ModemClient(host, port, token, _on_rx, service=self.service)
         self._modem = client
-        self._modem_task = asyncio.create_task(client.run(),
-                                               name="modem-link")
+        task = asyncio.create_task(client.run(), name="modem-link")
+        self._modem_task = task
         deadline = time.monotonic() + 20.0
         while not client.connected and time.monotonic() < deadline:
             if self.service.stop_requested:
-                raise RuntimeError("stopped while waiting for the modem link")
+                break
             await asyncio.sleep(0.2)
         if not client.connected:
+            # v0.0.160: a failed init must tear its client down. The old
+            # code left client.run() retrying forever, so the NEXT init
+            # attempt created a second client and the two fought over
+            # the modem's single controller slot forever (each displacing
+            # the other every 2 s - hilltop 2026-09-14).
+            client.stop()
+            task.cancel()
+            self._modem = None
+            self._modem_task = None
+            if self.service.stop_requested:
+                raise RuntimeError("stopped while waiting for the modem link")
             raise RuntimeError("modem link did not come up in time")
         log.info("Radio up via the modem - the MCP drives the air.")
 

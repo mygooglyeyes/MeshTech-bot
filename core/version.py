@@ -45,7 +45,10 @@ _SHORT_LEN = 7
 # Debian 13; 2.x ships cp313 aarch64 wheels.
 # 0.0.159: gpiod 2.x enums live in the gpiod.line submodule, not
 # top-level (caught by the clean-venv API probe on hilltop).
-__version__ = "0.0.159"
+# 0.0.160: a failed modem init stops its client (two clients fighting
+# over the single controller slot); worker skips IRQ polls until
+# bring-up finishes.
+__version__ = "0.0.160"
 
 
 def _short(sha: str) -> str:

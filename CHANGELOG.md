@@ -9,6 +9,18 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.160 - 2026-09-14 (clean-modem branch)
+
+Two cleanmodem-mode lifecycle bugs found live on hilltop after the
+gpiod v2 radio came up:
+1. A failed modem init left client.run() retrying forever. The 30 s
+   retry wrapper then created a second client; the two displaced each
+   other from the single controller slot every 2 s (the reconnect
+   storm). A failed init now stops and cancels its client first.
+2. In irq_poll mode the radio worker polled flags before the bring-up
+   work item ran, logging 'NoneType' object has no attribute 'read''
+   once per start. Polls are skipped until the hardware is up.
+
 ## 0.0.159 - 2026-09-14 (clean-modem branch)
 
 gpiod 2.x enum location fix, caught by the clean-venv API probe on
