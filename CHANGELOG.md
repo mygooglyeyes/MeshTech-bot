@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.163 - 2026-09-14 (clean-modem branch)
+
+THE root cause of the deaf modem, found by a raw-probe experiment
+on hilltop: SX126x read-command responses are [garbage, status,
+data...], and _read_cmd sliced [1:1+size] - the STATUS byte came
+back as data and the last data byte was dropped. GetIrqStatus thus
+returned [status, flags-high], never flags-low: RX_DONE, CAD_DONE
+and TX_DONE were invisible (rx=0 since day one, 'CAD timed out',
+'TX timeout', and the constant 0xAA00 garbage-flags signature =
+the status byte 0xAA). Fixed to [2:2+size]; the SPI fake now
+mirrors the real layout. Confirmed live: GetStatus read 0x2A (RX)
+/ 0x22 (STDBY) in the same position - the chip always answered,
+we read the wrong bytes.
+
 ## 0.0.162 - 2026-09-14 (clean-modem branch)
 
 CAD actually ran: SetCAD is only valid from STANDBY on the SX126x;

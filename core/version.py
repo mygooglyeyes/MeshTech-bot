@@ -52,7 +52,10 @@ _SHORT_LEN = 7
 # self.radio, which is None by design in modem mode.
 # 0.0.162: CAD issued from continuous RX is ignored by the SX126x
 # (SetCAD is STANDBY-only) - the driver now dances RX->STDBY->CAD->RX.
-__version__ = "0.0.162"
+# 0.0.163: _read_cmd misaligned by one byte - the chip status byte
+# was read as data, so IRQ flags never included the low byte
+# (RX_DONE/CAD_DONE/TX_DONE invisible; rx=0 from day one).
+__version__ = "0.0.163"
 
 
 def _short(sha: str) -> str:
