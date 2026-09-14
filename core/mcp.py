@@ -606,6 +606,15 @@ class Mcp:
         bot_cfg = getattr(self.settings, "bot", None)
         return (sanitize_advert_name(bot_cfg.display_name) if bot_cfg else "") or ""
 
+    @property
+    def own_pubkey(self) -> str:
+        """The bot's own radio public key, hex (the dashboard header shows
+        it truncated with click-to-copy)."""
+        try:
+            return self.identity.get_public_key().hex()
+        except Exception:
+            return ""
+
     def _advert_name(self) -> str:
         """Sanitized on-air name for adverts (never empty)."""
         return self.own_name or "bot"

@@ -518,6 +518,14 @@ class BotService:
         companion = ""
         if self.client is not None:
             companion = (getattr(self.client, "own_name", "") or "").strip(" \x00")
+        # The bot's own radio public key (hex) for the dashboard header.
+        # MCP mode owns its identity file directly; companion mode reads
+        # what its device reported at connect.
+        own_pubkey = ""
+        if self.mcp is not None:
+            own_pubkey = (getattr(self.mcp, "own_pubkey", "") or "").lower()
+        elif self.client is not None:
+            own_pubkey = (getattr(self.client, "own_pubkey", "") or "").lower()
         # MCP radio mode: report the SPI radio + modem feed state instead.
         mcp_state = None
         if self.mcp is not None:
@@ -537,6 +545,7 @@ class BotService:
             "companion_name": companion,
             "noise_floor": (None if self.noise_monitor is None
                             else self.noise_monitor.current),
+            "own_pubkey": own_pubkey,
             "mcp": mcp_state,
             "version": version_stamp(),
             "uptime_seconds": self.uptime_seconds(),

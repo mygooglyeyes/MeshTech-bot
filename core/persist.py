@@ -143,6 +143,63 @@ def set_web_flag(config_path: str, key: str, value: bool) -> None:
         raise
 
 
+def set_mesh_sender_name(config_path: str, mode: str) -> None:
+    """Set mesh.channel_sender_name in config.yaml ("trust"/"smart"/"off").
+
+    Same safety contract as set_web_flag: splice into the mesh: section,
+    validate the whole file with the bot's own loader, and only then
+    replace the live file (restoring nothing on failure - the temp file
+    is discarded, the original untouched). Raises ConfigError with the
+    loader's message on any validation problem.
+    """
+    from .config import load as load_config, ConfigError
+
+    if mode not in ("trust", "smart", "off"):
+        raise ConfigError(f"invalid sender-name mode: {mode!r}")
+
+    path = Path(config_path)
+    original = path.read_text(encoding="utf-8") if path.is_file() else ""
+    text = original
+    line = f'channel_sender_name: "{mode}"'
+
+    section = re.search(r"(?m)^mesh:[ \t]*(?:#.*)?$", text)
+    if section is None:
+        text = text.rstrip("\n") + f"\n\nmesh:\n  {line}\n"
+    else:
+        rest = text[section.end():]
+        nxt = re.search(r"(?m)^\S", rest)
+        body_end = section.end() + (nxt.start() if nxt else len(rest))
+        body = text[section.end():body_end]
+        entry = re.search(
+            r"(?m)^(?P<indent>[ \t]+)channel_sender_name:[ \t]*\S.*(?:#.*)?$",
+            body)
+        if entry:
+            indent = entry.group("indent")
+            new_body = (body[:entry.start()] + f"{indent}{line}\n"
+                        + body[entry.end():].lstrip("\n"))
+            if new_body and not new_body.endswith("\n"):
+                new_body += "\n"
+        else:
+            new_body = body.rstrip("\n")
+            if new_body:
+                new_body += "\n"
+            new_body += f"  {line}\n"
+        text = text[:section.end()] + new_body + text[body_end:]
+
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        load_config(tmp_name)          # validate BEFORE replacing
+        os.replace(tmp_name, str(path))
+    except (ConfigError, OSError):
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def save_module_settings(config_path: str, name: str, enabled: bool,
                          settings: Dict[str, Any]) -> Dict[str, Any]:
     """Splice + write + re-validate. Returns the fresh settings for the

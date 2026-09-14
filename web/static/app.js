@@ -126,6 +126,33 @@ async function loadAboutTab(tab) {
 }
 
 $("btn-about").addEventListener("click", openAbout);
+// Copy the bot's FULL public key (the header shows only 10 hex chars).
+// Falls back to a hidden textarea for non-secure contexts (plain HTTP
+// on the LAN), and to a prompt if the clipboard refuses entirely.
+$("btn-copy-key").addEventListener("click", async () => {
+  const btn = $("btn-copy-key");
+  const full = btn.dataset.fullKey || "";
+  if (!full) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(full);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = full;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    const old = btn.textContent;
+    btn.textContent = "copied";
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  } catch (err) {
+    window.prompt("Full public key:", full);
+  }
+});
 $("btn-about-close").addEventListener("click", () => $("about-overlay").classList.add("hidden"));
 $("btn-about-license").addEventListener("click", () => loadAboutTab("license"));
 $("btn-about-notices").addEventListener("click", () => loadAboutTab("notices"));
@@ -750,6 +777,18 @@ async function refreshStatus() {
   const compEl = $("title-companion");
   compEl.textContent = comp ? "· " + comp : "";
   compEl.title = comp ? "openHop companion: " + comp : "";
+  // The bot's own public key on its own line under the name: truncated
+  // on screen, and the copy button hands the FULL key to the clipboard.
+  const ownKey = (st.own_pubkey || "").toLowerCase();
+  const keyLine = $("own-key-line");
+  if (ownKey) {
+    keyLine.hidden = false;
+    $("own-key-text").textContent = ownKey.slice(0, 10) + "…";
+    $("btn-copy-key").dataset.fullKey = ownKey;
+    keyLine.title = "The bot's public key (truncated here - copy for the full key)";
+  } else {
+    keyLine.hidden = true;
+  }
 
   const v = st.version || {};
   const vChip = $("chip-version");

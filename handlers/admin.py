@@ -8,6 +8,14 @@
                        and 2200/day. Boosts age out after 24 hours.
     !down            - cancel ALL active boosts; the budget returns to
                        its base caps immediately.
+    !trust on|smart|off
+                     - set how the bot treats the sender name embedded
+                       in channel messages (mesh.channel_sender_name):
+                       on = always strip it, smart = strip only when the
+                       rest wouldn't match a command, off = never strip.
+                       Writes config.yaml (validated) and reloads.
+                       Replies: "Trust set to <mode>". Bare !trust
+                       replies "Trust is <current>".
 
 Access is enforced by the router (access="admin") plus the allowlist in
 config.yaml (dm.admin_pubkey_prefixes).
@@ -15,6 +23,7 @@ config.yaml (dm.admin_pubkey_prefixes).
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import List, Optional
 
@@ -22,11 +31,13 @@ from core.format import fmt_table, rel_time
 from core.models import HandlerResult
 from .base import Handler
 
+log = logging.getLogger("meshtech-bot.handlers.admin")
+
 
 class AdminHandler(Handler):
     name = "admin"
-    keywords = ["diag", "reload", "shutdown", "up", "down"]
-    description = "Bot administration (diag/reload/shutdown/up/down)"
+    keywords = ["diag", "reload", "shutdown", "up", "down", "trust"]
+    description = "Bot administration (diag/reload/shutdown/up/down/trust)"
     scope = "dm"
     access = "admin"
     priority = 50
@@ -68,7 +79,39 @@ class AdminHandler(Handler):
             asyncio.get_event_loop().call_later(1.5, ctx.service.request_shutdown,
                                                 "admin DM command")
             return HandlerResult(kind="text", data="Shutting down the bot now. 73!")
+        if command == "trust":
+            return self._trust(ctx)
         return None
+
+    def _trust(self, ctx) -> HandlerResult:
+        """!trust on|smart|off - set mesh.channel_sender_name.
+
+        Value words: on = trust, smart = smart, off = off (the words the
+        mesh uses; 'trust' is also accepted as a synonym for 'on').
+        Writes config.yaml through the validated splicer, then reloads so
+        every dependent state refreshes. The reload's on-air line stays
+        the standard one; this reply is the one that names the new value.
+        Replies use the user-facing word 'on' for the trust mode (Brett):
+        "Trust set to on" / "Trust is on" - never the internal value.
+        """
+        raw = (ctx.args[0] if ctx.args else "").strip().lower()
+        aliases = {"on": "trust", "trust": "trust", "smart": "smart",
+                   "off": "off"}
+        labels = {"trust": "on", "smart": "smart", "off": "off"}
+        if raw not in aliases:
+            current = labels.get(ctx.settings.mesh.channel_sender_name,
+                                 ctx.settings.mesh.channel_sender_name)
+            return HandlerResult(kind="text", data=f"Trust is {current}")
+        mode = aliases[raw]
+        from core.persist import set_mesh_sender_name
+        try:
+            set_mesh_sender_name(ctx.settings.config_path, mode)
+        except Exception as exc:
+            log.warning("!trust write failed: %s", exc)
+            return HandlerResult(kind="text", data=(
+                "Could not save the setting - nothing was changed."))
+        ctx.service.reload()               # refresh all dependent state
+        return HandlerResult(kind="text", data=f"Trust set to {labels[mode]}")
 
     # ------------------------------------------------------------------
 

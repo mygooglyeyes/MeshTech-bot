@@ -206,11 +206,13 @@ Choose this if you already use Docker or want a self-contained install.
   sudo nano config.yaml        # set host, port, channels, admin prefix
   ```
 
-- Prepare the data folder (the container runs as uid 1001):
+- Prepare the data folder and the config file (the container runs as
+  uid 1001 and must be able to write both - the web console and the
+  `!trust` command edit config.yaml live):
 
   ```bash
   mkdir -p data
-  sudo chown 1001:1001 data
+  sudo chown 1001:1001 data config.yaml
   ```
 
 - Create the dashboard password file:
@@ -239,6 +241,17 @@ Other useful commands:
 
 - Stop: `docker compose down`
 - Rebuild and restart: `docker compose up -d --build`
+
+**Prefer not to build?** Each version tag publishes a ready-made image
+from CI. Pull it and use it instead of building locally:
+
+```bash
+docker pull ghcr.io/mygooglyeyes/meshtech-bot:v0.0.140
+```
+
+then point compose at it (replace `build:` + `image: meshtech-bot:latest`
+with `image: ghcr.io/mygooglyeyes/meshtech-bot:v0.0.140`) and
+`docker compose up -d`. `:latest` follows the newest tag.
 
 ---
 
@@ -393,4 +406,5 @@ unprivileged user that can only write inside its `data/` folder.
 | `set-password.sh` | Set or change the dashboard password |
 | `manage.sh` | The control panel: configure, update, uninstall, restart, logs |
 | `deploy.sh` | The update engine behind `manage.sh update` (rarely run by hand) |
+| `docs/REBUILD-RUNBOOK.md` | Fresh-install checklist: backups (the radio identity!), the web-update steps git can't carry, verify checklist |
 | `scripts/configure_bot.py` | The interactive config editor (menu option 1) |

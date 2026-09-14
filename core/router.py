@@ -149,10 +149,17 @@ def resolve_channel_text(text: str, mode: str, handlers: List[Any],
 
 
 def handler_args(tokens: List[str], command_word: str, cfg: VerbosityCfg) -> List[str]:
-    """Remaining words after the command keyword + any modifier words."""
+    """Remaining words after the command keyword + any modifier words.
+
+    Only the FIRST occurrence of the command word is dropped - a repeated
+    word can be a legitimate argument (e.g. '!trust trust'), and stripping
+    every occurrence silently emptied such arguments.
+    """
     args: List[str] = []
+    dropped_command = False
     for token in tokens:
-        if token == command_word:
+        if token == command_word and not dropped_command:
+            dropped_command = True
             continue
         if cfg.level_for_token(token):
             continue

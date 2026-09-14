@@ -107,10 +107,13 @@ show_header() {
   echo "   MeshTech-Bot control panel          status: $(status_line)   v$(version_line)"
   echo "=============================================================================="
   echo "     1) Configure the bot        (repeater IP/port, channels, admins, hops)"
-  echo "     2) Update the bot software  (git pull + dependency refresh)"
-  echo "     3) Uninstall                (asks to back up your data first)"
-  echo "     4) Restart the service"
-  echo "     5) View live logs           (journalctl -f, Ctrl-C to stop)"
+  echo "     2) Edit full config         (EVERY setting, incl. commented-out options)"
+  echo "     3) Update the bot software  (git pull + dependency refresh)"
+  echo "     4) Uninstall                (asks to back up your data first)"
+  echo "     5) Restart the service"
+  echo "     6) View live logs           (journalctl -f, Ctrl-C to stop)"
+  echo "     7) Enable web-console updates (let the dashboard switch branches)"
+  echo "     8) Clean config             (back up, then rebuild config.yaml from scratch)"
   echo "     q) Quit"
   echo "------------------------------------------------------------------------------"
 }
@@ -120,6 +123,17 @@ do_configure() {
   # Option 1 edits the RUNTIME's config - never the clone's (the clone has
   # no live config; seeding one there would be misleading).  When the
   # runtime has no config yet, the example is the starting point.
+  do_configure_body ""
+}
+
+do_configure_full() {
+  # Option 2: the same editor in FULL mode - every documented setting,
+  # one by one (commented-out keys become usable by giving them a value).
+  do_configure_body "--full"
+}
+
+do_configure_body() {
+  local editor_mode="${1:-}"
   if [[ ! -f "$INSTALL_ROOT/bot.py" ]]; then
     warn "No bot installation found (looked at $DIR and /opt/meshtech-bot)."
     warn "Install first:  cd ~/meshtech-bot && sudo ./install.sh"
@@ -155,7 +169,7 @@ do_configure() {
     editor="$DIR/scripts/configure_bot.py"
   fi
   local rc=0
-  "$PY" "$editor" "$INSTALL_ROOT/config.yaml" || rc=$?
+  "$PY" "$editor" $editor_mode "$INSTALL_ROOT/config.yaml" || rc=$?
   if [[ $rc -eq 0 ]]; then
     chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_ROOT/config.yaml" 2>/dev/null || true
     chmod 640 "$INSTALL_ROOT/config.yaml"
@@ -304,6 +318,75 @@ do_webupdates() {
   log "your home clone (e.g. /home/$SUDO_USER/meshtech-bot), then restart."
 }
 
+# --- 7) clean config ------------------------------------------------------------
+# Rebuild config.yaml from the latest config.example.yaml shipped with the
+# running code (Brett, small-repairs branch). The example always carries every
+# documented field at the current version, so the fresh file can never be
+# missing keys - the bot's startup config-sync then fills in any new defaults
+# on first start. Everything else (database, captures, backups) is untouched.
+do_clean_config() {
+  if [[ ! -f "$INSTALL_ROOT/bot.py" ]]; then
+    warn "No bot installation found (looked at $DIR and /opt/meshtech-bot)."
+    warn "Install first:  cd ~/meshtech-bot && sudo ./install.sh"
+    return 1
+  fi
+  local example="$INSTALL_ROOT/config.example.yaml"
+  if [[ ! -f "$example" && -f "$DIR/config.example.yaml" ]]; then
+    example="$DIR/config.example.yaml"
+  fi
+  if [[ ! -f "$example" ]]; then
+    warn "No config.example.yaml found - update the bot software first."
+    return 1
+  fi
+  echo
+  echo "  This WIPES the live config at:"
+  echo "    $INSTALL_ROOT/config.yaml"
+  echo "  and rebuilds it from the latest example ($example), so every field"
+  echo "  exists at the current version - but everything you set by hand goes:"
+  echo "    repeater IP/port, channel names + KEYS, admin list, dashboard password."
+  echo "  The database, captures and backups are NOT touched. The running bot"
+  echo "  keeps its current settings until the service is restarted."
+  echo
+  if [[ "$DIR" != "$INSTALL_ROOT" ]] && ! confirm "  Target the LIVE config at $INSTALL_ROOT?" y; then
+    return 0
+  fi
+  if [[ -f "$INSTALL_ROOT/config.yaml" ]]; then
+    if confirm "  Back up config + data first (strongly recommended)?" y; then
+      backup_data || warn "Continuing WITHOUT a backup."
+    else
+      confirm "  Continue with NO backup at all?" n || return 0
+    fi
+    if ! confirm "  Really wipe config.yaml and start from scratch? This cannot be undone." n; then
+      log "Clean config cancelled - nothing was changed."
+      return 0
+    fi
+    rm -f "$INSTALL_ROOT/config.yaml"
+  else
+    log "No config.yaml present yet - creating a fresh one."
+  fi
+  cp "$example" "$INSTALL_ROOT/config.yaml"
+  chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_ROOT/config.yaml" 2>/dev/null || true
+  chmod 640 "$INSTALL_ROOT/config.yaml"
+  log "Fresh config.yaml written from the latest example (all fields present)."
+  echo
+  echo "  The editor walks you through the essentials (repeater, channels +"
+  echo "  private-channel keys, admins, hops, dashboard reachability). Everything"
+  echo "  else - optional features - sits in the file COMMENTED OUT with its own"
+  echo "  explanation, ready to uncomment whenever you want it."
+  echo
+  if confirm "  Run the configuration editor now to fill in the essentials?" y; then
+    do_configure
+    return 0                     # do_configure already offered the restart
+  fi
+  echo "  Reminder: the fresh config has example values - before real use set"
+  echo "  your repeater IP, channels/admins (editor), and the dashboard password:"
+  echo "    sudo ./set-password.sh"
+  if confirm "  Restart the service now? (It will run on example defaults until configured.)" n; then
+    systemctl restart "$SERVICE.service" && log "Service restarted."
+  fi
+  return 0
+}
+
 # --- direct subcommands (no menu): manage.sh update|configure|restart|logs ----
 if [[ $# -gt 0 ]]; then
   case "$1" in
@@ -313,21 +396,30 @@ if [[ $# -gt 0 ]]; then
     configure)
       [[ "$(id -u)" -eq 0 ]] || { warn "configure needs root - run:  sudo ./manage.sh configure"; exit 1; }
       do_configure ;;
+    configurefull)
+      [[ "$(id -u)" -eq 0 ]] || { warn "configurefull needs root - run:  sudo ./manage.sh configurefull"; exit 1; }
+      do_configure_full ;;
     restart)
       [[ "$(id -u)" -eq 0 ]] || { warn "restart needs root - run:  sudo ./manage.sh restart"; exit 1; }
       systemctl restart "$SERVICE.service" && log "Service restarted." ;;
     webupdates)
       [[ "$(id -u)" -eq 0 ]] || { warn "webupdates needs root - run:  sudo ./manage.sh webupdates"; exit 1; }
       do_webupdates ;;
+    cleanconfig)
+      [[ "$(id -u)" -eq 0 ]] || { warn "cleanconfig needs root - run:  sudo ./manage.sh cleanconfig"; exit 1; }
+      do_clean_config ;;
     logs)
       journalctl -u "$SERVICE.service" -f --no-pager ;;
     -h|--help)
-      echo "Usage: sudo ./manage.sh [update [branch]|configure|restart|logs]"
+      echo "Usage: sudo ./manage.sh [update [branch]|configure|configurefull|restart|logs|cleanconfig]"
       echo "  With no arguments, opens the interactive menu."
       echo "    update          pull + apply whatever branch the clone has checked out"
       echo "    update DEV      switch the clone to DEV first, then pull + apply it"
       echo "    update main     same, for the release branch (downgrades ask you to type yes)"
       echo "    configure       edit the live config interactively"
+      echo "    configurefull   edit EVERY setting interactively (full editor)"
+      echo "    configurefull   edit EVERY setting interactively (full editor)"
+      echo "    cleanconfig     back up, wipe config.yaml, rebuild from the latest example"
       echo "    restart         restart the service"
       echo "    logs            follow the live log (Ctrl-C to stop)" ;;
     *)
@@ -342,12 +434,14 @@ choose_option() {  # sets CHOICE; Esc/Cancel on the dialog means Quit
       --ok-button Select --cancel-button Quit \
       --menu "status: $(status_line)   v$(version_line)" 0 0 0 \
         "1" "Configure the bot (repeater, channels, admins, hops)" \
-        "2" "Update the bot software (pull + apply, the one update command)" \
-        "2d" "Update from a specific branch (DEV, main, feature/...)" \
-        "3" "Uninstall (asks to back up your data first)" \
-        "4" "Restart the service" \
-        "5" "View live logs (Ctrl-C stops watching)" \
-        "6" "Enable web-console updates (let the dashboard switch branches)" \
+        "2" "Edit full config (EVERY setting, incl. commented-out options)" \
+        "3" "Update the bot software (pull + apply, the one update command)" \
+        "3d" "Update from a specific branch (DEV, main, feature/...)" \
+        "4" "Uninstall (asks to back up your data first)" \
+        "5" "Restart the service" \
+        "6" "View live logs (Ctrl-C stops watching)" \
+        "7" "Enable web-console updates (let the dashboard switch branches)" \
+        "8" "Clean config (back up, then rebuild config.yaml from scratch)" \
         "q" "Quit" 3>&1 1>&2 2>&3)" || CHOICE="q"
   else
     show_header
@@ -366,25 +460,27 @@ while true; do
   echo
   case "$CHOICE" in
     1) do_configure; paused ;;
-    2) do_update;    paused ;;
-    2d)
+    2) do_configure_full; paused ;;
+    3) do_update;    paused ;;
+    3d)
        read -r -p "  Branch to update from (e.g. DEV, main): " BR
        BR="$(echo "$BR" | tr -d '[:space:]')"
        [[ -n "$BR" ]] || { warn "no branch given"; paused; }
        do_update "$BR"; paused ;;
-    3) do_uninstall; paused ;;
-    4) if systemctl restart "$SERVICE.service"; then
+    4) do_uninstall; paused ;;
+    5) if systemctl restart "$SERVICE.service"; then
          log "Service restarted."
        else
          warn "restart failed - is the service installed?"
        fi
        paused ;;
-    5) echo "  Live logs - press Ctrl-C to stop, then you return here."
+    6) echo "  Live logs - press Ctrl-C to stop, then you return here."
        trap ':' INT   # keep the menu alive when Ctrl-C stops journalctl
        journalctl -u "$SERVICE.service" -f --no-pager || true
        trap - INT
        paused ;;
-    6) do_webupdates; paused ;;
+    7) do_webupdates; paused ;;
+    8) do_clean_config; paused ;;
     q|Q) echo "  73!"; exit 0 ;;
     *) echo "  Unknown option: $CHOICE" ; sleep 1 ;;
   esac

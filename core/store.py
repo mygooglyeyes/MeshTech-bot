@@ -595,6 +595,26 @@ class Store:
     def message_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
 
+    def repeat_stats(self, window_seconds: float = 3600.0) -> Optional[tuple]:
+        """(repeats, total) over decoded INBOUND packets in the window,
+        for the !repeats keyword (v0.0.147).
+
+        Returns None when the schema predates repeat marking (the
+        duplicate-packet chapter is not merged into this build) - the
+        keyword then answers without numbers instead of failing.
+        """
+        try:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS total, "
+                "SUM(CASE WHEN is_repeat = 1 THEN 1 ELSE 0 END) AS reps "
+                "FROM packets WHERE layer = 'decoded' AND direction = 'in' "
+                "AND ts >= ?", (_now() - float(window_seconds),)).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        total = int(row["total"] or 0)
+        reps = int(row["reps"] or 0)
+        return reps, total
+
     def totals(self) -> Dict[str, int]:
         """Counts per kind/direction for dashboard + diag command."""
         out: Dict[str, int] = {}
