@@ -9,6 +9,13 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.148 - 2026-09-14 (small-repairs branch)
+
+Comment cleanup (Brett's standing rule), caught during the merge
+review: the path-hash comment in core/config.py no longer references
+other software, and its text now matches the actual default
+(2-byte hashes).
+
 ## 0.0.147 - 2026-09-14 (small-repairs branch)
 
 New keyword `!repeats` (Brett): how much the mesh repeats itself.

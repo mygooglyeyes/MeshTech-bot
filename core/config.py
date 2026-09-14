@@ -72,11 +72,10 @@ class MeshCfg:
     # (adverts, flood DMs): 1 = classic 1-byte hashes, 2 = 2-byte hashes
     # (the mesh-wide migration target), 3 = 3-byte. Learned per-node paths
     # are always echoed back in whatever size the node taught us, so this
-    # only controls our own originated traffic. Defaults to 1 (today's
-    # mesh); raise as the repeaters migrate.
+    # only controls our own originated traffic. Defaults to 2 (the
+    # mesh's target hash size); drop to 1 while some repeaters still
+    # relay 1-byte-only paths.
     path_hash_size: int = 2            # bytes per hop: 1 | 2 | 3
-                                       # (openHop's path.hash.size counts
-                                       # the same thing 0 | 1 | 2)
 
 
 @dataclass

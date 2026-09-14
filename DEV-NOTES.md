@@ -11,6 +11,10 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.148** - Cleanup (Brett's rule, caught in merge review):
+  path-hash comment in core/config.py de-referenced + its stale
+  "defaults to 1" text fixed to match the real default (2).
+
 - **v0.0.147** - Keyword (Brett): `!repeats` - last-hour repeat count
   and share of all decoded inbound packets, one brief line. Graceful
   "No repeat tracking on this build" answer until the duplicate-packet
