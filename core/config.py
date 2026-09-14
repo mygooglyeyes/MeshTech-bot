@@ -757,8 +757,44 @@ def load(config_path: str = "config.yaml") -> Settings:
     if mcp_clear_wait < 0 or mcp_clear_wait > 30:
         errors.append("mcp.clear_channel_wait_seconds must be between 0 "
                       "and 30 (0 = transmit without a pre-check).")
+    # v0.0.154: the radio_mode/modem block (the keys shipped documented
+    # in config.example.yaml since v0.0.148 but were never parsed here -
+    # the bot silently stayed in SPI mode no matter what config said;
+    # found during the 2026-09-14 hilltop switchover).
+    mcp_radio_mode = _text(mcp_raw, "radio_mode", "spi", errors,
+                           "mcp.radio_mode").strip().lower()
+    if mcp_radio_mode not in ("spi", "modem"):
+        errors.append('mcp.radio_mode must be "spi" or "modem".')
+    mcp_modem_host = _text(mcp_raw, "modem_host", "127.0.0.1", errors,
+                           "mcp.modem_host")
+    mcp_modem_port = _int(mcp_raw, "modem_port", 5055, errors,
+                          "mcp.modem_port")
+    if mcp_modem_port < 1 or mcp_modem_port > 65535:
+        errors.append("mcp.modem_port must be between 1 and 65535.")
+    mcp_modem_token_file = _text(mcp_raw, "modem_token_file",
+                                 "data/.modem_token", errors,
+                                 "mcp.modem_token_file")
+    if mcp_radio_mode == "modem" and not mcp_modem_token_file:
+        errors.append('mcp.radio_mode "modem" requires mcp.modem_token_file '
+                      "(mode-600 file whose first line is the modem's "
+                      "controller password) - without it the modem would "
+                      "refuse every TX.")
+    if mcp_radio_mode == "modem" and mcp_modem_token_file == "data/.modem_token" \
+            and not mcp_raw.get("modem_token_file"):
+        # modem_token_file left at its default while switching to modem:
+        # almost always an unfinished edit, not a deliberate choice
+        # (no existence check here - the modem box may not be this box;
+        # the modem itself fails closed on a missing/empty token file).
+        errors.append('mcp.radio_mode "modem" needs an explicit '
+                      "mcp.modem_token_file (the default path has no file "
+                      "here) - point it at the modem's controller token, "
+                      'e.g. mcp.modem_token_file: "/etc/cleanmodem/controller.token".')
     mcp = McpCfg(
         enabled=_bool(mcp_raw, "enabled", False, errors, "mcp.enabled"),
+        radio_mode=mcp_radio_mode,
+        modem_host=mcp_modem_host,
+        modem_port=mcp_modem_port,
+        modem_token_file=mcp_modem_token_file,
         frequency_hz=freq,
         tx_power_dbm=power,
         spreading_factor=mcp_sf,

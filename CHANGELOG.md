@@ -9,6 +9,27 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.154 - 2026-09-14 (clean-modem branch)
+
+Bug fix (found live during the hilltop switchover, owned): the bot's
+config parser never read the modem-mode settings. `mcp.radio_mode`,
+`mcp.modem_host`, `mcp.modem_port` and `mcp.modem_token_file` were
+documented in config.example.yaml since v0.0.148 but the McpCfg builder
+dropped them all - the bot silently stayed in SPI mode no matter what
+config.yaml said (it crash-looped on "GPIO pin already in use" against
+the running cleanmodem). Now parsed and validated: radio_mode must be
+spi|modem; modem mode requires an explicit modem_token_file. Six new
+tests pin the wiring.
+
+Also from the same session: deploy/cleanmodem.conf.example is now in
+the `key=value` style the modem parser actually reads (the old colon-
+style example was silently skipped line-by-line - defaults applied,
+tokens never loaded; only a comment containing '=' surfaced it as a
+'bad key' crash). And requirements.txt pins rpi-lgpio (the GPIO
+backend the cleanmodem driver needs on Bookworm-era kernels) with its
+liblgpio-dev build note - tonight's dependency refresh had silently
+removed the unpinned library.
+
 ## 0.0.151 - 2026-09-14 (clean-modem branch)
 
 Bug fix (found on hilltop, owned): the mcp block of config.example.yaml

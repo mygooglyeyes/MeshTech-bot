@@ -40,7 +40,7 @@ _SHORT_LEN = 7
 # the old stack's empirically robust pattern) instead of three fixed delays.
 # 0.0.153: cleanmodem lbt_max_attempts documented as reserved (never
 # implemented; retry loop is bounded by clear_channel_wait_seconds).
-__version__ = "0.0.153"
+__version__ = "0.0.154"
 
 
 def _short(sha: str) -> str:

@@ -9,3 +9,11 @@ aiohttp>=3.9.0
 uvloop>=0.19.0; sys_platform != "win32"
 # Radio driver (SPI, PiMesh-1W v2) - needed only when mcp: enabled.
 pymc_core[hardware]>=1.0.12; sys_platform != "win32"
+# cleanmodem GPIO backend (radio_mode: modem / the cleanmodem service).
+# The driver tries gpiod v1 first, then RPi.GPIO; on Raspberry Pi OS
+# Bookworm-or-newer kernels classic RPi.GPIO is broken, so install the
+# maintained shim. BUILD NOTE (hilltop 2026-09-14): pip must compile
+# the lgpio C extension - `sudo apt-get install liblgpio-dev` first, or
+# the build fails with "cannot find -llgpio". Must NOT coexist with
+# real RPi.GPIO in the same venv.
+rpi-lgpio>=0.6; sys_platform != "win32"
