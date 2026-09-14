@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.133 - 2026-09-13 (small-repairs branch)
+
+BEHAVIOR CHANGE (Brett): 2-byte path hashes are now the DEFAULT for
+the bot's own originated traffic (adverts, flood-routed DMs).
+
+- core/config.py: mesh.path_hash_size defaults to 2 (was 1) when the
+  key is absent; config.example.yaml ships 2 with the counting spelled
+  out (openHop's path.hash.size counts the same thing 0/1/2, so
+  2 bytes = path.hash.size 1). Existing configs with an explicit value
+  are untouched; hilltop's config says 1 and keeps 1 until edited.
+- Full editor: path_hash_size is now asked in the 0/1/2 convention
+  ("value [0, 1, or 2] [1]") - matching openHop's UI - and converted
+  to bytes for storage; the old byte-count prompt is gone.
+- Full editor: text keys no longer offer a silent empty default.
+  logging.file and friends now show their current value and Enter
+  keeps it (an empty answer can no longer disable a feature by
+  accident - e.g. wiping the log file path).
+
 ## 0.0.132 - 2026-09-13 (small-repairs branch)
 
 Two full-editor fixes from Brett's first live run on hilltop:

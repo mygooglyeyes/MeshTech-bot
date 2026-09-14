@@ -53,16 +53,14 @@ mesh:
   #   "trust" = always strip it (default - commands arrive as "Name: !help")
   #   "smart" = strip it only when the rest of the text wouldn't already match
   #   "off"   = never strip (for gateways that relay messages WITHOUT names)
-  channel_sender_name: "trust"
-  # Bytes per path hop the bot announces when IT originates zero-hop
-  # packets (adverts, flood-routed DMs). 1 = classic 1-byte hashes
-  # (today's mesh); 2 = 2-byte hashes (the mesh-wide migration target).
-  # Replies to a specific node always echo back whatever hash size that
-  # node's advert taught the bot, per node - this setting only controls
-  # the bot's own originated traffic. Raise it when the mesh repeaters
-  # have migrated; a value the rest of the mesh does not use yet makes
-  # the bot's adverts unrelayed by 1-byte repeaters.
-  path_hash_size: 1                        # 1 | 2 | 3
+  channel_sender_name: "trust"  # Path hash size for the bot's OWN originated traffic (adverts,
+  # flood-routed DMs) - counted in BYTES per hop: 1 = 1-byte (classic),
+  # 2 = 2-byte (our mesh's setting; openHop's own path.hash.size counts
+  # the same thing 0 | 1 | 2, so 2 bytes = path.hash.size 1). Replies
+  # to a specific node always echo back whatever hash size that node's
+  # advert taught the bot, per node. Caution: a value the repeaters do
+  # not use yet gets the bot's adverts unrelayed by older stations.
+  path_hash_size: 2                        # bytes per hop: 1 | 2 | 3
 
 # --- Channels the bot listens on -------------------------------
 # Names must match channels on your mesh. The bot checks the repeater's

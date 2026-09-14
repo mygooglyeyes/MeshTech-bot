@@ -11,6 +11,11 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.133** - BEHAVIOR CHANGE (Brett): 2-byte path hashes are the
+  default (loader + example; editor asks the 0/1/2 convention and
+  stores bytes). Text keys in the full editor keep their current value
+  on Enter instead of offering an empty one. Suite 488 pass.
+
 - **v0.0.132** - Two full-editor fixes from Brett's first live run:
   choice keys (logging.level et al) accepted nothing because typed
   answers were lowercased against an uppercase list - matching is now

@@ -387,14 +387,12 @@ FULL_FIELDS = [
      "When the hop count can't be read: ignore (safe) or respond anyway."),
     ("mesh", "channel_sender_name", "choice", "trust", ["trust", "smart", "off"],
      "Trust the sender name embedded in channel text: trust / smart / off."),
-    ("mesh", "path_hash_size", "choice", "1",
-     [("1", "1-byte hash (openHop path.hash.size 0) - today's mesh"),
-      ("2", "2-byte hash (openHop path.hash.size 1) - mesh target"),
-      ("3", "3-byte hash (openHop path.hash.size 2)")],
-     "Path bytes per hop on the bot's OWN adverts/flood DMs. OUR value is "
-     "BYTES; openHop's own setting counts from 0 (0 = 1 byte, 1 = 2 bytes, "
-     "2 = 3 bytes). Set 2 here only when your repeaters have migrated to "
-     "2-byte hashes; a value the repeaters do not use yet gets the bot's "
+    # path hash size: the user types the 0/1/2 convention (openHop's
+    # path.hash.size); the file stores BYTES (value + 1). Typed choice:
+    ("mesh", "path_hash_size", "pathhash", 2, [0, 1, 2],
+     "Path hash size - counts from 0: 0 = 1 byte, 1 = 2 bytes (our mesh's "
+     "setting), 2 = 3 bytes. Same convention as openHop's path.hash.size. "
+     "Caution: a value the repeaters do not use yet gets the bot's "
      "adverts unrelayed by older 1-byte stations."),
     # --- dm ---
     ("dm", "enabled", "bool", True, None,
@@ -534,10 +532,8 @@ def _render_full_value(value, kind: str) -> str:
     """Render one answer as a single-line YAML value (splice-ready)."""
     if kind == "bool":
         return "true" if value else "false"
-    if kind in ("int", "num"):
-        return repr(value)
-    if kind == "choice":
-        return str(value)     # controlled words/numbers - bare is valid YAML
+    if kind in ("int", "num", "choice", "pathhash"):
+        return repr(value) if kind in ("int", "num") else str(value)
     return json.dumps(str(value))     # quoting survives names with spaces
 
 
@@ -583,6 +579,16 @@ def match_choice(raw: str, bounds):
 
 def _ask_full(kind: str, default, bounds, current, present: bool, commented: bool):
     """Ask one full-editor question. Returns _KEEP or the parsed answer."""
+    if kind == "pathhash":
+        # user-facing counting starts at 0; the file stores bytes (+1).
+        shown = (current if present else default) - 1
+        while True:
+            raw = input(f"  value [0, 1, or 2] [{shown}]: ").strip()
+            if not raw:
+                return _KEEP
+            if raw in ("0", "1", "2"):
+                return int(raw) + 1
+            print("   -> please type 0 (1 byte), 1 (2 bytes) or 2 (3 bytes).")
     if kind == "secret":
         raw = getpass.getpass("  value (typing hidden, Enter = skip): ").strip()
         return _KEEP if not raw else raw
@@ -590,7 +596,11 @@ def _ask_full(kind: str, default, bounds, current, present: bool, commented: boo
         if commented:
             raw = input("  value (Enter = leave unused): ").strip()
             return _KEEP if not raw else raw
-        return ask("value", str(current if present else default))
+        # Enter keeps the CURRENT value (or the example default when the
+        # key is absent) - never an empty string (an empty file value
+        # could disable features like logging.file).
+        raw = input(f"  value [{current if present else default}]: ").strip()
+        return _KEEP if not raw else raw
     if kind == "bool":
         return ask_yes_no("value", bool(current if present else default))
     if kind == "choice":

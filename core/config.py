@@ -74,7 +74,9 @@ class MeshCfg:
     # are always echoed back in whatever size the node taught us, so this
     # only controls our own originated traffic. Defaults to 1 (today's
     # mesh); raise as the repeaters migrate.
-    path_hash_size: int = 1            # 1 | 2 | 3
+    path_hash_size: int = 2            # bytes per hop: 1 | 2 | 3
+                                       # (openHop's path.hash.size counts
+                                       # the same thing 0 | 1 | 2)
 
 
 @dataclass
@@ -434,7 +436,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         errors.append("mesh.channel_sender_name must be 'trust', 'smart' or 'off' "
                       f"(found '{sender_name}').")
         sender_name = "trust"
-    phs = _int(mesh_raw, "path_hash_size", 1, errors, "mesh.path_hash_size")
+    phs = _int(mesh_raw, "path_hash_size", 2, errors, "mesh.path_hash_size")
     if phs not in (1, 2, 3):
         errors.append(f"mesh.path_hash_size must be 1, 2 or 3 (found '{phs}').")
         phs = 1
