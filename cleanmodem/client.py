@@ -25,6 +25,11 @@ IDLE_STEP_S = 2.0
 RETRY_MIN_S = 2.0
 RETRY_MAX_S = 30.0
 MAX_BUFFER = 65_536
+# The server recycles sessions that stay quiet for ~30 s; on a quiet
+# mesh a controller that only TXs occasionally got recycled every
+# ~32 s (hilltop 2026-09-14: down/2s/up flapping, TX landing in the
+# gap failed). PING well inside that window keeps the session alive.
+PING_INTERVAL_S = 15.0
 
 
 class ModemClient:
@@ -55,7 +60,15 @@ class ModemClient:
             try:
                 await self._connect_once()
                 delay = RETRY_MIN_S
-                await self._pump()
+                keepalive = asyncio.create_task(self._keepalive())
+                try:
+                    await self._pump()
+                finally:
+                    keepalive.cancel()
+                    try:
+                        await keepalive
+                    except asyncio.CancelledError:
+                        pass
             except asyncio.CancelledError:
                 raise
             except Exception as exc:      # noqa: BLE001
@@ -72,6 +85,26 @@ class ModemClient:
 
     def stop(self) -> None:
         self._stop.set()
+
+    async def _keepalive(self) -> None:
+        """Periodic PING so the server's idle recycler leaves us alone.
+
+        The protocol's CMD_PING exists for exactly this; the PONG also
+        feeds the pump's idle clock, so the client-side 120 s cap stays
+        honest on a quiet mesh too.
+        """
+        try:
+            while True:
+                await asyncio.sleep(PING_INTERVAL_S)
+                writer = self._writer
+                if writer is None:
+                    return
+                writer.write(frames.build_frame(frames.CMD_PING, b""))
+                await writer.drain()
+        except asyncio.CancelledError:
+            raise
+        except Exception:              # noqa: BLE001 - dead link: the pump notices and reconnects
+            return
 
     async def _close(self) -> None:
         was = self.connected

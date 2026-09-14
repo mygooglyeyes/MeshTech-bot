@@ -2087,7 +2087,23 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.167 - clean-modem
+  layout.## v0.0.168 - clean-modem
+
+### Fixed
+- **Controller keepalive.** The modem server recycles sessions that
+  stay quiet ~30 s, but a controller on a quiet mesh only speaks when
+  it TXs - so the link was dropped and re-authed every ~32 s
+  (`down - retry in 2s / up` flapping), and any TX landing inside the
+  2 s reconnect window failed. The client now PINGs every 15 s (the
+  protocol's CMD_PING; the server answers PONG and keeps the session).
+  The PONG also feeds the client's idle clock, keeping the 120 s
+  dead-link cap honest.
+
+### Tests
+- `test_client_keepalive_prevents_idle_recycle`: a fake modem that
+  recycles silent clients passes only when the client PINGs.
+
+## v0.0.167 - clean-modem
 
 ### Fixed
 - **Opcode table was shifted by one - the real root cause.** Cross-check
