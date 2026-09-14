@@ -35,7 +35,7 @@ in the web console, so weak-signal conditions are visible at a glance.
 
 - core/noisefloor.py (NEW): the radio driver already does the hard
   part - quiet-period RSSI sampling, peak rejection, 20-sample average
-  clamped to -150..-50 dBm (openhop_core's _sample_noise_floor /
+  clamped to -150..-50 dBm (the repeater core's _sample_noise_floor /
   get_noise_floor). The monitor records that averaged value every 5 s
   into a 30-minute ring buffer (~360 points) via the executor, skips
   the driver's 0.0 'transmitting/unknown' marker, and never lets a

@@ -1,6 +1,6 @@
 """Noise-floor monitoring for the dashboard (noise-floor branch, v0.0.143).
 
-The radio driver (openhop_core's SX1262Radio) already does the hard part:
+The radio driver (the repeater core's SX1262Radio) already does the hard part:
 it samples the SX1262's instantaneous RSSI during quiet periods, rejects
 signal peaks, averages 20 samples and clamps the result to -150..-50 dBm
 (`_sample_noise_floor` / `get_noise_floor` in hardware/sx1262_wrapper.py).
