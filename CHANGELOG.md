@@ -9,6 +9,20 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.147 - 2026-09-14 (small-repairs branch)
+
+New keyword `!repeats` (Brett): how much the mesh repeats itself.
+
+- handlers/repeats.py (NEW): public keyword, channel/DM. One short
+  line back - "3 repeats / 30% of total packets 10" - counted over
+  the last hour of decoded inbound packets (repeats / share / total).
+- core/store.py: repeat_stats(window) - one COUNT/SUM query. Returns
+  None on builds whose schema predates repeat marking (those columns
+  arrive with the duplicate-packet merge from DEV), so the keyword
+  answers "No repeat tracking on this build" instead of failing.
+- 4 new tests (reply format, hour window, empty window, pre-merge
+  schema); suite 503 on this branch's gate.
+
 ## 0.0.142 - 2026-09-13 (small-repairs branch)
 
 Box rebuild runbook (Brett): a fresh hilltop install without

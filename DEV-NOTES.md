@@ -11,6 +11,11 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.147** - Keyword (Brett): `!repeats` - last-hour repeat count
+  and share of all decoded inbound packets, one brief line. Graceful
+  "No repeat tracking on this build" answer until the duplicate-packet
+  chapter merges into this lineage. 4 tests; suite 503.
+
 - **v0.0.142** - Docs (Brett): docs/REBUILD-RUNBOOK.md - fresh-box
   checklist (backups incl. the radio identity file, the three
   non-git steps: gpio/spi groups, updates.clone_path, webupdates
