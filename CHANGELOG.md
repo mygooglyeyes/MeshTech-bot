@@ -9,6 +9,19 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.139 - 2026-09-13 (small-repairs branch)
+
+Docker fix (from Brett's deployability audit): the compose file
+mounted config.yaml READ-ONLY, so the web console's config writes
+(developer-mode toggle, module settings) and the !trust command
+failed with a filesystem error inside containers.
+
+- docker-compose.yml: the config mount is now writable, and the
+  one-time setup (docs + compose header) chowns config.yaml to uid
+  1001 alongside the data folder so the container may save it.
+- Dockerfile: stale read-only wording removed. No image-content
+  changes - this is a runtime-mount fix only.
+
 ## 0.0.138 - 2026-09-13 (small-repairs branch)
 
 Brett's wording: !trust replies use "on" for the trust mode - the

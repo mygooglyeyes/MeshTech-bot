@@ -11,6 +11,10 @@ Newest entries first within each branch.
 
 ## small-repairs (current work)
 
+- **v0.0.139** - Docker fix (Brett's audit): compose config mount no
+  longer :ro (web console writes + !trust failed in containers);
+  docs/compose header now chown config.yaml to 1001 at setup.
+
 - **v0.0.138** - Brett: !trust replies show "on" for the trust mode
   (user-facing word), never the internal value "trust".
 

@@ -206,11 +206,13 @@ Choose this if you already use Docker or want a self-contained install.
   sudo nano config.yaml        # set host, port, channels, admin prefix
   ```
 
-- Prepare the data folder (the container runs as uid 1001):
+- Prepare the data folder and the config file (the container runs as
+  uid 1001 and must be able to write both - the web console and the
+  `!trust` command edit config.yaml live):
 
   ```bash
   mkdir -p data
-  sudo chown 1001:1001 data
+  sudo chown 1001:1001 data config.yaml
   ```
 
 - Create the dashboard password file:

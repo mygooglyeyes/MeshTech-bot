@@ -2,7 +2,7 @@
 #
 # One-time setup (see docs/INSTALL.md "Docker install"):
 #   cp config.example.yaml config.yaml      # then edit config.yaml
-#   mkdir -p data && sudo chown 1001:1001 data
+#   mkdir -p data && sudo chown 1001:1001 data config.yaml
 #
 # Run (GIT_SHA bakes the current commit into the dashboard header):
 #   GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build
@@ -11,9 +11,14 @@
 # Without GIT_SHA the build stamp reads "unknown" - harmless, but the
 # dashboard can't tell you which commit the container runs.
 #
-# network_mode: host is used because the bot must reach your openHop
-# Repeater on your LAN and it is simplest to let the container share the
-# host network (the dashboard then binds 127.0.0.1:8081 on the host).
+# config.yaml is mounted WRITABLE on purpose: the web console edits it
+# live (developer_mode toggle, module settings) and !trust writes it.
+# The container runs as uid 1001 - chown the file to 1001 (one-time
+# setup above) so the bot may save it.
+#
+# network_mode: host is used because the bot must reach your repeater
+# on your LAN and it is simplest to let the container share the host
+# network (the dashboard then binds 127.0.0.1:8081 on the host).
 # If your repeater is on a routable address, you can drop host mode and
 # publish ports instead.
 services:
@@ -27,5 +32,5 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - ./config.yaml:/app/config.yaml
       - ./data:/app/data

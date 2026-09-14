@@ -2,8 +2,9 @@
 # Runs the same bot.py, talking to your openHop Repeater over the network.
 #
 # Build / run examples are in docs/INSTALL.md (Docker section); the usual
-# path is docker compose, which mounts ./config.yaml and ./data from the
-# host so your config and database survive container updates.
+# path is docker compose, which mounts ./config.yaml (writable: the web
+# console and !trust edit it) and ./data from the host so your config
+# and database survive container updates.
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -38,8 +39,6 @@ RUN mkdir -p /app/data \
 
 USER meshtech
 
-# Config is mounted in read-only at runtime (docker compose). Expose the
-# dashboard port (only useful with bridge networking).
-EXPOSE 8081
+# Expose the dashboard port (only useful with bridge networking).
 
 CMD ["python", "bot.py"]
