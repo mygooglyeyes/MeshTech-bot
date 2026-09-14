@@ -1431,8 +1431,8 @@ async function refreshAnalysis() {
   html += anPanel("Noise floor (dBm per hour)");
   if (noise.length) {
     html += "<svg viewBox='0 0 " + AN_W + " " + AN_H + "' preserveAspectRatio='xMidYMid meet'>" +
-      snrSvg(noise, -150, -50, 10, true) + "</svg><div class='an-legend'><span><i style='background:" +
-      AN_C.accent + "'></i>avg (band = min/max) · hourly · reversed</span></div></div>";
+      snrSvg(noise, -150, -50, 10) + "</svg><div class='an-legend'><span><i style='background:" +
+      AN_C.accent + "'></i>avg (band = min/max) · hourly</span></div></div>";
   } else {
     html += "<div class='an-none'><em>no noise-floor history in window " +
       "(builds every 5 s while the bot runs)</em></div></div>";
@@ -1964,14 +1964,11 @@ function drawNoiseGraph(points) {
   const yLo = mid - half, yHi = mid + half;
 
   const padL = 2, padR = 2, padT = 4, padB = 4;
-  // Vertical REVERSED (Brett): a higher dBm value plots LOWER, so a noise
-  // intrusion reads as the line dipping down and a quiet mesh rides high.
+  // Magnitude orientation (Brett): values further from zero (quieter,
+  // e.g. -110) plot LOWER; values closer to zero (noise, e.g. -102)
+  // plot HIGHER - so rising noise reads as the line rising.
   const X = (t) => padL + ((now - t) / WIN) * (cssW - padL - padR);
-  const Y = (v) => padT + ((v - yLo) / (yHi - yLo)) * (cssH - padT - padB);
-
-  // y-scale edge labels (also rendered in the axis row under the canvas)
-  $("noise-min-label").textContent = yLo.toFixed(0) + " dBm";
-  $("noise-max-label").textContent = yHi.toFixed(0) + " dBm";
+  const Y = (v) => padT + (1 - (v - yLo) / (yHi - yLo)) * (cssH - padT - padB);
 
   // midline at the scale centre for visual anchoring
   ctx.strokeStyle = grid;
@@ -1980,17 +1977,6 @@ function drawNoiseGraph(points) {
   ctx.moveTo(padL, (cssH + padT - padB) / 2);
   ctx.lineTo(cssW - padR, (cssH + padT - padB) / 2);
   ctx.stroke();
-  ctx.globalAlpha = 1;
-
-  // Orientation hints at the true edges (the scale is reversed: the
-  // smaller number now lives at the top).
-  ctx.fillStyle = grid;
-  ctx.globalAlpha = 0.7;
-  ctx.font = "10px monospace";
-  ctx.textBaseline = "top";
-  ctx.fillText(yLo.toFixed(0), padL + 4, padT + 2);
-  ctx.textBaseline = "bottom";
-  ctx.fillText(yHi.toFixed(0), padL + 4, cssH - padB - 1);
   ctx.globalAlpha = 1;
 
   if (points.length === 1) points = [points[0], points[0]];

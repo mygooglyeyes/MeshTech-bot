@@ -11,9 +11,15 @@ Newest entries first within each branch.
 
 ## noise-floor (current work)
 
+- **v0.0.145** - Brett (screenshot): v0.0.144 flipped the WRONG way.
+  Now magnitude-oriented: further from zero = lower, closer to zero
+  (noise) = higher. Corner dBm numbers removed (canvas hints + axis
+  labels); "last 30 minutes" centered.
+
 - **v0.0.144** - Brett: noise-floor graphs vertically REVERSED -
   higher dBm plots LOWER on both the live card and the hourly panel
-  (SNR trend unchanged); edge hints on the live card.
+  (SNR trend unchanged); edge hints on the live card. SUPERSEDED by
+  v0.0.145 (wrong direction).
 
 - **v0.0.143** - Live noise-floor card (Brett): graph of the last 30
   minutes in the web console. Records the driver's ALREADY-averaged

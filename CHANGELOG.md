@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.145 - 2026-09-13 (noise-floor branch)
+
+Noise-floor graph orientation CORRECTED (Brett's screenshot): v0.0.144
+reversed the wrong way. Now magnitude-oriented - values further from
+zero (quieter, -110) plot LOWER, values closer to zero (noise, -102)
+plot HIGHER, so rising noise reads as the line rising. Also: the
+corner dBm numbers (canvas hints + axis-row labels) are gone; only
+"last 30 minutes" remains, centered. Hourly panel back to the shared
+band chart's normal orientation (its own y-axis labels show scale).
+- Frontend-only: app.js, index.html, style.css.
+
+## 0.0.144 - 2026-09-13 (noise-floor branch)
+
 ## 0.0.144 - 2026-09-13 (noise-floor branch)
 
 Noise-floor graphs vertically REVERSED (Brett): a higher dBm value
