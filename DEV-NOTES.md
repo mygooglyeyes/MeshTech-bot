@@ -11,6 +11,10 @@ Newest entries first within each branch.
 
 ## noise-floor (current work)
 
+- **v0.0.144** - Brett: noise-floor graphs vertically REVERSED -
+  higher dBm plots LOWER on both the live card and the hourly panel
+  (SNR trend unchanged); edge hints on the live card.
+
 - **v0.0.143** - Live noise-floor card (Brett): graph of the last 30
   minutes in the web console. Records the driver's ALREADY-averaged
   floor (SX1262 quiet-period sampling, peak-rejected, clamped

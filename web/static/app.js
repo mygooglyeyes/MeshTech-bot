@@ -1319,9 +1319,11 @@ function vbarSvg(labels, valuesList, colors, unit) {
 }
 
 // SNR line chart: avg line + min/max band. points: [{ts, avg, min, max}]
-function snrSvg(points, yFloor = -10, yCeil = 15, minSpan = 8) {
+function snrSvg(points, yFloor = -10, yCeil = 15, minSpan = 8, invertY = false) {
   // Generic min/avg/max band chart; the defaults fit SNR's -10..15 dB
-  // world. The noise-floor panel reuses it with noise-scale bounds.
+  // world. The noise-floor panel reuses it with noise-scale bounds and
+  // invertY=true (a higher dBm value plots LOWER, matching the live
+  // noise card's reversed scale).
   const n = Math.max(points.length, 1);
   const plotW = AN_W - AN_ML - AN_MR;
   const plotH = AN_H - AN_MT - AN_MB;
@@ -1330,7 +1332,9 @@ function snrSvg(points, yFloor = -10, yCeil = 15, minSpan = 8) {
   let yMax = Math.ceil(Math.max(yCeil, ...all));
   if (yMax - yMin < minSpan) yMax = yMin + minSpan;
   const xAt = (i) => AN_ML + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1));
-  const yAt = (v) => AN_MT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  const yAt = (v) => invertY
+    ? AN_MT + ((v - yMin) / (yMax - yMin)) * plotH
+    : AN_MT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
   let s = "";
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
@@ -1427,8 +1431,8 @@ async function refreshAnalysis() {
   html += anPanel("Noise floor (dBm per hour)");
   if (noise.length) {
     html += "<svg viewBox='0 0 " + AN_W + " " + AN_H + "' preserveAspectRatio='xMidYMid meet'>" +
-      snrSvg(noise, -150, -50, 10) + "</svg><div class='an-legend'><span><i style='background:" +
-      AN_C.accent + "'></i>avg (band = min/max) · hourly</span></div></div>";
+      snrSvg(noise, -150, -50, 10, true) + "</svg><div class='an-legend'><span><i style='background:" +
+      AN_C.accent + "'></i>avg (band = min/max) · hourly · reversed</span></div></div>";
   } else {
     html += "<div class='an-none'><em>no noise-floor history in window " +
       "(builds every 5 s while the bot runs)</em></div></div>";
@@ -1960,8 +1964,10 @@ function drawNoiseGraph(points) {
   const yLo = mid - half, yHi = mid + half;
 
   const padL = 2, padR = 2, padT = 4, padB = 4;
+  // Vertical REVERSED (Brett): a higher dBm value plots LOWER, so a noise
+  // intrusion reads as the line dipping down and a quiet mesh rides high.
   const X = (t) => padL + ((now - t) / WIN) * (cssW - padL - padR);
-  const Y = (v) => padT + (1 - (v - yLo) / (yHi - yLo)) * (cssH - padT - padB);
+  const Y = (v) => padT + ((v - yLo) / (yHi - yLo)) * (cssH - padT - padB);
 
   // y-scale edge labels (also rendered in the axis row under the canvas)
   $("noise-min-label").textContent = yLo.toFixed(0) + " dBm";
@@ -1974,6 +1980,17 @@ function drawNoiseGraph(points) {
   ctx.moveTo(padL, (cssH + padT - padB) / 2);
   ctx.lineTo(cssW - padR, (cssH + padT - padB) / 2);
   ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Orientation hints at the true edges (the scale is reversed: the
+  // smaller number now lives at the top).
+  ctx.fillStyle = grid;
+  ctx.globalAlpha = 0.7;
+  ctx.font = "10px monospace";
+  ctx.textBaseline = "top";
+  ctx.fillText(yLo.toFixed(0), padL + 4, padT + 2);
+  ctx.textBaseline = "bottom";
+  ctx.fillText(yHi.toFixed(0), padL + 4, cssH - padB - 1);
   ctx.globalAlpha = 1;
 
   if (points.length === 1) points = [points[0], points[0]];

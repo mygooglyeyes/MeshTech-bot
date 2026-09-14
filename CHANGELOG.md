@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.144 - 2026-09-13 (noise-floor branch)
+
+Noise-floor graphs vertically REVERSED (Brett): a higher dBm value
+(lower noise floor) now plots LOWER, so a noise intrusion reads as the
+line dipping down and a quiet mesh rides high.
+
+- web/static/app.js: the live card's y-mapping is inverted, with small
+  dBm hints at the true top/bottom edges so the reversed scale reads
+  at a glance; the analysis card's hourly panel flips to match
+  ("reversed" added to its legend); the SNR trend keeps its normal
+  orientation (the shared band chart gained an invert flag).
+- Frontend-only: no Python behavior changes.
+
+## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
+
 ## 0.0.143 - 2026-09-13 (noise-floor branch, off DEV @ 1c08a3a)
 
 Live noise-floor card (Brett): a running graph of the last 30 minutes
