@@ -34,7 +34,9 @@ _SHORT_LEN = 7
 # still pinned by the commit stamp.
 # 0.0.149: DEV's small-repairs merge also took 0.0.148 (deployed on
 # the box) - next free number wins. 0.0.150: bench runbook (docs).
-__version__ = "0.0.150"
+# 0.0.151: example-config comment fix (the deploy's config-sync inserts
+# "# key: value" lines as ACTIVE settings - prose got into a live file).
+__version__ = "0.0.151"
 
 
 def _short(sha: str) -> str:

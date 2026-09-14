@@ -9,6 +9,21 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.151 - 2026-09-14 (clean-modem branch)
+
+Bug fix (found on hilltop, owned): the mcp block of config.example.yaml
+explained the new radio modes with comment lines shaped like settings
+(`#   radio_mode: "spi" = ...`). The deploy's config-sync treats any
+`# key: value` line in the example as a documented default and inserts
+it ACTIVE into the live config - so the first `manage.sh update
+clean-modem` wrote prose into the box's config.yaml (three times) and
+broke the YAML. The deploy's validation gate caught it and refused to
+restart - the bot stayed on the old build (the gate worked exactly as
+designed); the fix restores config.yaml.bak-sync. The example comment
+is now prose that can never parse as a key; proven with the sync
+script against a box-shaped config (inserts only modem_host +
+modem_port, once each) plus the project's sync tests.
+
 ## 0.0.150 - 2026-09-14 (clean-modem branch)
 
 Bench runbook for the clean-room modem: docs/BENCH-RUNBOOK-cleanmodem.md
