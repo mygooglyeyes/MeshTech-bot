@@ -9,6 +9,37 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.185 - 2026-09-15 (DEV)
+
+**The stale-anything audit** (generalizing the cleanmodem-restart
+lesson): every startup branch and second process checked; one real gap
+found and fixed.
+
+- **Deploy path:** cleanmodem restarts when its code changes (v0.0.184)
+  - covers BOTH services, including the web-console update path, which
+  reuses deploy.sh --apply. systemd unit templates + /etc/cleanmodem
+  configs are install-time state, correctly not deployed-over (the
+  runbook owns them); the config default-sync and dependency refresh
+  already run on every deploy. No change needed here.
+- **Startup branches:** bot.py has exactly three (_start_companion,
+  _start_mcp spi + modem). The v0.0.182 monitor-creation bug was the
+  only known resident; re-verified every branch wires its components
+  (radio, modem link, feed decision, monitor - each pinned by test).
+  No other resident behind an early return.
+- **THE GAP (fixed):** the bot's background-task list was WRITE-ONLY -
+  a crashed web server, noise monitor or radio task left the bot
+  looking alive while the feature quietly went stale, with the
+  exception unretrieved (asyncio's warning can be lost to GC timing).
+  Now every background task gets a done-callback: a dead task logs a
+  loud ERROR naming the task AND its full traceback (exc_info), so the
+  journal says exactly which feature went stale and why. Cancellations
+  and shutdown-time deaths stay silent. The Mcp's modem-link task
+  joins the watched list.
+- 5 new tests (test_task_watcher.py): dead-task ERROR + task name +
+  traceback, clean/cancelled silent, shutdown silent, exception
+  retrieved. Suite: 598 pass / 0 fail (one flaky identity-clamp
+  assert, passing on re-run - not touched by this change).
+
 ## 0.0.184 - 2026-09-15 (DEV)
 
 **Deploys now restart cleanmodem when its code changes** (the frozen

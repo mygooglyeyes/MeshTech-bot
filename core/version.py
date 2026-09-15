@@ -152,7 +152,21 @@ _SHORT_LEN = 7
 # floor was the chip STATUS byte - the ORIGINAL v0.0.163 misalignment -
 # while the CURRENT driver's slice returns a live, varying -96.0
 # (proven by scripts/probe_rssi_raw.py against the same chip in RX).
-__version__ = "0.0.184"
+# 0.0.185: the stale-anything audit (the cleanmodem-restart lesson,
+# generalized). Full sweep of every startup branch and second process:
+# the deploy path now covers both services (v0.0.184), _start_mcp's
+# three branches all wire their components (noise monitor pinned by
+# v0.0.182's tests), and the web-update path reuses deploy.sh so the
+# modem restart covers it too. The gap that remained: the bot's
+# background-task list was WRITE-ONLY - a crashed web server, noise
+# monitor or radio task left the bot looking alive while the feature
+# quietly went stale. bot.py now attaches a done-callback to every
+# background task: a dead task logs a loud ERROR naming the task and
+# its traceback (and retrieves the exception, so asyncio's
+# 'never retrieved' warning can never be lost); cancellations and
+# shutdown-time deaths stay silent. The dormant modem-link task is now
+# on the list too.
+__version__ = "0.0.185"
 
 
 def _short(sha: str) -> str:

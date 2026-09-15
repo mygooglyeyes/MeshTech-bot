@@ -154,6 +154,21 @@ async def _run(settings: Settings) -> None:
         else:
             tasks.append(asyncio.create_task(web_serve(service), name="web"))
 
+    # The modem-link task lives inside the Mcp (created in _modem_up, torn
+    # down by Mcp.stop). It belongs on the same list: a dead link task gets
+    # the watcher's loud ERROR below, and shutdown cancels it like the rest
+    # (double-cancel is harmless).
+    _modem_task = getattr(getattr(service, "mcp", None), "_modem_task", None)
+    if _modem_task is not None:
+        tasks.append(_modem_task)
+
+    # v0.0.185 (the stale-anything audit): a background task that DIES must
+    # never die silently. The list above used to be write-only - a crashed
+    # web server, noise monitor or radio task left the bot looking alive
+    # while the feature quietly went stale (the runtime twin of the v0.0.182
+    # "monitor never created" bug and the cleanmodem deploy-restart gap).
+    _watch_background_tasks(tasks, service)
+
     def _on_signal() -> None:
         log.info("Signal received - shutting down.")
         service.request_shutdown("signal")
@@ -193,6 +208,28 @@ async def _run(settings: Settings) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
         store.close()
         log.info("Bot stopped. 73!")
+
+
+def _watch_background_tasks(tasks, service) -> None:
+    """Log a loud ERROR when any background task dies unexpectedly (v0.0.185).
+
+    Attaching a done-callback also RETRIEVES the exception, so asyncio's
+    'Task exception was never retrieved' warning can no longer be lost to
+    garbage-collection timing - the journal always carries the traceback.
+    Cancellations and clean exits during shutdown stay silent.
+    """
+    def _on_task_done(task: "asyncio.Task") -> None:
+        if task.cancelled() or service.stop_requested:
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+        log.error("Background task '%s' DIED: %r - that feature is now "
+                  "stale until the bot restarts (paste this line if it "
+                  "repeats)", task.get_name(), exc, exc_info=exc)
+
+    for task in tasks:
+        task.add_done_callback(_on_task_done)
 
 
 async def _start_companion(service, settings, tasks) -> None:

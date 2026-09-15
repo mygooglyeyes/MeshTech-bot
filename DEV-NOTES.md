@@ -11,6 +11,15 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.185** - The stale-anything audit: deploy path now covers both
+  services (v0.0.184, incl. the web-update path that reuses deploy.sh);
+  the three startup branches all wire their components (each pinned by
+  test); the remaining gap was the bot's WRITE-ONLY background-task
+  list - a crashed task left the feature silently stale. Every task now
+  gets a done-callback: dead task = loud ERROR with task name + full
+  traceback; cancellations/shutdown stay silent. Lesson: a task list
+  nobody reads is a symptom list nobody sees. Suite 598.
+
 - **v0.0.184** - Deploys now restart cleanmodem when its code changes:
   the restart logic only ever touched the bot service, so modem-side
   fixes sat inert until a manual restart (hilltop: 3.5 h of cleanmodem
