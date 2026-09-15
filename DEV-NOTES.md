@@ -9,7 +9,19 @@ Newest entries first within each branch.
 
 ---
 
-## small-repairs (current work)
+## DEV (current)
+
+- **v0.0.178** - Merge: feature/mesh-health (the Sept-8 branch,
+  v0.0.084-.089) resurrected into DEV - mesh health registry + card,
+  `!health`, per-keyword help + grouped DM help, packet export. Merge
+  integration: `dm_chunk_gap_seconds` back in the parser and the full
+  editor; chunk gaps sleep between chunks only. **Every branch is now
+  merged into DEV** (duplicate-packet, noise-floor, small-repairs,
+  stability-fixes, feature/spi-radio, clean-modem, mesh-health). The
+  cleanmodem chapter also started committing tests/ to the repo - the
+  full suite now runs with no exclusions (576 tests).
+
+## small-repairs (merged into DEV)
 
 - **v0.0.148** - Cleanup (Brett's rule, caught in merge review):
   path-hash comment in core/config.py de-referenced + its stale
@@ -141,7 +153,31 @@ Newest entries first within each branch.
   when shown). Nothing is ever deleted; bot mesh behavior unchanged.
   Awaiting Brett's review, tests, then his OK before any commit.
 
-## feature/branch-switcher (current work - contains the node-popup stack)
+## feature/mesh-health (merged into DEV)
+
+- **v0.0.088 (in review)** - DM help slimmed 6 -> 3 chunks: per-keyword
+  descriptions, shared-description grouping (one admin: line), footer
+  only when needed.
+
+- **v0.0.087 (in review)** - Export upgrade for DM-loss analysis:
+  messages.csv (full message log) and summary_dms.csv (per-burst chunk
+  gaps and sizes) ship with every export, so send-side timing can be
+  correlated with which chunks actually arrive on the handheld.
+- **v0.0.086 (in review)** - Fix: DM help descriptions leaked the
+  weather handler's text onto every command line.
+
+- **v0.0.085 (in review)** - DM delivery fix: chunk gap 0.2 s -> 1.2 s
+  (limits.dm_chunk_gap_seconds) after a real-mesh test lost 5 of 6 DM
+  chunks to self-collision; DM extended help now a compact list (4
+  chunks, not the 6-chunk wide table).
+
+- **v0.0.084 (in review)** - Mesh health chunk: name-only registry for
+  talk-only stations (3+ msgs/24 h), flood scoring (burst / share /
+  repeat, components visible), Mesh Health card with block checkbox
+  (surface-only), admin !health DM command. Design confirmed with the
+  user before building; commit pending user review of the diff.
+
+## feature/branch-switcher (merged into DEV)
 
 - **v0.0.082** - Developer mode: a checkbox in the update popup widens
   clickable branches from DEV/main/running to any branch (contributor

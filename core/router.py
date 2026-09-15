@@ -636,6 +636,16 @@ class Router:
         prefix = msg.sender_prefix
         if not prefix and msg.sender_name:
             node = store.find_node(msg.sender_name)
+            if node is None:
+                # Talk-only station (never advertises): once its embedded
+                # name proves persistent, register a name-only entry so
+                # traffic/routes/trends can attribute to it.
+                node = store.upsert_name_only_node(msg.sender_name,
+                                                   ts=msg.recv_ts)
+                if node is not None:
+                    self.service.feed.publish("notice", {
+                        "text": f"Registered talk-only station '{msg.sender_name}' "
+                                f"(name-only, from channel traffic)"})
             prefix = node["prefix"] if node else None
         if not prefix:
             return                              # unattributable - skip
@@ -773,6 +783,12 @@ class Router:
             await asyncio.sleep(delay)
         sent = 0
         dm_target = None
+        # Inter-chunk gap: consecutive packets need real airtime spacing or
+        # they self-collide (LBT + repeater buffers). A 0.2 s gap burst lost
+        # 5 of 6 chunks on a real mesh - the LAST chunk arrived, the earlier
+        # ones were still in the air. 1.2 s = several airtime cycles at
+        # SF7/62.5 kHz; the config can tune it (limits.dm_chunk_gap_seconds).
+        gap = max(0.2, float(getattr(settings.limits, "dm_chunk_gap_seconds", 1.2)))
         if force_dm:
             # The sender of a channel message is identified by the embedded
             # name - resolve it to a registry node prefix to address the DM.
@@ -784,21 +800,24 @@ class Router:
                 log.warning("!dm reply dropped: cannot resolve sender of %s.",
                             ctx.msg.kind)
                 return
-            for message in messages:
+            for i, message in enumerate(messages):
                 if await client.send_dm(dm_target, message):
                     sent += 1
-                    await asyncio.sleep(0.2)
+                    if i < len(messages) - 1:      # gap BETWEEN chunks, not after the last
+                        await asyncio.sleep(gap)
         elif ctx.msg.kind == "channel":
             idx = ctx.msg.channel_idx
-            for message in messages:
+            for i, message in enumerate(messages):
                 if await client.send_channel(idx, message):
                     sent += 1
-                    await asyncio.sleep(0.4)  # small gap between chunks on air
+                    if i < len(messages) - 1:      # same physics for channel bursts
+                        await asyncio.sleep(gap)
         else:
-            for message in messages:
+            for i, message in enumerate(messages):
                 if await client.send_dm(ctx.msg.sender_prefix, message):
                     sent += 1
-                    await asyncio.sleep(0.2)
+                    if i < len(messages) - 1:      # gap BETWEEN chunks, not after the last
+                        await asyncio.sleep(gap)
         if sent:
             now = time.time()
             self._last_reply_at = now

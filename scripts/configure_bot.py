@@ -424,6 +424,9 @@ FULL_FIELDS = [
     ("limits", "reply_delay_seconds", "num", 2.0, (0.0, 60.0),
      "Wait BEFORE sending any reply's first packet (air politeness). "
      "0 = send at once."),
+    ("limits", "dm_chunk_gap_seconds", "num", 1.2, (0.2, 60.0),
+     "Gap BETWEEN consecutive chunks of a multi-chunk reply "
+     "(small gaps self-collide on air)."),
     ("limits", "channel_interval_seconds", "num", 0.0, (0.0, 3600.0),
      "At most ONE reply per channel every N seconds (0 = off)."),
     ("limits", "per_sender_channel_seconds", "num", 30.0, (0.0, 3600.0),

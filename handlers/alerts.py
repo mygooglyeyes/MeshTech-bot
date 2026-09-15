@@ -81,7 +81,7 @@ class AlertsModule(WeatherModule):
     # no keywords of its own that collide with weather; we do want the
     # !alerts command though:
     keywords = ["alerts"]
-    description = "Active NWS weather alerts for an area"
+    description = "wx alerts for <zip>"
     scope = "both"
     access = "public"
     require_prefix = True

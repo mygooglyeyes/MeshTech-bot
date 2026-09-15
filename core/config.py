@@ -173,6 +173,10 @@ class LimitsCfg:
     # answer); the between-chunks gap in core/mcp.py stacks on top for
     # multi-chunk replies. 0 = send immediately (the old behaviour).
     reply_delay_seconds: float = 2.0
+    # Gap between consecutive chunks of a multi-message reply (seconds).
+    # Too small and the burst self-collides on air - 0.2 s lost 5 of 6
+    # chunks in real testing. 1.2 s spans several airtime cycles.
+    dm_chunk_gap_seconds: float = 1.2
     # Per-channel reply cadence: at most one bot reply per channel every N
     # seconds (0 = off, the old behaviour). Stops one busy channel - or a
     # single noisy node spamming it - from resetting the global reply pace
@@ -599,6 +603,7 @@ def load(config_path: str = "config.yaml") -> Settings:
         max_reply_length=max(40, _int(limits_raw, "max_reply_length", 133, errors, "limits.max_reply_length")),
         max_chunks=max(1, _int(limits_raw, "max_chunks", 6, errors, "limits.max_chunks")),
         reply_delay_seconds=max(0.0, _float(limits_raw, "reply_delay_seconds", 2.0, errors, "limits.reply_delay_seconds")),
+        dm_chunk_gap_seconds=max(0.2, _float(limits_raw, "dm_chunk_gap_seconds", 1.2, errors, "limits.dm_chunk_gap_seconds")),
         channel_interval_seconds=max(0.0, _float(limits_raw, "channel_interval_seconds", 0.0, errors, "limits.channel_interval_seconds")),
         channel_intervals=channel_intervals,
         per_sender_channel_seconds=max(0.0, _float(limits_raw, "per_sender_channel_seconds", 30.0, errors, "limits.per_sender_channel_seconds")),

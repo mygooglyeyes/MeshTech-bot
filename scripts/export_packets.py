@@ -5,18 +5,21 @@ Every run writes into a fresh timestamped folder (default:
 ``data/exports/packets-<YYYYmmdd-HHMMSS>/``):
 
   packets.csv              - every captured frame, one row per frame
+  messages.csv             - the message log (channel + DM, in and out)
   summary_hourly.csv       - frames per hour (decoded / raw / total)
   summary_frame_types.csv  - frame-type mix per layer (count + %)
   summary_hops.csv         - hop distribution of decoded frames
   summary_path_hash.csv    - path-hash size mix (1-byte / 2-byte / 3+ byte)
   summary_snr.csv          - average / min / max SNR per hour
   summary_senders.csv      - most active senders
+  summary_dms.csv          - per-DM-conversation chunk/timing analysis
 
 The CSV files open straight in Excel / LibreOffice / Numbers and are easy
 to load in pandas:
 
     import pandas as pd
     pkts = pd.read_csv("packets.csv")
+    msgs = pd.read_csv("messages.csv")
 
 Usage:
     python scripts/export_packets.py                  # everything, from config.yaml's db
@@ -53,7 +56,14 @@ _PACKET_COLUMNS = ["id", "ts_iso", "ts", "layer", "direction", "frame_type",
 # the captured wire bytes for raw-layer frames (empty for decoded rows).
 _CSV_TEXT_COLUMNS = _PACKET_COLUMNS + ["raw_hex"]
 
+_MESSAGE_COLUMNS = ["id", "ts_iso", "ts", "kind", "direction", "channel_name",
+                    "sender", "hops", "snr", "text"]
+
 _HOP_BUCKETS: List[Any] = [0, 1, 2, 3, "4+"]
+
+# Chunk marker the router puts on every part of a multi-message reply:
+# "[3/6] rest of text". Only replies that needed splitting carry it.
+_CHUNK_RE = re.compile(r"^\[(\d+)/(\d+)\]\s*")
 
 # CSV cells starting with these characters are interpreted as formulas by
 # Excel/LibreOffice/Google Sheets. Mesh traffic (message text, sender

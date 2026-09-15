@@ -64,6 +64,13 @@ class MeshInfoHandler(Handler):
     name = "meshinfo"
     keywords = ["nodes", "path", "stats"]
     description = "Nodes, paths and propagation stats"
+    # Per-keyword help text - one shared line was too vague for three
+    # commands that do different things. (Texts chosen by Brett.)
+    keyword_description = {
+        "nodes": "node/path/stat lists",
+        "path": "bot or named node path",
+        "stats": "Traffic totals and airtime",
+    }
     scope = "both"
     access = "public"
     # Per-keyword visibility: !nodes is DM-only, !path is public everywhere,

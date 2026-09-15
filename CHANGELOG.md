@@ -9,6 +9,17 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.178 - 2026-09-14 (DEV)
+
+feature/mesh-health (the Sept-8 branch, v0.0.084-.089) resurrected into
+DEV: mesh health registry + card, admin `!health` DM command, per-keyword
+help descriptions with a compact grouped DM help, and the packet/DM
+export tool. Merge integration: `dm_chunk_gap_seconds` restored to the
+config parser beside `reply_delay_seconds` and added to the full-config
+editor; inter-chunk gaps now sleep BETWEEN chunks only, never after the
+last one (a single-chunk reply no longer stalls 1.2 s). With this merge,
+every branch is merged into DEV.
+
 ## 0.0.166 - 2026-09-14 (clean-modem branch)
 
 **The root cause of the whole day, named by the chip itself.** A
@@ -1351,6 +1362,57 @@ Bench-test follow-ups from the hilltop box (all found 2026-09-09):
 - New branch `feature/spi-radio`, built from DEV. (The old
   `feature/modem-feed` branch was deleted by request; its wire
   protocol knowledge was re-derived from the modem's source.)
+
+## 0.0.089 - 2026-09-08
+
+Remaining DM help descriptions shortened to Brett's wording
+(!quake - latest USGS report, !alerts - wx alerts for <zip>,
+!2byte - % of nodes on 2-byte PFX, !dm - bot starts DM with you,
+!weather !wx - current wx and forecast for <zip>, !health - Msh
+health / offendrs). DM extended help now fits 4 chunks.
+
+
+## 0.0.088 - 2026-09-07
+
+DM extended help slimmed from 6 packets to 3: short per-command
+descriptions in Brett's wording, commands sharing a description
+collapsed onto one line (all five admin commands become a single
+"Bot admin" line), and the "x = more" footer only appears when there
+is actually more to say. Channel help keeps the full table.
+
+
+## 0.0.087 - 2026-09-07
+
+The packet export now includes the message log (messages.csv: every
+channel and DM message with direction, sender, timing and text) and a
+per-burst DM delivery summary (summary_dms.csv): for each multi-chunk
+outgoing DM reply it records the chunk count, the gaps between sends,
+and each chunk's size - the raw material for correlating which chunks
+die on air with how the burst was sent.
+
+## 0.0.086 - 2026-09-07
+
+Fix: DM extended help listed every command with the *weather* handler's
+description - a loop variable leaked into the one-line-per-command
+build. Each line now shows its own command's description.
+
+## 0.0.085 - 2026-09-07
+
+Fix: multi-chunk replies self-collided on air - a 0.2 s gap lost 5 of 6
+DM chunks in real testing (only the last arrived). The inter-chunk gap
+is now 1.2 s (configurable: limits.dm_chunk_gap_seconds) for both DM
+and channel bursts, and extended help over DM renders as a compact
+list (4 chunks instead of the wide table's 6).
+
+## 0.0.084 - 2026-09-07
+
+Mesh health (chunk 4): persistent talk-only stations (channel senders
+that never advertise) are now registered as name-only entries after 3
+messages in 24 h, so their traffic counts. New Mesh Health card ranks
+senders by a visible flood score (burst rate, share of traffic, repeat
+text) and carries a block checkbox - report only, nothing is ever
+blocked automatically. New admin DM command !health returns the top 3
+offenders in one packet.
 
 ## 0.0.083 - 2026-09-07
 

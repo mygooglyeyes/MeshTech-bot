@@ -93,7 +93,11 @@ _SHORT_LEN = 7
 # TcxoCtrl is 0x97 not 0xD4 (no 32 MHz clock: every clocked command
 # EXEC_FAILed), TxParams 0x8E, BufBase 0x8F, sync word is a register
 # write to 0x0740 (no such command), CalibrateImage pairs (0xE1,0xE9).
-__version__ = "0.0.177"
+# 0.0.178: feature/mesh-health resurrected into DEV (the Sept-8 branch:
+# mesh health registry + card, DM help rework, packet export) - every
+# branch is now merged; dm_chunk_gap_seconds restored to the config
+# parser alongside reply_delay_seconds.
+__version__ = "0.0.178"
 
 
 def _short(sha: str) -> str:
