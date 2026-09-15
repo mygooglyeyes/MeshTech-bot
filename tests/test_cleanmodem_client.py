@@ -15,6 +15,7 @@ class FakeModem:
     def __init__(self):
         self.tx_log = []
         self.config_log = []
+        self.noise_log = []
         self._writer = None
         self.server = None
 
@@ -75,6 +76,12 @@ class FakeModem:
                         self.config_log.append(payload)
                         writer.write(frames.build_frame(
                             frames.CMD_CONFIG_RESP, payload))
+                        await writer.drain()
+                    elif cmd == frames.CMD_NOISE_REQ:
+                        self.noise_log.append(True)
+                        writer.write(frames.build_frame(
+                            frames.CMD_NOISE_RESP,
+                            __import__('struct').pack("<h", -1025)))
                         await writer.drain()
         finally:
             if self._writer is writer:
@@ -253,4 +260,25 @@ def test_client_keepalive_prevents_idle_recycle():
         finally:
             client_mod.PING_INTERVAL_S = old_interval
         await asyncio.wait_for(modem.stop(), 5)
+    asyncio.run(_run())
+
+
+def test_client_noise_request_resolves_on_noise_resp():
+    """v0.0.180: noise() sends NOISE_REQ and resolves on NOISE_RESP
+    (noise*10 i16 LE -> dBm float); dead link fails soft (None)."""
+    async def _run():
+        modem = FakeModem()
+        port = await modem.start()
+        client = ModemClient("127.0.0.1", port, TOKEN, None)
+        task = asyncio.create_task(client.run())
+        await _wait_connected(client)
+
+        floor = await asyncio.wait_for(client.noise(), 5)
+        assert floor == -102.5, f"expected -102.5 dBm, got {floor}"
+
+        # Dead link: noise fails soft (None), never raises.
+        await asyncio.wait_for(modem.stop(), 5)
+        await asyncio.sleep(0.3)
+        assert await client.noise() is None
+        await _shutdown_client(client, task)
     asyncio.run(_run())
