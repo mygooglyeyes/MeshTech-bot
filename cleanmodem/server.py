@@ -53,7 +53,11 @@ ROLE_CONTROLLER = "controller"
 ROLE_NONE = "none"
 
 # Commands any authenticated client may use; everything else needs the
-# controller role (TX_REQUEST, SET_CONFIG, CAD, SET_CAD_PARAMS).
+# controller role (TX_REQUEST, CAD, SET_CAD_PARAMS). SET_CONFIG is
+# special-cased in _dispatch: observers may PROPOSE config and get an
+# echo answer (openhop_core's TCPLoRaRadio sends SET_CONFIG during its
+# handshake and treats a rejection as a dead link), but the server
+# only answers with its own live config and never applies a word of it.
 OBSERVER_COMMANDS = frozenset({
     frames.CMD_PING, frames.CMD_STATUS_REQ, frames.CMD_NOISE_REQ,
     frames.CMD_GET_CONFIG, frames.CMD_GET_VERSION, frames.CMD_RX_START,
@@ -380,11 +384,14 @@ class ModemServer:
             await self._send(writer, frames.CMD_PONG)
             return True
 
-        # TX and configuration need the controller role - enforced HERE,
-        # so a misconfigured observer can never touch the air.
-        if cmd not in OBSERVER_COMMANDS and ctx.role != ROLE_CONTROLLER:
+        # TX and CAD need the controller role - enforced HERE, so a
+        # misconfigured observer can never touch the air. SET_CONFIG
+        # falls through: below, observers get their proposal answered
+        # with the live config (read-only).
+        if cmd not in OBSERVER_COMMANDS and cmd != frames.CMD_SET_CONFIG \
+                and ctx.role != ROLE_CONTROLLER:
             self.stats.auth_failures += 1
-            log.warning("TX/config attempt by role=%s (%s) - refused",
+            log.warning("TX attempt by role=%s (%s) - refused",
                         ctx.role, ctx.peer)
             await self._send(writer, frames.CMD_ERROR,
                              bytes([frames.ERR_UNAUTHORIZED]))
@@ -400,13 +407,23 @@ class ModemServer:
                     await self._send(writer, frames.CMD_ERROR,
                                      bytes([frames.ERR_PAYLOAD_TOO_BIG]))
                     return True
-                self._config_bytes = payload
-                log.info("radio config updated by controller: %s",
-                         self._describe_config(payload))
-                ok = await self.hal.apply_config(
-                    self._unpack_config(payload))
-                if not ok:
-                    log.warning("radio rejected the new config")
+                if ctx.role == ROLE_CONTROLLER:
+                    self._config_bytes = payload
+                    log.info("radio config updated by controller: %s",
+                             self._describe_config(payload))
+                    ok = await self.hal.apply_config(
+                        self._unpack_config(payload))
+                    if not ok:
+                        log.warning("radio rejected the new config")
+                else:
+                    # Observer proposal: validate the shape, answer with
+                    # the LIVE config. The chip parameters stay ours;
+                    # openhop_core's driver just needs an echo to call
+                    # the link healthy.
+                    self._describe_config(payload)      # raises on malformed
+                    log.info("observer config proposal: %s (kept %s)",
+                             self._describe_config(payload),
+                             self._describe_config(self._config_bytes))
             await self._send(writer, frames.CMD_CONFIG_RESP,
                              self._config_bytes)
             return True

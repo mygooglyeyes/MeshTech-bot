@@ -2087,7 +2087,23 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.168 - clean-modem
+  layout.## v0.0.169 - clean-modem
+
+### Fixed
+- **Observer SET_CONFIG answered, never applied.** openhop_core's
+  TCPLoRaRadio (the repeater driver) sends SET_CONFIG during its
+  handshake and treats any rejection (error 0x09) as a dead link,
+  reconnect-looping every 10 s - so the repeater never held its
+  observer feed. cleanmodem now answers an observer's SET_CONFIG
+  proposal with a CONFIG_RESP echo of the LIVE radio config. Nothing
+  the observer sends is applied: chip parameters stay exclusively
+  under controller control (tested both ways - observer proposal
+  never reaches the radio, controller SET_CONFIG still does).
+- Mismatched proposals are visible in the log
+  ("observer config proposal: ... (kept ...)") instead of a silent
+  role refusal.
+
+## v0.0.168 - clean-modem
 
 ### Fixed
 - **Controller keepalive.** The modem server recycles sessions that
