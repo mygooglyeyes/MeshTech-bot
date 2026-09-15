@@ -14,6 +14,7 @@ class FakeModem:
 
     def __init__(self):
         self.tx_log = []
+        self.config_log = []
         self._writer = None
         self.server = None
 
@@ -69,6 +70,11 @@ class FakeModem:
                         self.tx_log.append(payload)
                         writer.write(frames.build_frame(
                             frames.CMD_TX_DONE, b"\x00\x00\x00\x00"))
+                        await writer.drain()
+                    elif cmd == frames.CMD_SET_CONFIG:
+                        self.config_log.append(payload)
+                        writer.write(frames.build_frame(
+                            frames.CMD_CONFIG_RESP, payload))
                         await writer.drain()
         finally:
             if self._writer is writer:
@@ -160,6 +166,30 @@ def test_client_tx_after_link_loss_fails_closed():
         await asyncio.wait_for(modem.stop(), 5)
         await asyncio.sleep(0.3)
         assert await client.send(b"\x01") is False
+        await _shutdown_client(client, task)
+    asyncio.run(_run())
+
+
+def test_client_configure_pushes_and_waits_for_echo():
+    """v0.0.172: configure() sends SET_CONFIG and resolves on the
+    modem's CONFIG_RESP echo (so the bot can push its config.yaml
+    radio settings as controller and log the modem's live values)."""
+    async def _run():
+        modem = FakeModem()
+        port = await modem.start()
+        client = ModemClient("127.0.0.1", port, TOKEN, None)
+        task = asyncio.create_task(client.run())
+        await _wait_connected(client)
+
+        wanted = bytes(range(14))
+        echo = await asyncio.wait_for(client.configure(wanted), 5)
+        assert echo == wanted, "echo must be the modem's applied config"
+        assert modem.tx_log == [], "SET_CONFIG must not be logged as a TX"
+
+        # Dead link: configure fails soft (None), never raises.
+        await asyncio.wait_for(modem.stop(), 5)
+        await asyncio.sleep(0.3)
+        assert await client.configure(b"x" * 14) is None
         await _shutdown_client(client, task)
     asyncio.run(_run())
 

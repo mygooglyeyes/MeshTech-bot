@@ -2087,7 +2087,28 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.171 - clean-modem
+  layout.## v0.0.172 - clean-modem
+
+### Changed
+- **config.yaml now controls the radio - config is pushed, not
+  hardcoded.** After the modem link comes up, the bot (as controller,
+  the only role the modem applies config for) sends one SET_CONFIG
+  with the config.yaml radio block: `mcp.frequency_hz`,
+  `mcp.tx_power_dbm`, `mcp.spreading_factor`, `mcp.bandwidth_khz`,
+  `mcp.coding_rate_index`. The modem applies it and echoes its live
+  config; the bot logs "Radio config applied via modem" or, on a
+  mismatch, "Modem kept its own config: asked X, modem runs Y".
+- The modem's own `tx_power_dbm` in /etc/cleanmodem/modem.conf is now
+  just a boot default that lasts until the bot connects.
+- Failure is non-fatal: no link, no echo - the modem keeps its boot
+  config and the next handshake echo shows any difference.
+
+### Tests
+- `test_client_configure_pushes_and_waits_for_echo`: SET_CONFIG
+  resolves on the modem's CONFIG_RESP, is not counted as a TX, and
+  fails soft (None) on a dead link.
+
+## v0.0.171 - clean-modem
 
 ### Fixed
 - **Authenticated observers are exempt from the idle read timeout.**

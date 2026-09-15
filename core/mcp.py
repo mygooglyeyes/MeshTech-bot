@@ -832,6 +832,50 @@ class Mcp:
                 raise RuntimeError("stopped while waiting for the modem link")
             raise RuntimeError("modem link did not come up in time")
         log.info("Radio up via the modem - the MCP drives the air.")
+        # v0.0.172: push the config.yaml radio settings to the modem
+        # (SET_CONFIG is controller-only and the ONLY role the modem
+        # applies). mcp.tx_power_dbm + friends become the single source
+        # of truth; the modem's own modem.conf value is just its boot
+        # default. The echo answers with the modem's live config.
+        await self._push_radio_config()
+
+    async def _push_radio_config(self) -> None:
+        """SET_CONFIG the config.yaml radio block to the modem, as controller.
+
+        Payload = the modem's RADIO_CONFIG wire format (freq u32, bw u32,
+        sf u8, cr u8, power i8, syncword u16, preamble u8, all LE).
+        Failure is non-fatal: the modem keeps its boot config, and the
+        mismatch is visible in the next handshake echo.
+        """
+        import struct
+        mcp = self.settings.mcp
+        payload = struct.pack(
+            "<IIBBbHB",
+            int(mcp.frequency_hz), int(mcp.bandwidth_khz * 1000),
+            int(mcp.spreading_factor), int(mcp.coding_rate_index) + 4,
+            int(mcp.tx_power_dbm), 0x12, 32)
+        client = self._modem
+        if client is None:
+            return
+        echo = await client.configure(payload)
+        if echo == payload:
+            log.info("Radio config applied via modem: %s", self._cfg_desc(payload))
+        elif echo:
+            log.warning(
+                "Modem kept its own config: asked %s, modem runs %s",
+                self._cfg_desc(payload), self._cfg_desc(echo))
+        else:
+            log.warning("Radio config push skipped (no modem answer) - "
+                        "the modem keeps its boot config")
+
+    @staticmethod
+    def _cfg_desc(payload: bytes) -> str:
+        """One-line decode of the modem's RADIO_CONFIG payload (logging)."""
+        import struct
+        freq, bw, sf, cr, power, syncw, pre = struct.unpack(
+            "<IIBBbHB", payload)
+        return (f"{freq / 1e6:.3f}MHz BW{bw / 1000:g}kHz SF{sf} CR{cr} "
+                f"{power}dBm sync=0x{syncw:04X} pre={pre}")
 
     def _on_modem_rx(self, rssi: int, snr: float, signal_rssi: int,
                      data: bytes) -> None:

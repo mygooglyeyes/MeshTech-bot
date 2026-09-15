@@ -47,6 +47,7 @@ class ModemClient:
         self._reader: Optional[asyncio.StreamReader] = None
         self._tx_replies: "asyncio.Queue[bool]" = asyncio.Queue()
         self._tx_gate = asyncio.Lock()
+        self._config_reply: "asyncio.Queue[bytes]" = asyncio.Queue()
         self.connected = False
         self.tx_count = 0
         self.rx_count = 0
@@ -106,6 +107,7 @@ class ModemClient:
         except Exception:              # noqa: BLE001 - dead link: the pump notices and reconnects
             return
 
+    # ── close ─────────────────────────────────────────────────────────
     async def _close(self) -> None:
         was = self.connected
         self.connected = False
@@ -113,6 +115,7 @@ class ModemClient:
         self._reader = None
         # A dead link must not strand a waiting sender.
         self._tx_replies.put_nowait(False)
+        self._config_reply.put_nowait(b"")
         if writer is not None:
             try:
                 writer.close()
@@ -216,13 +219,45 @@ class ModemClient:
                     self._tx_replies.put_nowait(True)
                 elif cmd == frames.CMD_TX_FAIL:
                     self._tx_replies.put_nowait(False)
+                elif cmd == frames.CMD_CONFIG_RESP:
+                    self._config_reply.put_nowait(payload)
                 elif cmd == frames.CMD_ERROR:
                     log.warning("modem error frame: 0x%02X",
                                 payload[0] if payload else 0)
                 # CONFIG_RESP / STATUS_RESP / PONG: the bot issues none
                 # of those requests today, so they are ignored here.
 
-    # ── TX ────────────────────────────────────────────────────────────
+    # ── TX / config ───────────────────────────────────────────────────
+    async def configure(self, config_payload: bytes) -> Optional[bytes]:
+        """One SET_CONFIG (controller only); resolves on CONFIG_RESP.
+
+        Returns the modem's live config echo (so the caller can log it
+        against what it asked for), or None on a dead link / timeout.
+        """
+        writer = self._writer
+        if writer is None or not self.connected:
+            log.warning("modem link down - config push skipped (%dB)",
+                        len(config_payload))
+            return None
+        async with self._tx_gate:
+            while not self._config_reply.empty():
+                try:
+                    self._config_reply.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            try:
+                writer.write(frames.build_frame(frames.CMD_SET_CONFIG,
+                                                config_payload))
+                await asyncio.wait_for(writer.drain(), TX_TIMEOUT_S)
+                return await asyncio.wait_for(self._config_reply.get(),
+                                              TX_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning("config push timed out waiting for the modem")
+                return None
+            except Exception as exc:      # noqa: BLE001
+                log.warning("config push failed: %s", exc)
+                return None
+
     async def send(self, data: bytes) -> bool:
         """One TX_REQUEST; resolves on TX_DONE (True) / TX_FAIL (False)."""
         writer = self._writer
