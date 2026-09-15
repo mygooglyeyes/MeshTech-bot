@@ -230,7 +230,7 @@ class ModemClient:
                 elif cmd == frames.CMD_NOISE_RESP:
                     try:
                         self._noise_reply.put_nowait(
-                            frames.parse_noise_payload(payload))
+                            frames.parse_noise_payload_or_none(payload))
                     except frames.FrameError:
                         continue
                 elif cmd == frames.CMD_OBSERVER_STATE:

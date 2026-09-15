@@ -16,6 +16,7 @@ class FakeModem:
         self.tx_log = []
         self.config_log = []
         self.noise_log = []
+        self.noise_fails = False  # v0.0.183: answer the sentinel
         self._writer = None
         self.server = None
 
@@ -79,9 +80,12 @@ class FakeModem:
                         await writer.drain()
                     elif cmd == frames.CMD_NOISE_REQ:
                         self.noise_log.append(True)
+                        if self.noise_fails:
+                            payload = frames.NOISE_NO_VALUE
+                        else:
+                            payload = __import__('struct').pack("<h", -1025)
                         writer.write(frames.build_frame(
-                            frames.CMD_NOISE_RESP,
-                            __import__('struct').pack("<h", -1025)))
+                            frames.CMD_NOISE_RESP, payload))
                         await writer.drain()
         finally:
             if self._writer is writer:
@@ -280,5 +284,29 @@ def test_client_noise_request_resolves_on_noise_resp():
         await asyncio.wait_for(modem.stop(), 5)
         await asyncio.sleep(0.3)
         assert await client.noise() is None
+        await _shutdown_client(client, task)
+    asyncio.run(_run())
+
+
+def test_noise_sentinel_decodes_as_none():
+    """v0.0.183: the modem's NO-VALUE sentinel (-32768 raw) decodes to
+    None so the dashboard leaves a gap - never a plausible fake -105."""
+    assert frames.parse_noise_payload_or_none(frames.NOISE_NO_VALUE) is None
+    # Real values unchanged (incl. exactly -105.0 from a live chip).
+    assert frames.parse_noise_payload_or_none(
+        __import__('struct').pack("<h", -1050)) == -105.0
+
+
+def test_client_noise_sentinel_resolves_none():
+    """v0.0.183 end to end: modem's radio read fails -> sentinel -> the
+    bot's noise() returns None -> the monitor leaves a graph gap."""
+    async def _run():
+        modem = FakeModem()
+        modem.noise_fails = True
+        port = await modem.start()
+        client = ModemClient("127.0.0.1", port, TOKEN, None)
+        task = asyncio.create_task(client.run())
+        await _wait_connected(client)
+        assert await asyncio.wait_for(client.noise(), 5) is None
         await _shutdown_client(client, task)
     asyncio.run(_run())

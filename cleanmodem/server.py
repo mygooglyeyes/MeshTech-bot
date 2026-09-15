@@ -517,11 +517,22 @@ class ModemServer:
         if cmd == frames.CMD_NOISE_REQ:
             try:
                 noise = await self.hal.noise()
-            except Exception:                # noqa: BLE001
-                noise = -105.0
-            import struct
-            await self._send(writer, frames.CMD_NOISE_RESP,
-                             struct.pack("<h", int(round(noise * 10))))
+            except Exception as exc:         # noqa: BLE001
+                # v0.0.183: NO answer beats a FABRICATED one. The old
+                # silent -105.0 (inherited from meshtech-modem's
+                # hard-coded pack('<h', -1050)) made a dead read
+                # indistinguishable from a genuinely quiet channel -
+                # exactly how a frozen -105 line hid on the dashboard.
+                # The sentinel tells the bot to leave a graph gap.
+                log.warning("NOISE_REQ failed, answering NO-VALUE: %s", exc)
+                noise = None
+            if noise is None:
+                await self._send(writer, frames.CMD_NOISE_RESP,
+                                 frames.NOISE_NO_VALUE)
+            else:
+                import struct
+                await self._send(writer, frames.CMD_NOISE_RESP,
+                                 struct.pack("<h", int(round(noise * 10))))
             return True
 
         if cmd == frames.CMD_GET_VERSION:

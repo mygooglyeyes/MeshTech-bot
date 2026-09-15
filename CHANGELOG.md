@@ -9,6 +9,31 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.183 - 2026-09-14 (DEV)
+
+**The frozen -105 noise line: honesty pass + the diagnostic fork.**
+The card came back (v0.0.182) but pinned at exactly -105.0.
+
+- **Lineage of the fake number:** meshtech-modem answered NOISE_REQ
+  with a hard-coded `pack("<h", -1050)` (it never read the chip);
+  cleanmodem's exception path silently echoed the same -105.0. Hilltop's
+  journal showed ZERO "radio work failed" - so the value is coming from
+  an actual chip read that returns a constant byte, or the channel is
+  genuinely that quiet. The probes decide.
+- **Honesty:** a failed read now answers the NO-VALUE sentinel
+  (-32768) which decodes to None at the bot - a graph GAP plus a
+  logged warning, never a plausible-looking fake. Client, server, and
+  frames carry the sentinel end to end (3 new tests).
+- **Dormant crash fixed:** _hw_status read self.noise, which nothing
+  ever assigned (ThreadedHal's -105.0 default masked it) - the first
+  STATUS request would have crashed the work item. It reads the chip
+  live now.
+- **Probe fixes:** probe_modem.py updated to the v0.0.155 12-field
+  STATUS format (it crashed unpacking 9); new scripts/probe_rssi_raw.py
+  dumps raw GetRssiInst vs GetPacketStatus MISO windows (run with
+  cleanmodem stopped) to settle constant-echo vs truly-quiet-channel.
+  Suite: 593 pass / 0 fail.
+
 ## 0.0.182 - 2026-09-14 (DEV)
 
 **The noise-floor card actually comes back in modem mode.** v0.0.180

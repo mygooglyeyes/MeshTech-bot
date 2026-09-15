@@ -11,6 +11,13 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.183** - Frozen -105 noise: honesty pass (NO-VALUE sentinel
+  instead of a fabricated -105.0; gap + warning at the bot), the
+  self.noise never-assigned crash fixed (STATUS reads live now), and
+  probe_rssi_raw.py to settle constant-echo vs quiet-channel. Lesson:
+  never answer a sensor read with a plausible constant - it poisons
+  every downstream decision. Suite 593.
+
 - **v0.0.182** - The real noise-floor fix: v0.0.180 fixed the sampling
   path but bot.py's modem-mode early return meant the monitor was never
   CREATED (card hidden, hourly panel starved on every cleanmodem box).

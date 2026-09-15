@@ -731,6 +731,10 @@ class SX126xRadio(ThreadedHal):
         return result[0] / -2.0
 
     def _hw_status(self) -> RadioStatus:
+        # v0.0.183: the noise field was read from self.noise, which no
+        # code path ever assigned (ThreadedHal's -105.0 default masked
+        # it) - the FIRST STATUS request would have crashed the work
+        # item. The live read replaces the never-updated attribute.
         return RadioStatus(
             uptime_s=int(time.monotonic() - self._started_at),
             rx_count=self.rx_count,
@@ -738,7 +742,7 @@ class SX126xRadio(ThreadedHal):
             crc_errors=self.crc_errors,
             last_rssi=self.last_rssi,
             last_snr_x10=int(round(self.last_snr * 10)),
-            noise_x10=int(round(self.noise * 10)),
+            noise_x10=int(round(self._hw_noise() * 10)),
             radio_state=1 if self._rx_mode else 0,
             hal_alive=True,
             irq_polls=self.irq_polls,

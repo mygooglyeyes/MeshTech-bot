@@ -192,6 +192,21 @@ def parse_noise_payload(payload: bytes) -> float:
     return struct.unpack("<h", payload[:2])[0] / 10.0
 
 
+# NOISE_RESP sentinel (v0.0.183): the modem answers THIS when the radio
+# read failed, and parse_noise_payload_or_none maps it to None so the
+# dashboard shows a gap instead of a plausible-looking fake -105.0
+# (meshtech-modem hard-coded exactly that value; cleanmodem's error
+# path echoed it until now).
+NOISE_NO_VALUE = struct.pack("<h", -32768)
+
+
+def parse_noise_payload_or_none(payload: bytes) -> Optional[float]:
+    """NOISE_RESP payload -> dBm, or None for the NO-VALUE sentinel."""
+    if len(payload) >= 2 and payload[:2] == NOISE_NO_VALUE:
+        return None
+    return parse_noise_payload(payload)
+
+
 def _sanitize(text: object, limit: int = 80) -> str:
     """Make peer-controlled text safe for log lines (no newlines,
     control characters, or ANSI escapes) and bounded in length."""

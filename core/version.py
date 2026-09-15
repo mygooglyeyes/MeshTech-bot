@@ -131,7 +131,18 @@ _SHORT_LEN = 7
 # analysis panel. On every cleanmodem box. Now BOTH MCP radio modes
 # create the monitor (SPI reads the driver; modem asks over the link);
 # two wiring tests pin it per mode.
-__version__ = "0.0.182"
+# 0.0.183: the frozen -105 noise line - honesty pass + the diagnostic
+# fork. meshtech-modem answered NOISE_REQ with a HARD-CODED -1050
+# (never read the chip); cleanmodem's exception path echoed the same
+# -105.0 silently. Now a failed read answers the NO-VALUE sentinel
+# (-32768) -> None at the bot -> a graph GAP with a logged warning.
+# _hw_status's noise field read self.noise, which nothing ever
+# assigned (dormant crash on the first STATUS request) - it reads the
+# chip live now. probe_modem.py updated to the v0.0.155 12-field
+# STATUS format; new scripts/probe_rssi_raw.py dumps raw GetRssiInst
+# vs GetPacketStatus MISO windows to settle constant-echo vs truly-
+# quiet-channel (stop cleanmodem first: two SPI masters must not fight).
+__version__ = "0.0.183"
 
 
 def _short(sha: str) -> str:

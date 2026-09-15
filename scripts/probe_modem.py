@@ -45,9 +45,13 @@ noise = struct.unpack("<h", payload)[0] / 10.0
 print(f"noise floor: {noise} dBm   (real radio reading if > -130)")
 
 cmd, payload, _ = exchange(frames.CMD_STATUS_REQ)
-(uptime, rx, tx, crc, last_rssi, last_snr_x10, noise_x10, _max, state) = \
+# v0.0.155 grew STATUS to 12 fields (uptime, rx, tx, crc, rssi,
+# snr, noise, temp, state, irq_polls, irq_edges, last_irq_flags).
+(uptime, rx, tx, crc, last_rssi, last_snr_x10, noise_x10, _temp,
+ state, irq_polls, irq_edges, last_irq_flags) = \
     struct.unpack(frames.STATUS_RESP_FMT, payload)
 print(f"status: uptime={uptime}s rx={rx} tx={tx} crc={crc} "
       f"last_rssi={last_rssi} snr={last_snr_x10 / 10} "
-      f"noise={noise_x10 / 10} rx_state={'RX' if state == 1 else 'NOT RX'}")
+      f"noise={noise_x10 / 10} rx_state={'RX' if state == 1 else 'NOT RX'} "
+      f"irq: polls={irq_polls} edges={irq_edges} flags=0x{last_irq_flags:04X}")
 sock.close()
