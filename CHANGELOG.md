@@ -2087,7 +2087,18 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.174 - docs
+  layout.
+
+## v0.0.175 - docs
+
+### Fixed
+- The v0.0.174 commit shipped a TRUNCATED runbook (104 lines - a
+  rewrite accident ate the hunt narrative). Restored in full: the
+  original 779 lines (progress log + steps, now marked DONE) plus
+  the completion section. No code changes - the bot needs no
+  redeploy for this one.
+
+## v0.0.174 - docs
 
 ### Changed
 - **Switchover runbook now matches reality.** Steps 5-8 marked DONE;

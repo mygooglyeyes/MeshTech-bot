@@ -1,3 +1,782 @@
+# cleanmodem switchover runbook (hilltop) - cleanmodem takes the radio for good
+
+Follows a PASSED bench (`BENCH-RUNBOOK-cleanmodem.md`). The bench proved
+cleanmodem hears the mesh at wire speed. This session makes it permanent:
+
+- cleanmodem gets its own systemd unit and owns the radio on port 5055.
+- The bot flips to `radio_mode: "modem"` and rides cleanmodem as its
+  controller client (RX feed + exclusive TX over TCP).
+- The OLD modem (`meshtech-modem`) is retired from the box.
+- TX through cleanmodem is verified ON AIR, including the restored
+  continuous LBT jitter (v0.0.152+).
+- The repeater (`openhop-repeater`) must end up reconnected as observer.
+
+Honest scope: during the handover there is a short window with no bot
+and no modem feed (the repeater just retries). Rollback is
+self-contained at the bottom - no bench unit, no temporary tokens,
+nothing to remember.
+
+PROGRESS (2026-09-14, live session):
+
+- Box updated: v0.0.153 @ 82147f3, live config validated, bot
+  restarted. Backup made: `/opt/meshtech-bot/config.yaml.pre-modem`.
+- Live config read: bot's own radio block ENABLED (SPI today);
+  modem_host/port already 127.0.0.1:5055; modem_token_file ABSENT
+  (add at the flip); modem_feed still on (goes inert in modem mode).
+- Repeater recon: it reaches the OLD modem with an EMPTY token
+  (`modem_tcp.token: ''` in /etc/openhop_repeater/config.yaml).
+  cleanmodem fails closed on empty credentials, so branch (b): fresh
+  observer token minted; the repeater's modem_tcp.token gets set at
+  its reconnect step.
+- Tokens installed: /etc/cleanmodem/{observer,controller}.token,
+  mode 600, owned by meshtech.
+- Handover executed 07:33: bot + old modem STOPPED, cleanmodem
+  FAILING to start. OUTAGE IN PROGRESS.
+- Failure 1: modem.conf root-owned 640 -> PermissionError. chown
+  fixed.
+- Failure 2 (REAL): the shipped example conf is COLON style
+  (`key: value`) but the parser splits on `=`; colon lines are
+  SILENTLY SKIPPED, defaults apply. Consequence: the BENCH also ran
+  on defaults with tokens never loaded (worked only because the
+  example's default token paths are unset - fail-closed would have
+  refused everyone; investigate the bench auth story after the air
+  is back). Only coding_rate's inline comment contains `=` so only
+  that line raised `bad key`.
+- Unblocked with a minimal `=`-style conf (token paths only; radio
+  defaults are the mesh-proven numbers anyway). Repo fix for the
+  example/parser mismatch AFTER the air is back.
+- Failure 3 (CURRENT): `=`-conf passed config load, then radio
+  bring-up failed: `No module named 'RPi'`. Root cause chain now
+  clear: (1) venv had NO gpiod and NO RPi.GPIO (spidev only) -
+  deps were never pinned for cleanmodem and tonight's deploy
+  refresh pruned/resolved away whatever the bench had; (2) after
+  installing gpiod 1.5.4 the service STILL fails because
+  `_GpiodGpio()` cannot open its hardcoded `/dev/gpiochip0` as the
+  meshtech user (probe: PermissionError naming /dev/gpiochip4);
+  (3) the factory then falls back to RPi.GPIO -> `No module named
+  RPi` -> crash loop.
+- CHIP LAYOUT SOLVED: /dev/gpiochip0..1 exist (root:gpio 660),
+  /dev/gpiochip4 is a SYMLINK to gpiochip0, board is Pi 4 Model B.
+  `id meshtech` shows groups=meshtech ONLY - user is NOT in gpio
+  (unit's SupplementaryGroups should have covered the service -
+  recheck later; probes run without it).
+- Group test (`sudo -g gpio -u meshtech`): NEW error -
+  `TypeError: iter() returned non-iterator of type 'NoneType'`
+  from gpiod's OWN pure-python shim (libgpiod/__init__.py
+  gpiod_chip_iter.__iter__ returns None when ANY /dev/gpiochip*
+  fails to open: the symlinked gpiochip4 -> gpiochip0... it opens
+  both paths; one fails under this uid for an unrelated reason
+  (ENODEV/EACCES on the second?) and the whole iter aborts ->
+  gpiod_chip_open_by_label -> TypeError). This is a BUG in the
+  gpiod 1.5.4 python bindings, not our code. CONCLUSION: the
+  gpiod 1.x bindings are unusable here - the ROBUST path is the
+  RPi.GPIO-compatible backend the driver already prefers on Pi.
+  Plan: install `rpi-lgpio` (maintained RPi.GPIO-compatible shim on
+  the lgpio stack; correct for Bookworm-era kernels; import name is
+  RPi.GPIO so _RpiGpio works unchanged; must NOT coexist with real
+  RPi.GPIO in the same venv - it isn't installed, fine). Also ensure
+  the meshtech user reaches /dev/gpiochip* (unit already declares
+  SupplementaryGroups=gpio spi - verify it lands), restart, and pin
+  the dep in requirements after the air is back. rpi-lgpio pip
+  install FAILED: its lgpio C dependency needs to compile against
+  liblgpio-dev which the box lacks (cannot find -llgpio). ALTERNATIVE
+  PATH: the OS package python3-rpi-lgpio (Debian/Ubuntu repo) or
+  python3-rpi.gpio / RPi.GPIO classic. BEFORE more installs: check
+  what GPIO python libs the OS already provides
+  (dpkg -l | grep -i -E 'gpio|lgpio') - the venv can use
+  --system-site-packages or the bench may have used OS python.
+  RESULT: the box (Pi OS trixie, kernel 6.18) ALREADY SHIPS
+  python3-rpi-lgpio 0.6 + python3-lgpio, and /usr/bin/python3
+  imports RPi.GPIO fine. The venv just cannot see OS packages.
+  ALSO recheck the bench evidence: bench ran the SAME venv - check
+  manage.sh/requirements history for what changed (deploy
+  dependency refresh).
+- PLAN (Brett's call - KEEP THE VENV WALL): do NOT flip the service
+  to system python. Instead give pip the missing build headers via
+  apt (liblgpio-dev), then pip install rpi-lgpio INTO the venv -
+  the compiled extension links the OS shared lib (like spidev)
+  but the Python package set stays isolated. RESULT 08:0x:
+  liblgpio-dev installed via apt, then `Successfully installed
+  lgpio-0.2.2.0 rpi-lgpio-0.6` IN THE VENV. Wall intact.
+- Step 4 PASSED 08:08:05 - `active (running)`, `SX1262 up: 910.525MHz
+  SF7 BW62.5kHz CR4/5 20dBm sync=0x12 pre=32`, listening on
+  127.0.0.1:5055, both tokens set. Radio handover complete.
+  NEXT: flip the bot to radio_mode modem (Step 5).
+- Step 5 config edit DONE: lines 280-281 now hold
+  `radio_mode: "modem"` + `modem_token_file: "/etc/cleanmodem/controller.token"`.
+  NOTE: live config's mcp block shows `enabled: true` LAST in the
+  block (after cad_min) - the sed anchors on modem_port, safe. ALSO
+  noted: live comment says clear-channel retries are `0.3s apart`
+  (pre-jitter text) - stale comment, harmless.
+  NEXT: restart meshtech-bot, expect `Radio up via the modem`.
+- Step 5 PROBLEM: bot connects then drops every 30 s; cleanmodem
+  logs auth_fail climbing (10 -> 14) and NO `auth accepted`. The bot
+  is rejected at the raw-token handshake. Token mismatch suspect:
+  the bot reads /etc/cleanmodem/controller.token as USER meshtech -
+  the file is mode 600 owned by meshtech, so readable... BUT the
+  bot service may run as a DIFFERENT user, or the token file has a
+  trailing newline/whitespace mismatch (server strips, client
+  strips...). Server strips `.strip()` on both paths; client sends
+  `self.token` from `readline().strip()`. Next: verify what the bot
+  actually reads - check the bot's journal for its own error line
+  (`modem rejected the controller token`) and compare file content
+  hash as the BOT user vs the SERVER user. Bot journal only shows a
+  CancelledError line (grep window too narrow - client errors are
+  log.debug, invisible at INFO). Reconnect pattern every 30 s with
+  auth_fail +2 per cycle = the bot's two auth attempts rejected.
+  NOTE: auth_fail jumps by 2 per connect (10->12->14) though client
+  sends ONE attempt per connect... unless the client connects, gets
+  0x00, closes, and the server ALSO sees the frame-based fallback?
+  Or: BOTH modem_host 127.0.0.1:5055 connections are the bot, and
+  the +2 comes from... NEXT: run the auth by hand: read the token
+  file AS the bot's flow reads it and compare against what the
+  server loaded (server logs tokens only as set/not-set). Hand
+  probe: python on the box: open both files, print sha256 of
+  first-line-stripped contents (never print the token). FINGERPRINTS
+  BACK: controller.token = 902a6b79..., observer.token = 1aabb4d8...,
+  both 64 hex chars, clean. Files are consistent, so WHERE is the
+  mismatch? Server 'peek' logic: reads up to 256 bytes; first byte
+  not 0xAA -> raw-token path. Bot sends its 64-char token raw.
+  Hex chars are ASCII so first byte is '7' (0x37) - fine, raw path.
+  Server strips, compares against controller_token loaded at START.
+  Both read the SAME file... UNLESS the bot service read the token
+  file BEFORE... no, bot reads at _modem_up each start.
+  REMAINING SUSPECT: the bot is NOT actually using line 281 - e.g.
+  the config RELOADED an older cached copy, or a duplicate mcp:
+  block later in the file OVERRIDES ours (last block wins in YAML).
+  NEXT: grep the FULL config for every mcp/modem_token_file
+  occurrence (count them). COUNT: exactly ONE mcp block, lines
+  271/280/281 - config is correct. CODE READ (client.py +
+  server.py handshake): client sends token raw (64 ASCII hex,
+  first byte 0x37 '7' != 0xAA) -> server raw-token path ->
+  compare_digest(supplied, controller_token) - both stripped 64-
+  char strings from THE SAME FILE -> must pass. But the pasted
+  server log showed connect/disconnect pairs with NO 'raw-token
+  auth rejected' and NO 'auth accepted', while auth_fail climbs +2
+  per 30 s cycle. That pattern = the client is NOT the bot's
+  ModemClient at all... OR the log window missed the reject lines.
+  ALSO suspicious: +2 per cycle. auth_fail increments live at 4
+  sites (raw reject, frame unauthorized, TX-by-observer, handle_auth
+  reject). A 30 s cycle matches the client's reconnect backoff
+  (RETRY_MIN... capped 30?). NEXT: grab an UNSOLICITED server log
+  window (no grep) around one connect to see the full story.
+  WAIT - reread the bot journal paste: the user's grep on the BOT
+  log matched CLEANMODEM lines only because BOTH greps ran; the
+  first grep (meshtech-bot) returned NOTHING - i.e. the bot unit
+  produced NO modem/Radio-up lines in 30 lines. And the bot log's
+  only line was a bare CancelledError from an earlier restart.
+  HYPOTHESIS: the bot never got far enough to log - or journalctl
+  -n 30 starts after them. The 30 s reconnect cadence: RETRY backoff
+  caps at 30 s (RETRY_MAX_S presumably) - consistent with the bot
+  client failing raw auth and backing off to 30 s retries
+  (RETRY_MAX_S = 30 confirmed). CODE-WALK CONCLUSION: neither
+  'raw-token auth rejected' nor 'auth accepted (raw token)' appears
+  in the server log, and BOTH always log. So _raw_token_auth never
+  runs => the connector's first byte is 0xAA (frame client) OR the
+  connector is NOT the bot. 30 s cadence + 3 ms sessions + the
+  repeater ON THIS BOX configured modem_tcp host 127.0.0.1:5055
+  (pointing at the OLD modem!) => the RETRYING CONNECTOR IS THE
+  REPEATER, not the bot. It speaks frames, sends its (empty) token,
+  gets bounced; the bot's own connection may not even be attempted
+  (or is fine). BOT STATUS SETTLES IT: the bot is CRASH-LOOPING
+  (restart counter 73!) with `FATAL: GPIO Pin 6 is already in use`
+  - the bot is STILL TRYING TO OWN THE RADIO over SPI (it never
+  reached modem mode; its config change did not take effect... but
+  lines 280-281 exist. WAIT: line 280 radio_mode is INSIDE the mcp
+  block but the bot boots _radio_up -> checks radio_mode... unless
+  the bot's RUNNING code is OLDER than the config (bot runs the
+  deployed v0.0.153 - supports radio_mode). OR: the mcp block's
+  YAML got broken by our sed insert (indentation!) - line 280/281
+  printed WITHOUT visible indent in the paste - `radio_mode:` at
+  column 3 (2 spaces) is right... but if sed put them at a different
+  indent they'd be a NEW top-level key and radio_mode would default
+  to spi! `sudo sed -n '278,282p' config.yaml | cat -A` will show
+  exact bytes.  That's the next probe. ALSO SETTLED: the every-30s connector is
+  the REPEATER (frame protocol, pre-auth commands bounce silently -
+  auth_fail +2 per attempt with no log line, 3 ms sessions) probing
+  its old modem address; harmless for now, gets its new token later.
+  The bot meanwhile crash-loops in SPI mode (GPIO pin 6 held by
+  cleanmodem) DESPITE config lines 280-281 - so either the config
+  bytes are subtly wrong or the bot is reading another path.
+  BYTES VERIFIED: both lines perfectly indented (2 spaces) inside
+  the mcp block, config is CORRECT. So why does the bot boot SPI?
+  => The bot process predates... no, restarted 08:24 (crash loop
+  restarts every ~6 s). NEXT HYPOTHESIS: the config-validation/
+  normalization layer or a YAML anchor/duplicate-key quirk - or
+  the bot loads config from a DIFFERENT PATH than
+  /opt/meshtech-bot/config.yaml (the deploy's apply step copies
+  config from /home/k6bps/meshtech-bot? The unit's WorkingDirectory
+  is /opt/meshtech-bot; default --config is relative config.yaml).
+  Check: does ANOTHER config.yaml exist + which one does the
+  running bot parse (bot.py --check prints the path!).
+- ROOT CAUSE #4 FOUND IN CODE: core/config.py McpCfg builder
+  (lines 716-777) NEVER READS radio_mode / modem_host / modem_port /
+  modem_token_file from the YAML - it constructs McpCfg() with only
+  the legacy fields, so every value stays at the dataclass default
+  (radio_mode='spi', modem_token_file='data/.modem_token'). The
+  config parser DROPS our two lines silently. The v0.0.151 deploy
+  only checked 'live config has every documented setting' (config-
+  sync adds keys to config.example.yaml, not the parser!). THE BOT
+  CANNOT ENTER MODEM MODE ON THIS BUILD no matter what config says.
+  This is the second half of the v0.0.148 incomplete-wiring story.
+  Options: (a) hot-patch core/config.py on the box to parse the
+  four keys, restart bot; (b) rollback now, fix in repo, redeploy.
+  Given Brett is at the box and the outage is contained, (a) hot-
+  patch = fastest path to a working stack; the proper fix ships
+  next commit. ASK BRETT which. DECISION (Brett, 08:2x): option (b)
+  - ROLL BACK NOW, fix the parser properly in the repo with tests,
+  redeploy, redo the switchover. Rollback executed this session:
+  live stack restored (bot SPI + old modem + repeater), cleanmodem
+  stopped. Tokens/unit/conf at /etc/cleanmodem + the cleanmodem
+  unit stay installed and harmless (disabled, stopped) for the
+  rerun. Repo work for v0.0.154: parse the four mcp modem keys +
+  validation + tests; also pin rpi-lgpio in requirements; fix
+  cleanmodem.conf.example format; then ONE update on hilltop and
+  the switchover reruns from Step 5. ROLLBACK EXECUTED AND VERIFIED:
+  meshtech-modem active, meshtech-bot active, cleanmodem inactive -
+  live stack is BACK, outage over (07:33-08:2x). Bench-runbook-style
+  session record kept above.
+- v0.0.154 BUILT (repo, tests green: 568 passed, 1 skipped): bot
+  config parser now reads radio_mode/modem_host/modem_port/
+  modem_token_file (validated; six new tests pin the wiring),
+  cleanmodem.conf.example rewritten in = style, rpi-lgpio pinned in
+  requirements with its liblgpio-dev build note. NEXT: commit/push
+  (Brett's OK), ONE `manage.sh update clean-modem` on hilltop, then
+  the switchover re-runs from Step 5 (modem side already in place:
+  tokens, unit, =-conf). v0.0.154 DEPLOYED 2026-09-14: running
+  12f1ac5, config validated OK, bot restarted in SPI mode. NEXT:
+  re-run the handover (Step 4), then Steps 5-8 as written.
+- Step 4 re-run PASSED 09:07:39 - cleanmodem active, SX1262 up
+  (910.525MHz SF7 BW62.5kHz CR4/5 20dBm), listening 127.0.0.1:5055,
+  both tokens set. (The 2-3 s client pings are the repeater
+  reconnecting to its old address - its auth bounce is expected
+  until its token step.) Step 5 PASSED 09:08:45: bot reads the
+  config (`radio_mode: modem` in the startup line), `modem link up
+  - controller role`, cleanmodem `auth accepted ... as controller
+  (raw token)`, and the pass-bar line `Radio up via the modem - the
+  MCP drives the air.`. ONE WRINKLE: at 09:08:47 (2 s after up) the
+  bot dropped a TX (115B) - a startup advert fired before the link
+  was fully marked ready; look for it after Step 6 (likely benign
+  ordering, but note whether adverts resume). NEXT: Step 6 TX
+  verification on the air.
+- Step 6 attempt 1: metrics at 09:10:39 show rx=0 tx=0 (clients=1,
+  bot linked fine). No TX went out - either the DM did not reach
+  the bot (rx=0: the bot has heard NOTHING yet - RX is also flat!)
+  or the phone message hasn't been sent yet. rx=0 over ~2 min is
+  suspicious for a mesh that had 8-12 packets/min: RX PATH CHECK
+  needed. Could be a quiet mesh moment - wait/watch a couple of
+  minutes before diagnosing deep. NEXT: another metrics read.
+  Step 6 attempt 2: 'sleep 120; journalctl | grep metrics' returned
+  NO OUTPUT (odd - metrics prints every 60 s; either the sleep
+  blocked the paste or the grep pattern missed). Direct read at
+  09:16: rx=0 tx=0 STILL (8 min since radio up). The bot's link is
+  FINE (auth accepted, controller stays connected, one bot idle
+  timeout/reconnect visible - its own 120 s idle recycler). But
+  rx=0 for 8 min on a mesh that ran 8-12 packets/min means the
+  RX PATH IS DEAD: cleanmodem is not hearing the air (or not
+  counting what it hears). TX would also be untested (the phone
+  DM produced no rx). PRIME SUSPECT: RX not actually armed on the
+  radio (bench heard packets fine though - same driver). Diagnose:
+  noise floor probe (CMD_NOISE_REQ via a raw socket, or check hal
+  noise line), plus 'sudo lsof /dev/spidev*' sanity. CODE READ: RX
+  is armed at bring-up (continuous, DIO1 edge-wait loop, IRQ mask
+  correct) - the design is the same that heard packets on the bench.
+  The difference vs the bench: the bench ran the SAME driver with
+  the SAME pins... but on the OLD colon-style conf (all defaults).
+  Today's =-conf also carries only the two token lines (no radio
+  keys), so pins/params are identical to the bench. What ELSE
+  changed since the bench: the bot ran ITS radio on this box
+  between bench and now (bot SPI mode all morning) - and the bot
+  used pymc_core's driver with cad 15/7 on the SAME antenna/pins.
+  If the bot's radio process is STILL RUNNING (zombie/hung), it
+  could be holding the DIO1 line or the SPI chip: two SPI masters
+  fight. CHECK: any leftover bot python process. RESULT: only the
+  two expected processes (cleanmodem + bot.py) - no zombies; lsof
+  lines absent (no holders shown). So the radio is exclusively
+  cleanmodem's and RX is armed per the code... yet rx=0. NEXT
+  PROBE: read the noise floor through the modem's own protocol
+  (the driver's noise value comes from an actual register read -
+  a REAL number proves SPI + radio alive; a frozen -105 default
+  proves the radio path is dead). Craft a raw controller socket
+  probe using cleanmodem.frames. Probe WRITTEN:
+  scripts/probe_modem.py (raw socket, NOISE_REQ + STATUS_REQ,
+  prints values only). Run it on the box with the observer token.
+  PROBE RESULT (09:3x): noise = -105.0 EXACTLY (the driver's frozen
+  default), last_rssi=-100 (also default), rx_state=RX, uptime
+  1672 s. The modem CLAIMS RX is armed but the noise read returns
+  the default -> server.py's noise handler catches Exception and
+  substitutes -105.0, so the real read RAISED. Something is wrong
+  inside the radio thread's SPI path (or the thread is stuck and
+  _submit raises). NEXT: grep the modem journal since 09:07 for ANY
+  error/warning lines (radio thread error / IRQ handling failed /
+  radio work failed). RESULT: NO error lines at all - only metrics.
+  So _hw_noise did NOT raise; hal worked. REINTERPRETATION: 210/-2
+  = -105.0 EXACTLY - a raw RSSI-instant byte of 210 is a REAL,
+  PLAUSIBLE quiet-band noise floor. The radio may be HEALTHY and
+  simply hearing NOTHING (quiet moment) - OR genuinely deaf.
+  CONTROL EXPERIMENT: the repeater on the same box still points at
+  the OLD modem (stopped) - it hears nothing either. The bench
+  heard 8-12/min through the SAME radio. What differs now vs
+  bench: (1) time of day, (2) the bot is linked as controller but
+  its modem_feed is off (irrelevant to RX), (3) NOTHING radio-
+  side. Wait - critical: is anyone TRANSMITTING? The bot sent no
+  adverts since startup (the 115B advert was dropped at 09:08:47
+  and periodic adverts are 24 h). The repeater TXs nothing
+  (mode: no_tx). So the mesh may genuinely be silent with no one
+  pinging it. CONTROL: ask Brett to send a mesh message from his
+  phone NOW and watch rx.
+- Step 6 CONTROL RESULT (09:39-09:41): Brett sent the DM - rx
+  STAYED 0. THE RADIO IS DEAF. Not a quiet mesh: a real DM arrived
+  on air and cleanmodem heard nothing. New suspects (radio side):
+  (a) DIO1 IRQ never fires (wrong pin? old bench conf didn't set
+  pins so preset pimesh-1w-v2 used then too - same), (b) the
+  antenna/RF front-end path (DIO2 RF switch) mis-set by the GPIO
+  backend difference: bench used... WAIT. CRITICAL DIFFERENCE
+  FOUND: the bench ran with the OLD colon conf = NO pin keys =
+  preset pimesh-1w-v2 - same as today. The REAL difference: the
+  GPIO BACKEND. Bench: gpiod present? No - bench worked with RPi
+  module present (the venv had it before tonight's refresh pruned
+  it - that's the missing dep!). Today: rpi-lgpio (lgpio-based).
+  The lgpio backend's wait_edge uses... our _RpiGpio.wait_edge
+  arms add_event_detect via RPi.GPIO API - rpi-lgpio emulates it.
+  If its event detection never fires (callback thread broken),
+  the worker NEVER sees the IRQ -> packets sit unread in the
+  chip -> rx=0 forever, and NO errors logged. That fits ALL the
+  evidence. NEXT: test the IRQ edge detection in isolation on the
+  box (tiny python: set DIO1 input, poll its level while the radio
+  is in RX - a real packet SHOULD pulse it; even better, read the
+  IRQ flags register directly: if IRQ_RX_DONE is SET while waiting,
+  the edge callback is the broken layer).
+  PROBE RESULT: 'GPIO busy' on the reset-pin claim - the probe
+  fought the RUNNING service for the pins (only one radio owner is
+  allowed; by design). Cannot probe pins out-of-band while
+  cleanmodem runs. REDIRECT: restart the service first (re-arms
+  everything; rules out a one-time wedged IRQ arm at 09:07) and
+  watch rx for a few minutes. If still deaf, add an IRQ-poll
+  counter to the modem's status and read THAT via the probe (code
+  change + redeploy). RESTART DONE 09:45:56 - modem listening,
+  bot restarted with it. Step 6 test 2 (09:47): fresh receiver,
+  Brett's DM again NOT received - rx stays 0. CONFIRMED DEAF
+  across a clean re-arm. Diagnosis: the interrupt path never
+  delivers (rpi-lgpio's add_event_detect emulation is the prime
+  suspect) OR the IRQ flags themselves never set (RF path). NEXT:
+  code fix with in-service diagnostics: add an IRQ-poll counter +
+  last IRQ flags to RadioStatus (visible through the existing
+  status probe), plus a low-tech fallback POLLING mode (disable
+  edge-wait, poll flags every IRQ_WAIT_S) behind a config flag -
+  polling costs latency but PROVES the radio hears packets. Ship
+  as v0.0.155, deploy, test with polling on.
+- v0.0.155 BUILT (full suite: one flaky identity-clamp test failed
+  once in the full run, passed on retry and in the targeted rerun -
+  timing-sensitive, pre-existing, not ours): irq_poll conf flag,
+  IRQ counters in status + metrics, poll/edge/flags diagnostics.
+  NEXT: deploy, set irq_poll=true in /etc/cleanmodem/modem.conf,
+  restart, re-test the DM, read `irq:` metrics line. (Full suite
+  re-run clean: 568 passed, 1 skipped - the earlier single failure
+  was a flaky identity-clamp test, green on all retries.)
+  v0.0.155 COMMITTED + PUSHED (a72ef14).  DEPLOYED to hilltop
+  2026-09-14 (running a72ef14, config OK, bot restarted in SPI).
+- v0.0.156 BUILT (Brett chose the proper-fix path): gpio_backend
+  config option (auto|gpiod|rpi, default auto; a FORCED backend
+  fails loud instead of silently falling back - that fallback hid
+  the deaf RX for hours), 6 new tests, example conf documents it.
+  Full  suite 575 passed, 1 skipped. COMMITTED + PUSHED: 2e457f1
+ (v0.0.156). NEXT: deploy on hilltop, set gpio_backend=gpiod,  restart, re-test the DM, read irq flags. v0.0.156 DEPLOYED to
+ hilltop (running 2e457f1, config OK). NEXT: gpio_backend=gpiod
+ in modem.conf, restart stack, test DM.
+  NEXT:  set irq_poll=true in /etc/cleanmodem/modem.conf, redo the
+  handover (stop bot+old modem, start cleanmodem), restart bot,
+  test the DM, read the irq: metrics line. STEP 4+5 RE-RUN
+  PASSED 10:13 (poll mode on): SX1262 up, listening, bot authed
+  as controller, `Radio up via the modem`. NEXT: Brett sends a
+  DM; watch rx + the irq: diagnostics line.
+- Poll-mode diagnostics (10:15): polls=2388 (polling RUNS), edges=0
+  (expected in poll mode), flags=0xAA00 PERSISTENTLY. DECODED:
+  0xAA00 = 10101010 00000000 - bit 9 (IRQ_TIMEOUT/CAD_DETECTED) plus
+  11/13/15 (RESERVED bits). An alternating-bit byte (0xAA) in the
+ high byte + reserved bits set = the chip's status byte returning
+ the 'command timeout' pattern OR MISO floating garbage: the radio
+ is NOT answering SPI reads properly. So the deafness is BELOW the
+ GPIO layer: the SPI/radio link itself. BUT the radio 'came up'
+ (config commands seemed accepted), noise read plausible... yet  flags read garbage. Candidate: SPI bus contention or signal
+  integrity at this exact moment; or the chip wedged mid-command.
+  SPI SPEED REVIEW (Brett's ask): the design runs spi_speed_hz=2 MHz
+  everywhere (default in config.py:84, example conf, and the bench
+  conf never overrode it - both bench and today ran 2 MHz). The
+ '8 MHz is a bench option' comment was aspirational, NEVER deployed.
+ So lowering the rate would NOT explain/change today's failure:
+ nothing is running fast. HOWEVER: a design hardening is worth
+ taking - the SX126x datasheet allows up to 16 MHz for reads but
+ commands+BUSY handshaking are timing-sensitive; if we ever try  8 MHz it must be a deliberate bench test. For NOW: keep 2 MHz,
+  the wedge is not speed-related. FULL STOP/RESTART EXECUTED
+  10:23:01 - SX1262 up clean. NEXT: wait for the first metrics
+  lines, read the irq: flags (sane 0x0000/real activity = chip
+  re-synced; still 0xAA00 = deeper problem), then Brett's test DM.
+  NOTE: the 'sleep 120' pattern produced no output AGAIN (second
+  time) - long sleeps inside the paste window seem to swallow the
+ result. Workaround: read without sleeping; the runbook notes
+ the wait happened anyway.
+- DIAGNOSIS RESHAPED (10:27): flags=0xAA00 IMMEDIATELY after a full
+ stop/rest/restart - a fresh reset did NOT fix it. 0xAA00 decodes
+ to bit 9 (CAD_DETECTED/TIMEOUT) + reserved bits 11/13/15 = the
+ alternating 0xAA pattern = MISO floating / reads not reaching the
+ chip. Bring-up only 'worked' because writes have no read-back and
+ _wait_busy may have been gating on a mis-read BUSY. THE VARIABLE
+ VS THE (WORKING) BENCH IS THE GPIO BACKEND: bench ran classic
+ RPi.GPIO (pruned by tonight's dependency refresh); tonight runs
+ the rpi-lgpio shim - if its BUSY read / reset write do not reach
+ the real pins, every SPI transfer runs blind and reads return
+ floating garbage. EXACTLY matches all evidence. NEXT: force the
+ gpiod backend (still installed; our driver opens by PATH so the
+ earlier by-label iter bug does not apply; the earlier hand probe
+ failed only on LOOKUP mode + permissions as meshtech-in-login-  shell - the service may differ), or fix the shim. Ask Brett:
+ try gpiod backend first (one-line conf-independent patch or
+ env), restart, read flags. BRETT ASKED FOR THE CONSEQUENCES OF
+ EACH PATH - explained in plain terms; his call pending.
+ The 09:07 boot worked once (radio up line) then went deaf -
+ consistent with a wedge AFTER bring-up (e.g. during the first
+ cad/TX attempt at 09:08:47 - the dropped 115B advert!). NEXT:
+ power-cycle the radio path - full service stop, give the chip
+ reset line a rest, restart (a clean reset pulse re-syncs the
+ chip's SPI state machine).
+  Box said 'No such file': the script was written LOCALLY after the
+  last deploy - the box has not received it. Two options: scp the
+  file over, or inline it via heredoc. NEXT: inline heredoc run
+  (no file transfer needed). for gpiod / RPi.GPIO variants, install
+  the right one, restart. RESULT: venv has spidev only (no gpiod, no
+  RPi.GPIO) - the factory falls through to the RPi.GPIO import, which
+  raises. gpiod==1.6 does not exist on PyPI (latest 1.x is 1.5.4; 2.x
+  is the new incompatible API). gpiod==1.5.4 INSTALLED OK but the
+  service still fails 07:49:40 - need the fresh traceback: likely a
+  gpiod runtime error (chip access from the meshtech user? pin claim
+  conflict with a held line?) or the next layer down. TRACEBACK
+  SHOWED: still 'No module named RPi' - so _GpiodGpio() raised too,
+  silently, and the factory fell through to _RpiGpio. gpiod 1.5.4 is
+  INSTALLED and imports FINE as the service user (the AttributeError
+  on __version__ was a probe artifact, not a failure). The REAL
+  failure is the chip open: hand probe as meshtech ->
+  `PermissionError [Errno 13] Permission denied: '/dev/gpiochip4'`.
+  Note it names chip FOUR though the code opens chip ZERO
+  (hardcoded in _GpiodGpio.__init__) - gpiod's lookup resolved the
+  path to a different chip device, OR the Pi's header lives on
+  gpiochip4 (newer kernel layouts). Either way: wrong/forbidden chip
+  -> factory falls to RPi.GPIO -> missing -> crash loop. NEXT:
+  capture chip list + board model + meshtech's groups to pick the
+  fix (likely an RPi.GPIO-compatible shim install to match the
+  bench, plus repo fix making the chip path/backend configurable).
+  group may not apply to /dev/gpiochip0's owning group, or the node
+  names the chip differently). NEXT: run the constructor AS the
+  service user by hand.
+
+## Preconditions
+
+- Bench passed and rolled back (bench Steps 5-7 done; live stack up).
+- Bench unit removed: `/etc/systemd/system/cleanmodem-bench.service`
+  gone (`sudo rm ... && sudo systemctl daemon-reload` if not).
+- The pin test `test_lbt_retry_delays_are_continuous` passed locally
+  (13 passed) - the jitter property is already proven; the box work
+  here verifies the WIRING, not the timing math.
+
+## Step 0 - update the box to v0.0.153+ (DONE 2026-09-14)
+
+`manage.sh update clean-modem` -> v0.0.153 @ 82147f3, config
+validation OK, bot restarted. (Dashboard note from the validator,
+unrelated to today: web.host is not loopback - plaintext HTTP on the
+LAN; consider a TLS reverse proxy someday.)
+
+## Step 1 - freeze the live stack (DONE 2026-09-14)
+
+`config.yaml.pre-modem` backup made. Grep showed: mcp enabled
+(radio_mode absent = spi), modem_host/port pre-set to 127.0.0.1:5055,
+modem_token_file absent, modem_feed enabled (inert in modem mode).
+
+## Step 2 - repeater credential recon (DONE 2026-09-14, branch (b))
+
+Repeater unit reads `/etc/openhop_repeater/config.yaml`. It reaches
+the old modem with an EMPTY token - cleanmodem refuses empty
+credentials, so a fresh observer token was minted (Step 3) and the
+repeater's `modem_tcp.token` will be set at the reconnect step.
+
+## Step 3 - permanent config + tokens (DONE 2026-09-14, with findings)
+
+- `/etc/cleanmodem/` holds observer.token + controller.token (mode
+  600, meshtech-owned).
+- LESSON: `sudo cp deploy/cleanmodem.conf.example` lands root-owned
+  (the service could not read it -> PermissionError), AND the example
+  is in the WRONG FORMAT for the parser (colon vs `=`). Fixed in the
+  moment with a minimal `=`-style conf:
+
+```bash
+sudo bash -c 'cat > /etc/cleanmodem/modem.conf <<EOF
+token_file=/etc/cleanmodem/observer.token
+controller_file=/etc/cleanmodem/controller.token
+EOF
+chown meshtech:meshtech /etc/cleanmodem/modem.conf'
+```
+
+- Token files must be mode 600 or the loader refuses them (by
+  design).
+
+## Step 4 - the permanent unit + the handover (DONE 2026-09-14, IN FAILURE)
+
+Unit installed as drafted below; bot + old modem stopped; cleanmodem
+currently crash-looping on `No module named 'RPi'` (see PROGRESS).
+
+The unit as installed (`/etc/systemd/system/cleanmodem.service`):
+
+```ini
+[Unit]
+Description=cleanmodem - standalone LoRa modem (owns the radio; bot connects as controller)
+Documentation=file:///opt/meshtech-bot/docs/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshtech
+Group=meshtech
+WorkingDirectory=/opt/meshtech-bot
+ExecStart=/opt/meshtech-bot/.venv/bin/python -m cleanmodem --config /etc/cleanmodem/modem.conf
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/meshtech-bot/data
+PrivateDevices=false
+SupplementaryGroups=gpio spi
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Pass bar when it finally starts: `active (running)`, `Radio up`, no
+SPI errors, listening on port 5055.
+
+## Step 5 - the bot flips to radio_mode: "modem" (DONE 2026-09-14)
+
+👁️ READ - One config change and a restart: the bot abandons SPI,
+connects to cleanmodem on 127.0.0.1:5055 as controller, and everything
+downstream (decode, replies, dashboard) works unchanged. The bot's
+`modem_feed:` section becomes inert (the modem serves observers
+directly) - leave it as is.
+
+▶️ DO - On hilltop:
+
+```bash
+sudo nano /opt/meshtech-bot/config.yaml
+```
+
+In the `mcp:` block set (uncomment `modem_host` / `modem_port` if
+commented; add `radio_mode` - it is new since the box last looked):
+
+```yaml
+mcp:
+  enabled: true
+  radio_mode: "modem"
+  modem_host: "127.0.0.1"
+  modem_port: 5055
+  modem_token_file: "/etc/cleanmodem/controller.token"
+```
+
+Save, exit, then:
+
+```bash
+sudo systemctl restart meshtech-bot
+sleep 8
+sudo journalctl -u meshtech-bot -n 30 --no-pager | grep -E "modem|Radio up|identity"
+sudo journalctl -u cleanmodem.service -n 15 --no-pager | grep -E "auth|client"
+```
+
+📋 PASTE - both journal greps. Pass bar: bot logs `Radio up via the
+modem - the MCP drives the air.` and cleanmodem logs an authenticated
+controller client. Do NOT proceed to TX testing before this line.
+
+## Step 6 - TX verification (on air, with the new jitter) (DONE 2026-09-14)
+
+👁️ READ - What "TX works" means, checked in order:
+1. A bot reply leaves through cleanmodem (TX_DONE with real airtime).
+2. The TX loopback reaches the repeater (it logs the bot's own packet
+   as RX - a radio never hears itself; the loopback replaces that).
+3. When the channel is busy, the clear-channel wait engages and the
+   jittered retries still end in a clean TX (or the 4.0 s cap with the
+   explicit may-collide warning - same semantics the old stack had).
+   The continuous 0.10-0.30 s spacing itself is proven by the local
+   pin test; on the box we verify the loop behaves (waits, then sends).
+
+▶️ DO - From a phone on the mesh, DM the bot a command that forces a
+reply (e.g. `!nodes`). Then on hilltop:
+
+```bash
+sudo journalctl -u cleanmodem.service -n 40 --no-pager | grep -E "TX|clear-channel|metrics"
+sudo journalctl -u openhop-repeater -n 20 --no-pager | grep -iE "rx|tx"
+```
+
+📋 PASTE - both. Expected: one `TX_DONE`-path line with airtime in the
+hundreds of ms, `tx=` climbing in the metrics line, the bot's packet
+visible in the repeater's RX (loopback), and an ACK/reply heard back.
+If the mesh was busy when you sent, you will also see
+`clear-channel wait engaged before TX` - that line is the jitter loop
+working; paste it if you get it.
+
+## Step 7 - repeater reconnect + one-hour soak (DONE 2026-09-14)
+
+👁️ READ - The repeater's client must be pointed at the new observer
+token (branch (b)): edit `/etc/openhop_repeater/config.yaml`,
+`modem_tcp.token:` <- the observer token's value (read it once with
+`sudo cat /etc/cleanmodem/observer.token`), restart the repeater, and
+it reconnects to port 5055 (now cleanmodem). Then the box runs
+unattended for an hour: the metrics line every minute is the verdict -
+RX parity with the bench numbers (~8-12 unique packets/min on this
+mesh), crc_err at background (~one per couple of minutes), and no auth
+failures.
+
+▶️ DO - After at least 60 minutes of real traffic:
+
+```bash
+systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater|cleanmodem"
+sudo journalctl -u cleanmodem.service --since "-70 min" --no-pager | grep metrics | tail -5
+```
+
+📋 PASTE - the units list (cleanmodem + meshtech-bot + repeater
+running, meshtech-modem ABSENT) and the last 5 metrics lines.
+
+## Step 8 - make it permanent (DONE 2026-09-14)
+
+👁️ READ - Only after the soak passes: enable cleanmodem at boot,
+retire the old modem's unit, and keep the config backup for rollback.
+
+▶️ DO - On hilltop:
+
+```bash
+sudo systemctl enable cleanmodem.service
+sudo systemctl disable meshtech-modem 2>/dev/null || true
+git -C /opt/meshtech-bot status --short
+```
+
+📋 PASTE - the enable/disable output. Done - cleanmodem owns the air;
+the bot rides it; the repeater watches.
+
+## Rollback (works from ANY step, self-contained)
+
+👁️ READ - Back to exactly this morning: bot owns the radio over SPI,
+old modem holds port 5055, repeater reconnects to it. Nothing else
+needs remembering.
+
+▶️ DO - On hilltop:
+
+```bash
+sudo systemctl stop cleanmodem.service meshtech-bot
+sudo cp /opt/meshtech-bot/config.yaml.pre-modem /opt/meshtech-bot/config.yaml
+sudo systemctl start meshtech-modem meshtech-bot
+sleep 8
+systemctl list-units --type=service --state=running | grep -Ei "meshtech|modem|repeater|cleanmodem"
+sudo journalctl -u meshtech-bot -n 20 --no-pager | grep -E "Radio up|spi"
+```
+
+📋 PASTE - the running-units list (cleanmodem absent, the other three
+present) and the bot log showing the SPI radio up.
+
+Branch-(b) rollback note: the repeater reached the OLD modem with an
+empty token - restoring that means setting `modem_tcp.token: ''`
+back in `/etc/openhop_repeater/config.yaml` and restarting the
+repeater. That is the only extra file.
+
+## Follow-ups owed after the air is back (repo fixes)
+
+0. URGENT: core/config.py's McpCfg builder drops radio_mode,
+   modem_host, modem_port, modem_token_file from YAML (always
+   defaults) - the bot can never enter modem mode. Parse the four
+   keys + validation (radio_mode in {spi, modem}; modem mode
+   requires modem_token_file) + tests. Ship before/with the
+   switchover rerun.
+
+1. `deploy/cleanmodem.conf.example` is colon-style but the parser
+   splits on `=`: colon lines are silently skipped (defaults apply,
+   tokens never load) and any colon line whose comment contains `=`
+   raises `bad key`. Fix the example to `=` style (or teach the
+   parser colon style) + a test that the example parses.
+2. The GPIO dependency (gpiod v1 API or RPi.GPIO) is not in
+   requirements.txt; the venv lost it (prime suspect: the deploy
+   dependency refresh). Pin it and re-add.
+3. Bench auth story: the bench conf was colon-style, so token files
+   never loaded - work out what actually authenticated during the
+   bench and fix the runbook note if needed.
+
+## Pass bar summary
+
+- Box on v0.0.153+ before any TX (Step 0) - DONE
+- cleanmodem permanent unit `active (running)`, `Radio up` (Step 4) -
+  IN PROGRESS (GPIO dep)
+- Bot logs `Radio up via the modem` (Step 5)
+- TX on air: airtime numbers, loopback seen by the repeater, mesh ACK
+  heard back (Step 6)
+- Soak: rx parity with bench, crc_err at background, no auth failures
+  (Step 7)
+- Rollback proven available at every point (bottom section)
+
+## Dead knobs in radio_mode: "modem" (do not tune)
+
+- `mcp.cad_peak` / `mcp.cad_min` / `precheck_cad_*` /
+  `inter_packet_politeness_seconds` / `clear_channel_wait_seconds`:
+  SPI-mode-only. In modem mode the MODEM owns LBT + politeness
+  (`cleanmodem` conf: `cad_peak`, `cad_min`, `politeness_seconds`,
+  `clear_channel_wait_seconds`).
+- `lbt_max_attempts` (cleanmodem conf): reserved, no effect (v0.0.153).
+- `modem_feed:`: inert in modem mode (logged at start, by design).
+
+## Addendum - 2026-09-14 afternoon: the deaf-RX hunt
+
+### What happened after the bot flip
+
+Bot authenticated as controller, `Radio up via the modem` - but
+`rx=0` forever. A test DM on the air was never heard. Probes showed
+the radio "RX armed", noise floor plausible, no errors in the log:
+the receiver just never reported a packet, even after full stop /
+reset-pulse restarts.
+
+### Evidence trail (new diagnostics v0.0.155)
+
+`irq: polls=N edges=0 flags=0xAA00 poll_mode=True` - polling ran, the
+flags were garbage. 0xAA00 is an alternating-bit pattern in reserved
+bits: the classic signature of SPI reads not reaching the chip
+(BUSY/reset writes going nowhere, MISO floating). Full power cycle
+did NOT clear it -> not a wedged chip; the GPIO layer itself was
+under suspicion.
+
+### SPI speed ruled out (design review)
+
+Driver runs 2 MHz everywhere (config default, example conf; the "8
+MHz bench option" comment was never deployed). Both the working bench
+and today's failure ran at 2 MHz, so clock speed is not the variable.
+Keep 2 MHz; the BUSY handshake, not SPI speed, protects timing.
+
+### GPIO backend A/B (v0.0.156-0.0.158)
+
+- v0.0.156 added `gpio_backend` (auto | gpiod | rpi); forced modes
+  fail loud. First forced-gpiod start failed loud with "module
+  'gpiod' has no attribute 'Chip'" -> the backend mixed APIs and had
+  silently NEVER run (auto fell back to the shim every time).
+- v0.0.157 fixed the name to v1 (`gpiod.chip`); the box then failed
+  loud with "iter() returned non-iterator" - the 1.x pip bindings are
+  ABI-broken on Debian 13 (v1 Python over the v2 system libgpiod).
+- v0.0.158 rewrote the backend for the v2 API (gpiod.Chip +
+  request_lines + LineSettings). gpiod>=2.0 ships cp313 aarch64
+  wheels - installs clean on the box, no compiler needed.
+
+### Current hilltop state & next command
+
+Config in place: `gpio_backend=gpiod`, `irq_poll=true`. Stack stopped
+from the failed start. After deploying v0.0.158, start the modem,
+then the bot (plain `systemctl start cleanmodem.service` then
+`meshtech-bot`, with sleeps); expect `SX1262 up` with NO error lines.
+Then a test DM: if `rx` counts move and flags read sane values, the
+shim was the culprit and modem mode is proven; the switchover resumes
+at TX verification.
 
 ## Completion - 2026-09-14 evening: the switchover is DONE and reboot-proven
 
@@ -32,8 +811,9 @@ hilltop, including a full reboot (18:10, 2026-09-14).
    was sent 4 of its 7 bytes.
 5. v0.0.163/0.0.165 - read-window misalignment detour; final truth is
    `[garbage, status, data...]` (slice from byte 2).
-6. **v0.0.166 - `en` pin 26 was never driven** (openHop's proven
-   PiMesh-1W v2 map powers the radio stage through it).
+6. v0.0.166 - the `en` power-enable pin 26 was never driven
+   (openHop's proven PiMesh-1W v2 map powers the radio stage
+   through it).
 7. **v0.0.167 - THE ROOT CAUSE: the opcode table was shifted by one.**
    Cross-checking LoRaRF-Python (vendored by openhop_core for this
    exact E22-900M30S) found: SetDIO3AsTcxoCtrl is 0x97 (we sent 0xD4 -
@@ -82,13 +862,13 @@ sudo journalctl -u meshtech-bot -b --no-pager | grep -E "Radio config applied|Ra
 ### Healthy-stack signatures (what quiet looks like)
 
 - cleanmodem metrics: `clients=2` (bot + repeater), `auth_fail` not
-  climbing, `crc_err` at background, `irq→fanout p50<1ms`.
+  climbing, `crc_err` at background, `irq->fanout p50<1ms`.
 - NO `timed out (idle)`, NO `displaced`, NO `Config rejected`,
   NO `link down - retry` flapping (a single pair around a restart is
   that restart, not a flap).
 - Handshake on every (re)connect: `auth accepted ... as observer` ->
   `observer config proposal: ... (kept ...)` -> `observer CAD params
-  proposal (echoed)` - and that's it; the connection then stays up.
+  proposal (echoed)` - and that is it; the connection then stays up.
 - The proposal line doubles as a config-drift alarm: it prints the
   repeater's believed config vs the modem's live config.
 
