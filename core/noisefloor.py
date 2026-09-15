@@ -129,17 +129,31 @@ class NoiseFloorMonitor:
             log.debug("noise-floor prune failed: %s", exc)
 
     async def _sample_once(self) -> None:
+        # SPI mode: read the local driver's averaged floor directly.
         radio = getattr(self._mcp, "radio", None)
-        if radio is None:
-            return
-        getter = getattr(radio, "get_noise_floor", None)
-        if not callable(getter):
+        if radio is not None:
+            getter = getattr(radio, "get_noise_floor", None)
+            if callable(getter):
+                try:
+                    loop = asyncio.get_running_loop()
+                    floor = await loop.run_in_executor(None, getter)
+                except Exception as exc:
+                    # A dead/failed read just leaves a gap in the graph.
+                    log.debug("noise-floor read failed: %s", exc)
+                    return
+                self.record(time.time(), floor)
+                return
+        # Modem mode (v0.0.180): the cleanmodem process owns the chip
+        # and mcp.radio is None by design - ask the chip's owner over
+        # the controller link (NOISE_REQ -> NOISE_RESP, instantaneous
+        # channel RSSI). A dead link or timeout just leaves a gap.
+        modem = getattr(self._mcp, "modem_client", None)
+        if modem is None:
             return
         try:
-            loop = asyncio.get_running_loop()
-            floor = await loop.run_in_executor(None, getter)
+            floor = await modem.noise()
         except Exception as exc:
-            # A dead/failed read just leaves a gap in the graph.
-            log.debug("noise-floor read failed: %s", exc)
+            log.debug("modem noise request failed: %s", exc)
             return
-        self.record(time.time(), floor)
+        if floor is not None:
+            self.record(time.time(), floor)

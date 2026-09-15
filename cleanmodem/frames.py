@@ -185,6 +185,13 @@ def parse_rx_payload(payload: bytes) -> Tuple[int, float, int, bytes]:
     return rssi, snr_x10 / 10.0, signal_rssi, payload[RX_META_SIZE:]
 
 
+def parse_noise_payload(payload: bytes) -> float:
+    """Decode a NOISE_RESP payload (noise*10, i16 LE) into dBm."""
+    if len(payload) < 2:
+        raise FrameError("NOISE_RESP payload shorter than 2 bytes")
+    return struct.unpack("<h", payload[:2])[0] / 10.0
+
+
 def _sanitize(text: object, limit: int = 80) -> str:
     """Make peer-controlled text safe for log lines (no newlines,
     control characters, or ANSI escapes) and bounded in length."""

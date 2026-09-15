@@ -9,6 +9,19 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.180 - 2026-09-14 (DEV)
+
+**The noise-floor card works again in modem mode.** The cleanmodem
+switchover had silently orphaned it: the monitor sampled
+`mcp.radio.get_noise_floor()`, and in modem mode `mcp.radio` is None
+by design - the bot no longer owns the chip. The monitor now asks the
+chip's owner over the controller link: `ModemClient.noise()`
+round-trips the protocol's existing `NOISE_REQ` → `NOISE_RESP`
+(instantaneous channel RSSI, noise×10 i16 LE), decoded by the new
+`frames.parse_noise_payload`. SPI mode reads the local driver exactly
+as before (and never consults the modem); a dead modem link just
+leaves a gap in the graph, never an error. 4 new tests; suite 583.
+
 ## 0.0.179 - 2026-09-14 (DEV)
 
 **Config pipeline hardened** (Brett's rule: the example config AND the

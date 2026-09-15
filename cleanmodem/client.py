@@ -48,6 +48,8 @@ class ModemClient:
         self._tx_replies: "asyncio.Queue[bool]" = asyncio.Queue()
         self._tx_gate = asyncio.Lock()
         self._config_reply: "asyncio.Queue[bytes]" = asyncio.Queue()
+        # v0.0.180: NOISE_REQ round-trips resolve on NOISE_RESP.
+        self._noise_reply: "asyncio.Queue[float]" = asyncio.Queue()
         self.connected = False
         # v0.0.173: live observer count pushed by the modem (its TCP
         # push customers - openHop on hilltop). Drives the dashboard
@@ -225,6 +227,12 @@ class ModemClient:
                     self._tx_replies.put_nowait(False)
                 elif cmd == frames.CMD_CONFIG_RESP:
                     self._config_reply.put_nowait(payload)
+                elif cmd == frames.CMD_NOISE_RESP:
+                    try:
+                        self._noise_reply.put_nowait(
+                            frames.parse_noise_payload(payload))
+                    except frames.FrameError:
+                        continue
                 elif cmd == frames.CMD_OBSERVER_STATE:
                     self.observer_count = (payload[0] if payload else 0)
                 elif cmd == frames.CMD_ERROR:
@@ -233,7 +241,7 @@ class ModemClient:
                 # CONFIG_RESP / STATUS_RESP / PONG: the bot issues none
                 # of those requests today, so they are ignored here.
 
-    # ── TX / config ───────────────────────────────────────────────────
+    # ── TX / config / noise ──────────────────────────────────────────
     async def configure(self, config_payload: bytes) -> Optional[bytes]:
         """One SET_CONFIG (controller only); resolves on CONFIG_RESP.
 
@@ -262,6 +270,34 @@ class ModemClient:
                 return None
             except Exception as exc:      # noqa: BLE001
                 log.warning("config push failed: %s", exc)
+                return None
+
+    async def noise(self) -> Optional[float]:
+        """One NOISE_REQ; resolves on NOISE_RESP (dBm) or None on a
+        dead link / timeout. v0.0.180: feeds the dashboard's noise-floor
+        monitor in modem mode - the controller asks, the chip's owner
+        answers (the same instant-RSSI read the modem's own LBT uses).
+        Observers may ask this too; the controller just happens to poll
+        it on a schedule."""
+        writer = self._writer
+        if writer is None or not self.connected:
+            return None
+        async with self._tx_gate:
+            while not self._noise_reply.empty():
+                try:
+                    self._noise_reply.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            try:
+                writer.write(frames.build_frame(frames.CMD_NOISE_REQ, b""))
+                await asyncio.wait_for(writer.drain(), TX_TIMEOUT_S)
+                return await asyncio.wait_for(self._noise_reply.get(),
+                                              TX_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.debug("NOISE_REQ timed out waiting for the modem")
+                return None
+            except Exception as exc:      # noqa: BLE001
+                log.debug("NOISE_REQ failed: %s", exc)
                 return None
 
     async def send(self, data: bytes) -> bool:

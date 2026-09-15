@@ -11,6 +11,11 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.180** - Noise-floor card restored in modem mode: the monitor
+  asks the chip's owner (ModemClient.noise(), NOISE_REQ round-trip)
+  when mcp.radio is None - the switchover had orphaned it silently.
+  SPI path unchanged; dead link = graph gap. Suite 583.
+
 - **v0.0.179** - Config pipeline hardened (Brett: "whatever it takes so
   the example config.yaml is current in the repo AND on the box, and
   manage.sh config options always see the latest"). Example now ships

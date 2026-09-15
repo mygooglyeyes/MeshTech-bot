@@ -108,7 +108,13 @@ _SHORT_LEN = 7
 # re-installs documented defaults ACTIVE (secrets still excluded);
 # manage.sh clean-config runs the sync after copying the example, so
 # every config-touching menu option starts from the complete schema.
-__version__ = "0.0.179"
+# 0.0.180: the dashboard's noise-floor card lives again in modem mode
+# (the cleanmodem switchover had silently orphaned it: mcp.radio is
+# None by design there, so the monitor sampled nothing). The monitor
+# now asks the chip's owner over the controller link: ModemClient.noise()
+# round-trips the protocol's NOISE_REQ -> NOISE_RESP (noise*10 i16),
+# parsed by the new frames.parse_noise_payload. SPI mode unchanged.
+__version__ = "0.0.180"
 
 
 def _short(sha: str) -> str:
