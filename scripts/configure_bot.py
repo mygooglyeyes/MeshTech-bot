@@ -99,6 +99,44 @@ def ask_yes_no(prompt: str, default: bool) -> bool:
         print("   -> please answer y or n.")
 
 
+def ask_display_name(current: str) -> str:
+    """Ask for bot.display_name - the bot's radio name (adverts + replies).
+
+    Empty keeps the current value; the name is capped at the advert
+    payload's 32-character name budget (core.mcp.MAX_ADVERT_NAME_CHARS)
+    so what you type is what the mesh sees.
+    """
+    while True:
+        raw = input(f" Bot name (adverts/replies) [{current}]: ").strip()
+        if not raw:
+            return current
+        if len(raw) > 32:
+            print("   -> 32 characters maximum (the advert name budget).")
+            continue
+        return raw
+
+
+def ask_command_prefix(current: str) -> str:
+    """Ask for bot.command_prefix - one visible symbol; Enter keeps.
+
+    Same rules the config loader enforces (v0.0.108): exactly one
+    visible symbol, the reserved ':' '#' '@' refused with the reason,
+    so what the editor accepts is exactly what the bot will run.
+    """
+    while True:
+        raw = input(f" Command prefix symbol [{current}]: ").strip()
+        if not raw:
+            return current
+        if len(raw) != 1 or raw.isspace():
+            print("   -> exactly one visible symbol (e.g. ! or $).")
+            continue
+        reason = RESERVED_PREFIX_REASONS.get(raw)
+        if reason:
+            print(f"   -> '{raw}' will not work - {reason}.")
+            continue
+        return raw
+
+
 def ask_prefixes(existing: list) -> list:
     print("   Admin nodes may run control commands (!diag, !reload, ...).")
     print("   Enter one 12-character key prefix per line; empty line to finish.")
@@ -253,6 +291,14 @@ def splice_scalar(text: str, dotted: str, py_value) -> str:
     return text[:header.end()] + "\n" + new_line + text[header.end():]
 
 
+def write_command_prefix(text: str, value: str) -> str:
+    """Write bot.command_prefix as an ACTIVE line, any stale commented
+    example line removed so the file shows one unambiguous truth.
+    """
+    text = splice_scalar(text, "bot.command_prefix", f'"{value}"')
+    return re.sub(r"(?m)^  # command_prefix:.*\n?", "", text)
+
+
 def splice_channels(text: str, channels: list) -> str:
     """Replace the body of the channels: list with the new entries."""
     start = re.search(r"(?m)^channels:[ \t]*(?:#.*)?$", text)
@@ -340,6 +386,15 @@ def splice_replies(text: str, rules: list) -> str:
 DEFAULTS = {
     "connection.port": 5000,
     "mesh.max_inbound_hops": 0,
+}
+
+# Symbols that must never be the command prefix - kept in lockstep with
+# core.config.RESERVED_PREFIX_REASONS (a test pins the parity). Each of
+# these already carries meaning in mesh message text.
+RESERVED_PREFIX_REASONS = {
+    ":": "it splits the sender name from the message ('Name: body')",
+    "#": "it marks channel names like #test",
+    "@": "it marks node addresses like @K7ABC",
 }
 
 
@@ -553,6 +608,10 @@ def set_full_key(text: str, dotted: str, rendered: str) -> str:
     section = dotted.split(".", 1)[0]
     if not re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:#.*)?$", text):
         raise SystemExit(f"no '{section}:' section in this file")
+    if dotted == "bot.command_prefix":
+        # the prefix carries a stale commented example line - clean it so
+        # the file shows one unambiguous truth (same as the walkthrough).
+        return write_command_prefix(text, rendered.strip().strip('"'))
     return splice_scalar(text, dotted, rendered)
 
 
@@ -725,11 +784,16 @@ def _main_essentials(config_path: Path, original: str, data: dict) -> int:
     host = ask("Repeater IP address (companion host)",
                str(conn.get("host", "")))
     port = ask_int("Companion port", int(conn.get("port", 5000)), 1, 65535)
+    bot_raw = data.get("bot") or {}
+    current_prefix = str(bot_raw.get("command_prefix") or "!")
+    current_name = str(bot_raw.get("display_name") or "me")
+    display_name = ask_display_name(current_name)
     channels_new = ask_channels(channels)
     admins = ask_prefixes(existing_admins)
     hop_limit = ask_int("Max hops to answer (0 = unlimited)",
                         int(mesh.get("max_inbound_hops", 0)), 0, 7)
     replies_new = ask_replies(existing_replies)
+    command_prefix = ask_command_prefix(current_prefix)
     if ask_yes_no("Reach the dashboard from other machines (phone/laptop)?", host_reachable):
         web_host = "0.0.0.0"
     else:
@@ -741,6 +805,8 @@ def _main_essentials(config_path: Path, original: str, data: dict) -> int:
     text = original
     text = splice_scalar(text, "connection.host", f'"{host}"')
     text = splice_scalar(text, "connection.port", port)
+    text = write_command_prefix(text, command_prefix)
+    text = splice_scalar(text, "bot.display_name", f'"{display_name}"')
     text = splice_scalar(text, "mesh.max_inbound_hops", hop_limit)
     if web_host != str(web.get("host", "127.0.0.1")):
         text = splice_scalar(text, "web.host", f'"{web_host}"')
@@ -762,6 +828,8 @@ def _main_essentials(config_path: Path, original: str, data: dict) -> int:
     print("\n " + "-" * 62)
     print("  New settings:")
     print(f"    repeater   : {host}:{port}")
+    print(f"    bot name   : {display_name}")
+    print(f"    prefix     : {command_prefix}")
     print(f"    channels   : " + (", ".join(
         f"{c['name']}{' (listen-only)' if not c.get('reply', True) else ''}"
         for c in channels_new) or "NONE"))
@@ -780,7 +848,7 @@ def _main_essentials(config_path: Path, original: str, data: dict) -> int:
         print(" Everything not asked here keeps the values from the example file,")
         print(" including the commented-out options - each shows its own explanation,")
         print(" so edit config.yaml by hand whenever you want to turn one on:")
-        print("   command prefix, per-channel reply pacing, packet capture options,")
+        print("   per-channel reply pacing, packet capture options,")
         print("   module settings (weather/alerts/quake, push budget), raw hex capture,")
         print("   radio stats, update checks, logging and more - all with comments.")
         print(" (Or use the FULL editor: menu option 2 / --full - it asks every key.)")

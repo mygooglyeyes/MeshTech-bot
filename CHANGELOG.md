@@ -9,6 +9,32 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.181 - 2026-09-14 (DEV)
+
+**The essentials walkthrough (manage.sh option 1, "Configure the bot")
+now asks the command prefix and the bot's name.** Brett noticed the
+prefix he set earlier had "gone back to static", and that the
+walkthrough never asked what to call the bot either.
+
+- **Root cause (two halves, both confirmed):** the walkthrough never
+  had a prefix OR name question - git shows its prompt list identical
+  from v0.0.131 (when the editors were born) to today; only the FULL
+  editor (option 2) asked them. And hilltop's live file carried the
+  prefix key only as the example's commented-out line (the v0.0.179
+  sync log proves it: "[sync] adding ... command_prefix"), so the bot
+  ran the loader's '!' fallback all along.
+- The walkthrough now asks `Bot name (adverts/replies) [current]` and
+  `Command prefix symbol [current]`: Enter keeps, and the reserved
+  ':' '#' '@' prefixes are refused with the same plain-language
+  reasons the loader uses (parity is test-pinned so the two lists can
+  never drift apart). The name is capped at the advert payload's
+  32-character budget so what you type is what the mesh sees.
+- The writes are complete: keys are written as ACTIVE lines (Brett's
+  live-config rule), and the prefix write removes the stale commented
+  example line so the file shows one unambiguous truth. The full
+  editor's writer does the same cleanup.
+- 6 new tests. Suite: 589 pass / 0 fail.
+
 ## 0.0.180 - 2026-09-14 (DEV)
 
 **The noise-floor card works again in modem mode.** The cleanmodem

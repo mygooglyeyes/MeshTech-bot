@@ -114,7 +114,16 @@ _SHORT_LEN = 7
 # now asks the chip's owner over the controller link: ModemClient.noise()
 # round-trips the protocol's NOISE_REQ -> NOISE_RESP (noise*10 i16),
 # parsed by the new frames.parse_noise_payload. SPI mode unchanged.
-__version__ = "0.0.180"
+# 0.0.181: the essentials walkthrough (menu option 1) now asks the
+# command prefix AND the bot's radio name (bot.display_name) - it never
+# asked either (git: the prompt list is unchanged from v0.0.131), so a
+# prefix set via the full editor looked "lost" when the walkthrough was
+# used. ask_command_prefix enforces the loader's rules (one visible
+# symbol; ':' '#' '@' refused with reasons, parity test-pinned) and the
+# writes activate the keys and remove the stale commented example line;
+# the full editor's writer cleans it too. The name is capped at the
+# advert payload's 32-character budget.
+__version__ = "0.0.181"
 
 
 def _short(sha: str) -> str:

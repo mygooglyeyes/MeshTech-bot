@@ -11,6 +11,16 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.181** - The essentials walkthrough (option 1) never asked the
+  command prefix OR the bot's name (git: prompt list unchanged since
+  v0.0.131; only the full editor had those questions) - so a prefix set
+  via option 2 looked "lost" when option 1 ran. Now asks both, enforces
+  the loader's reserved symbols (parity test-pinned), writes the keys
+  ACTIVE, and removes the stale commented prefix line; the full
+  editor's writer cleans it too. Name capped at the 32-char advert
+  budget. Lesson: new config settings must land in BOTH editors.
+  Suite 589.
+
 - **v0.0.180** - Noise-floor card restored in modem mode: the monitor
   asks the chip's owner (ModemClient.noise(), NOISE_REQ round-trip)
   when mcp.radio is None - the switchover had orphaned it silently.
