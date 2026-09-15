@@ -9,6 +9,24 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.182 - 2026-09-14 (DEV)
+
+**The noise-floor card actually comes back in modem mode.** v0.0.180
+fixed the wrong half: Brett's screenshot (v0.0.180 running, radio up)
+showed no card and "no history" in packet analysis.
+
+- **Root cause:** bot.py's `_start_mcp` returned early in modem mode
+  (to skip the SPI modem feed) - and the noise-monitor creation block
+  sat AFTER that return. So `service.noise_monitor` was never created:
+  /api/noisefloor answered unavailable, the card hid itself, and no
+  samples persisted for the hourly panel. The v0.0.180 sampling code
+  (ModemClient.noise round-trip) was correct but never ran.
+- **Fix:** both MCP radio modes now create the monitor - SPI reads the
+  local driver, modem mode asks the modem over the controller link
+  (the v0.0.180 path, finally reachable). Companion mode unchanged.
+- Two wiring tests pin monitor creation per radio mode, running
+  `_start_mcp` with the network stubbed. Suite: 591 pass / 0 fail.
+
 ## 0.0.181 - 2026-09-14 (DEV)
 
 **The essentials walkthrough (manage.sh option 1, "Configure the bot")

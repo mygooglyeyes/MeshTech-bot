@@ -11,6 +11,13 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.182** - The real noise-floor fix: v0.0.180 fixed the sampling
+  path but bot.py's modem-mode early return meant the monitor was never
+  CREATED (card hidden, hourly panel starved on every cleanmodem box).
+  Both MCP radio modes now create it; wiring tests pin each mode.
+  Lesson: a feature living behind an early return needs a test that
+  exercises the actual startup path. Suite 591.
+
 - **v0.0.181** - The essentials walkthrough (option 1) never asked the
   command prefix OR the bot's name (git: prompt list unchanged since
   v0.0.131; only the full editor had those questions) - so a prefix set

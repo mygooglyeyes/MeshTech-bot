@@ -123,7 +123,15 @@ _SHORT_LEN = 7
 # writes activate the keys and remove the stale commented example line;
 # the full editor's writer cleans it too. The name is capped at the
 # advert payload's 32-character budget.
-__version__ = "0.0.181"
+# 0.0.182: the noise-floor fix that v0.0.180 promised, actually delivered.
+# The sampling path (ModemClient.noise) was right, but _start_mcp's
+# modem-mode early return skipped the monitor-creation block entirely -
+# service.noise_monitor stayed None, so /api/noisefloor reported
+# unavailable, the card hid itself, and nothing persisted for the hourly
+# analysis panel. On every cleanmodem box. Now BOTH MCP radio modes
+# create the monitor (SPI reads the driver; modem asks over the link);
+# two wiring tests pin it per mode.
+__version__ = "0.0.182"
 
 
 def _short(sha: str) -> str:

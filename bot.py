@@ -232,19 +232,21 @@ async def _start_mcp(service, settings, tasks) -> None:
         if settings.modem_feed.enabled:
             log.info("Modem feed ignored in radio_mode: modem - the modem "
                      "process serves the observer directly.")
-        return
-
-    if settings.modem_feed.enabled:
-        feed = ModemFeed(service, push_queue)
-        service.modem_feed = feed
-        tasks.append(asyncio.create_task(feed.run(), name="modem-feed"))
     else:
-        log.info("Modem feed disabled - packets go to the bot only "
-                 "(openHop will show nothing).")
+        if settings.modem_feed.enabled:
+            feed = ModemFeed(service, push_queue)
+            service.modem_feed = feed
+            tasks.append(asyncio.create_task(feed.run(), name="modem-feed"))
+        else:
+            log.info("Modem feed disabled - packets go to the bot only "
+                     "(openHop will show nothing).")
 
-    # Noise-floor monitor (v0.0.143): records the driver's averaged floor
-    # every 5 s into a 30-minute buffer for the dashboard graph. MCP mode
-    # only - companion mode has no local radio to sample.
+    # Noise-floor monitor (v0.0.143): records the radio's averaged floor
+    # every 5 s into a 30-minute buffer for the dashboard graph. BOTH MCP
+    # radio modes: SPI reads the local driver; modem mode asks the modem
+    # over the controller link (v0.0.181 fix - the old early return meant
+    # modem mode never created the monitor, hiding the dashboard card and
+    # starving the hourly history on every cleanmodem box).
     from core.noisefloor import NoiseFloorMonitor
     monitor = NoiseFloorMonitor(mcp, store=service.store)
     service.noise_monitor = monitor
