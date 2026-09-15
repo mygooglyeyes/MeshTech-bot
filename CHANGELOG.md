@@ -2089,6 +2089,19 @@ Module cards fixed up after first real use:
   view shown as a flat settings list; fixed two-column dashboard
   layout.
 
+## v0.0.176 - docs
+
+### Added
+- **Post-mortem: `docs/POSTMORTEM-cleanmodem-switchover-2026-09-14.md`.**
+  The analysis companion to the (restored) runbook: the opcode-table
+  root cause (TCXO 0xD4 vs 0x97 - a standby chip answering register
+  writes while every clocked command EXEC_FAILed), the full v0.0.154-
+  0.0.173 fix chain grouped by layer, the probe-driven debugging method
+  that cracked it (layer ladder, raw SPI per-command trace, BUSY-timing
+  probe, the LoRaRF diff), the v0.0.165 read-window detour honored
+  honestly, why the bench missed it, and nine action items with status.
+  Docs only - no redeploy needed.
+
 ## v0.0.175 - docs
 
 ### Fixed
