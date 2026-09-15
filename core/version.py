@@ -59,6 +59,9 @@ _SHORT_LEN = 7
 # commands are rejected, so CAD never ran even with clean reads.
 # 0.0.165: response data starts at MISO byte 3 on hilltop (raw
 # capture aa aa 00 00 03 -> flags 00 03 = real RF at bytes 3-4).
+# 0.0.174: switchover runbook updated to the operational truth -
+# steps marked DONE, completion section with the reboot-proven
+# architecture, all 12 fixes, healthy signatures, and gotchas.
 # 0.0.173: modem pushes OBSERVER_STATE (observer count, one byte) to
 # the controller on connect + observer join/leave - the dashboard's
 # TCP Push chip shows the truth (green when openHop is connected).
@@ -83,7 +86,7 @@ _SHORT_LEN = 7
 # TcxoCtrl is 0x97 not 0xD4 (no 32 MHz clock: every clocked command
 # EXEC_FAILed), TxParams 0x8E, BufBase 0x8F, sync word is a register
 # write to 0x0740 (no such command), CalibrateImage pairs (0xE1,0xE9).
-__version__ = "0.0.173"
+__version__ = "0.0.174"
 
 
 def _short(sha: str) -> str:

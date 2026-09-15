@@ -2087,7 +2087,20 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.173 - clean-modem
+  layout.## v0.0.174 - docs
+
+### Changed
+- **Switchover runbook now matches reality.** Steps 5-8 marked DONE;
+  a completion section records the final architecture (who owns the
+  radio and which role each consumer holds), the full bug chain
+  (GPIO deps through the v0.0.167 opcode-table root cause, the
+  echo handshake, keepalive, observer idle exemption, config push,
+  and the TCP Push chip), the PROVEN reboot sequence with its
+  one-line post-reboot verification, healthy-stack signatures
+  (what quiet should look like in the logs), and the gotchas
+  (config drift line, 401 on /api/status, `=`-style modem conf).
+
+## v0.0.173 - clean-modem
 
 ### Added
 - **TCP Push chip tells the truth.** The modem now pushes a new
