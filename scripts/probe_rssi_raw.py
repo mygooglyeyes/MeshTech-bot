@@ -1,96 +1,102 @@
 #!/usr/bin/env python3
-"""Raw-SPI SX1262 register/command dump - settle WHERE the -105 comes from.
+"""Raw-SPI SX1262 dump IN RX, via the real driver - settle the -105.
 
-Read-only: pokes nothing, transmits nothing, changes no radio state
-(one STANDBY_RC -> RX dance at the end restores what GetRssiInst
-needs; the running cleanmodem re-arms RX on its next work item anyway).
+Differences from v1 (which ran against a barely-initialized chip in
+STANDBY and returned 0xFF - not the running state): this one performs
+the driver's FULL init, arms continuous RX exactly like the modem,
+then dumps the WHOLE MISO window of each read command while the chip
+is actually receiving - the exact condition _hw_noise runs under.
 
-Run ON THE RADIO BOX as root, while cleanmodem is STOPPED (two SPI
-masters must not fight):
+Read-only: pokes no config, transmits nothing. Run ON THE RADIO BOX
+as root with cleanmodem STOPPED (two SPI masters must not fight):
 
     sudo systemctl stop cleanmodem
     sudo python3 scripts/probe_rssi_raw.py
     sudo systemctl start cleanmodem
 
-Prints, side by side: GetStatus, GetRssiInst (THE noise byte),
-GetPacketStatus (the proven-good 3-byte read packets use). If
-GetRssiInst's window echoes a constant (the 0xD2-style status byte)
-while GetPacketStatus carries real data, the bug is the read slice,
-not the channel. If it varies run to run, -105 was real.
+What to look for: a REAL channel-RSSI byte sits where the value/2
+lands in -90..-120 dBm (0xB4..0xF0) and wobbles between reads. A
+constant byte at offset 2 with a wobbling one at offset 3 (or vice
+versa) means hilltop's read slice is off by one for this command.
 """
 import sys
 import time
 
 sys.path.insert(0, "/opt/meshtech-bot")
 
-from cleanmodem.sx126x import (  # noqa: E402
-    OP_GET_PACKET_STATUS, OP_GET_RSSI_INST, SX126xRadio, _default_gpio,
-    _default_spi)
 from cleanmodem.config import PIN_PRESETS  # noqa: E402
+from cleanmodem.sx126x import (  # noqa: E402
+    OP_GET_IRQ_STATUS, OP_GET_PACKET_STATUS, OP_GET_RSSI_INST,
+    OP_GET_RX_BUFFER_STATUS, SX126xRadio)
 
 OP_GET_STATUS = 0xC0          # datasheet §13.1.1 (not a module constant)
 
+WINDOW = 8                    # MISO bytes captured per transfer
 READS = (
-    ("GetStatus       ", OP_GET_STATUS, 1),
-    ("GetRssiInst     ", OP_GET_RSSI_INST, 1),
-    ("GetPacketStatus ", OP_GET_PACKET_STATUS, 3),
+    ("GetStatus       ", OP_GET_STATUS),
+    ("GetRssiInst     ", OP_GET_RSSI_INST),
+    ("GetPacketStatus ", OP_GET_PACKET_STATUS),
+    ("GetRxBufferStat ", OP_GET_RX_BUFFER_STATUS),
+    ("GetIrqStatus    ", OP_GET_IRQ_STATUS),
 )
+TRIES = 8
+
+
+def _dbm(byte_val: int) -> str:
+    return f"{byte_val / -2.0:+.1f}"
 
 
 def main() -> int:
-    pins = dict(PIN_PRESETS["pimesh-1w-v2"])
-    gpio = _default_gpio(False, "gpiod")
-    spi = _default_spi(0, 0, 2_000_000)
+    radio = SX126xRadio(dict(PIN_PRESETS["pimesh-1w-v2"]),
+                        gpio_backend="gpiod")
+    if not radio._hw_begin():
+        print("chip did not come up - aborting")
+        return 1
+    radio._hw_enter_rx()
+    time.sleep(0.2)                       # let AGC settle into RX
+    print("== driver in continuous RX (full init) ==")
+    print(f"driver _hw_noise() says: {_dbm(0):>6} is the formula; "
+          f"it returns {radio._hw_noise():+.1f} dBm\n")
 
-    # Same bring-up order the driver uses (minimal: to the point where
-    # the chip answers commands - the running service did the rest).
-    gpio.setup_out(pins["en"], 1)
-    time.sleep(0.05)
-    gpio.setup_out(pins["reset"], 1)
-    gpio.setup_in(pins["busy"])
-    gpio.write(pins["reset"], 0)
-    time.sleep(0.002)
-    gpio.write(pins["reset"], 1)
-    time.sleep(0.01)
+    spi = radio._spi
 
     def wait_busy():
         deadline = time.monotonic() + 1.0
-        while gpio.read(pins["busy"]):
+        while radio._gpio.read(radio._pins["busy"]):
             if time.monotonic() >= deadline:
-                print("BUSY stuck high - chip not answering; aborting.")
+                print("BUSY stuck high - aborting")
                 return False
             time.sleep(0.0002)
         return True
 
-    if not wait_busy():
-        return 1
-
-    def read_cmd(opcode, size, tries=5):
-        """One read; repeated so a constant vs varying byte is obvious."""
-        rows = []
-        for _ in range(tries):
-            wait_busy()
-            raw = spi.transfer(bytes([opcode]) + bytes(size + 2))
-            rows.append(bytes(raw[2:2 + size]).hex(" "))
+    print(f"== whole {WINDOW + 1}-byte MISO windows x{TRIES} ==")
+    for name, opcode in READS:
+        print(f"{name}:")
+        windows = []
+        for _ in range(TRIES):
+            if not wait_busy():
+                return 1
+            raw = spi.transfer(bytes([opcode]) + bytes(WINDOW))
+            windows.append(bytes(raw))
             time.sleep(0.05)
-        return rows
+        for w in windows[:3]:
+            print("    " + bytes(w).hex(" "))
+        # per-offset stability + RSSI interpretation
+        for off in range(1, min(5, WINDOW)):
+            vals = {w[off] for w in windows}
+            sample = windows[0][off]
+            note = f"  <- {_dbm(sample)} if RSSI" if vals else ""
+            flag = "CONST" if len(vals) == 1 else "varies"
+            print(f"    offset[{off}]: {flag} "
+                  f"({', '.join(f'0x{v:02X}' for v in sorted(vals))}){note}")
+        print()
 
-    print("== raw MISO dumps (5 reads each, 50 ms apart) ==")
-    for name, opcode, size in READS:
-        print(f"{name} [{size}B]:")
-        for row in read_cmd(opcode, size):
-            print(f"    {row}")
-
-    print("\nReading: full-frame view of ONE GetRssiInst transfer")
-    wait_busy()
-    full = spi.transfer(bytes([OP_GET_RSSI_INST]) + bytes(3))
-    print("    whole transfer:", bytes(full).hex(" "),
-          "(MISO byte0=garbage, byte1=status, byte2=data)")
-    print("\nInterpretation: GetRssiInst data identical across reads AND")
-    print("equal to the status byte -> the slice sees an echo, not RSSI;")
-    print("varying values around -95..-115 (byte/2) -> -105 was REAL.")
-    gpio, spi = None, None
-    SX126xRadio  # imported to prove the module loads; no instance made
+    print("Interpretation: the RSSI byte is the offset that VARIES with")
+    print("plausible dBm values (0xB4..0xF0 ~ -90..-120). A constant at")
+    print("offset 2 while offset 3 carries the live value = the driver's")
+    print("_read_cmd slice is one byte short ON THIS BOARD for this")
+    print("command. All-constant = the channel truly is that quiet.")
+    radio._hw_shutdown()
     return 0
 
 
