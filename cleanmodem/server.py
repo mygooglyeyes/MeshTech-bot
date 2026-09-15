@@ -300,12 +300,22 @@ class ModemServer:
         ctx = self._clients.pop(writer, None)
         if ctx is None:
             return
+        was_observer = ctx.role == ROLE_OBSERVER
         self.stats.clients_dropped += 1
         try:
             writer.close()
         except Exception:  # nosec B110 - best-effort close on an already-failing transport
             pass
         log.info("client %s gone (%s)", ctx.peer, reason)
+        if was_observer:
+            # v0.0.173: the chip on the controller's dashboard must
+            # flip the moment the repeater leaves. _drop runs on the
+            # event loop; schedule the push rather than await it.
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return                     # teardown without a loop
+            loop.create_task(self._notify_observers_changed())
 
     async def _raw_token_auth(self, ctx: "ClientCtx",
                               writer: asyncio.StreamWriter,
@@ -345,7 +355,38 @@ class ModemServer:
             await writer.drain()
         except (ConnectionResetError, BrokenPipeError):
             return False
+        if role == ROLE_CONTROLLER:
+            # v0.0.173: initial observer count so the controller's
+            # dashboard starts truthful ("TCP Push" chip).
+            await self._notify_observers_changed()
+        elif role == ROLE_OBSERVER:
+            await self._notify_observers_changed()
         return True
+
+    def _observer_count(self) -> int:
+        return sum(1 for c in self._clients.values()
+                   if c.role == ROLE_OBSERVER)
+
+    async def _notify_observers_changed(self) -> None:
+        """Tell the controller how many observers are connected.
+
+        One byte: the count. Controller only - the repeater's driver
+        must never see an unsolicited frame it did not ask for. Fire
+        and forget: a missing update only delays the chip, never the
+        radio.
+        """
+        count = self._observer_count()
+        for writer, ctx in list(self._clients.items()):
+            if ctx.role != ROLE_CONTROLLER or ctx is None:
+                continue
+            try:
+                if writer.transport is None or writer.transport.is_closing():
+                    continue
+                await self._send(writer, frames.CMD_OBSERVER_STATE,
+                                 bytes([count]))
+            except Exception:            # noqa: BLE001 - best-effort notification
+                pass
+        log.debug("observer state pushed: %d connected", count)
 
     async def _resync(self, reader: asyncio.StreamReader,
                       writer: asyncio.StreamWriter, buf: bytes,
@@ -538,6 +579,9 @@ class ModemServer:
         ctx.role = role
         log.info("auth accepted: %s as %s", ctx.peer, role)
         await self._send(writer, frames.CMD_AUTH_OK)
+        if role in (ROLE_CONTROLLER, ROLE_OBSERVER):
+            # v0.0.173: observer join/leave -> the controller's chip.
+            await self._notify_observers_changed()
         return True
 
     async def _handle_tx(self, writer: asyncio.StreamWriter,

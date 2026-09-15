@@ -2087,7 +2087,23 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.172 - clean-modem
+  layout.## v0.0.173 - clean-modem
+
+### Added
+- **TCP Push chip tells the truth.** The modem now pushes a new
+  `OBSERVER_STATE` frame (0x72, one byte: the count of connected
+  observers) to the controller: once right after the controller's own
+  auth, and whenever an observer joins or leaves. The dashboard chip
+  in modem mode reads it:
+  - green `TCP Push: live (N)` - openHop is really connected
+  - red `TCP Push: no clients` - nobody is listening
+  The old "Feed Off" state only made sense for the legacy modem-feed
+  path; in modem mode the bot could not know whether openHop was
+  listening, because nothing ever told it. Now the modem does.
+- The push is controller-only - openhop_core's driver must never see
+  an unsolicited frame it did not request.
+
+## v0.0.172 - clean-modem
 
 ### Changed
 - **config.yaml now controls the radio - config is pushed, not

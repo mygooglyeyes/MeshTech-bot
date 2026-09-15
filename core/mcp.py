@@ -587,6 +587,12 @@ class Mcp:
         # process owns the SX1262; the bot is its controller client.
         # Exactly one of self.radio (SPI) / self._modem (link) is live.
         self._modem = None
+
+    @property
+    def modem_client(self):
+        """The live ModemClient in modem mode (None otherwise); the
+        dashboard reads its observer_count for the TCP Push chip."""
+        return self._modem
         self._modem_task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------- client-interface shim

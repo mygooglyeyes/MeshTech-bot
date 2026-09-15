@@ -53,6 +53,12 @@ CMD_RX_STARTED = 0x33
 CMD_CAD_PARAMS_RESP = 0x35
 CMD_AUTH_OK = 0x51
 CMD_VERSION_RESP = 0x71
+# v0.0.173: modem -> controller only. One byte: count of connected
+# observers. Sent on connect (initial state), and whenever an observer
+# joins or leaves. The controller dashboard shows the openHop TCP
+# push state from this - the old modem-feed chip was inert in modem
+# mode because nothing ever told the bot who was listening.
+CMD_OBSERVER_STATE = 0x72
 CMD_ERROR = 0xFE
 CMD_PONG = 0xFF
 

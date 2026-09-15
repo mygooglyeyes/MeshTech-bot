@@ -85,6 +85,16 @@ async def connect(port, token=None, role_wait=True):
         writer.write(token.encode())
         await writer.drain()
         answer = await asyncio.wait_for(reader.readexactly(1), 5)
+        # v0.0.173: the server pushes an OBSERVER_STATE notification
+        # to the CONTROLLER after auth - drain it here so tests read a
+        # clean stream from the first command they send. Observers get
+        # nothing (the push is controller-only). Frame layout:
+        # SYNC | CMD | LEN(2 LE) | payload | CRC(2).
+        if token == CTRL:
+            head = await asyncio.wait_for(reader.readexactly(4), 5)
+            if head[1] == frames.CMD_OBSERVER_STATE:
+                plen = int.from_bytes(head[2:4], "little")
+                await asyncio.wait_for(reader.readexactly(plen + 2), 5)
         return reader, writer, answer
     return reader, writer, None
 
@@ -317,6 +327,37 @@ def test_observer_set_cad_params_echoed():
         await wctrl.drain()
         cmd, payload, _ = await _read_frame(rc)
         assert cmd == frames.CMD_CAD_PARAMS_RESP and payload == proposal
+        await server.stop()
+    asyncio.run(_run())
+
+
+def test_observer_state_pushed_to_controller_only():
+    """v0.0.173: the modem pushes CMD_OBSERVER_STATE (one byte: the
+    live observer count) to the controller whenever an observer joins
+    or leaves - the dashboard's TCP Push chip needs the truth. The
+    observer itself never receives one (openhop_core's driver must
+    not see unsolicited frames).
+    """
+    async def _run():
+        server, hal = make_server()
+        port = await start_server(server)
+        # Controller first: connect() drains the initial push.
+        rctrl, wctrl, _ = await connect(port, CTRL)
+        # An observer joins -> the controller gets a push: count = 1.
+        robserver, wobs, _ = await connect(port, TOKEN)
+        cmd, payload, _ = await _read_frame(rctrl)
+        assert cmd == frames.CMD_OBSERVER_STATE
+        assert payload == b"\x01"
+        # The observer never got anything after its own auth.
+        wobs.write(frames.build_frame(frames.CMD_GET_CONFIG))
+        await wobs.drain()
+        cmd, _, _ = await _read_frame(robserver)
+        assert cmd == frames.CMD_CONFIG_RESP        # first frame = the answer
+        # Observer leaves -> push with count = 0.
+        wobs.close()
+        cmd, payload, _ = await _read_frame(rctrl)
+        assert cmd == frames.CMD_OBSERVER_STATE
+        assert payload == b"\x00"
         await server.stop()
     asyncio.run(_run())
 

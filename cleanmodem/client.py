@@ -49,6 +49,10 @@ class ModemClient:
         self._tx_gate = asyncio.Lock()
         self._config_reply: "asyncio.Queue[bytes]" = asyncio.Queue()
         self.connected = False
+        # v0.0.173: live observer count pushed by the modem (its TCP
+        # push customers - openHop on hilltop). Drives the dashboard
+        # chip truthfully; -1 = nothing received yet.
+        self.observer_count = -1
         self.tx_count = 0
         self.rx_count = 0
         self._stop = asyncio.Event()
@@ -221,6 +225,8 @@ class ModemClient:
                     self._tx_replies.put_nowait(False)
                 elif cmd == frames.CMD_CONFIG_RESP:
                     self._config_reply.put_nowait(payload)
+                elif cmd == frames.CMD_OBSERVER_STATE:
+                    self.observer_count = (payload[0] if payload else 0)
                 elif cmd == frames.CMD_ERROR:
                     log.warning("modem error frame: 0x%02X",
                                 payload[0] if payload else 0)

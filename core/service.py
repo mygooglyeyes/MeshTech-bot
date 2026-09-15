@@ -534,6 +534,10 @@ class BotService:
                 "radio_up": bool(self.mcp.is_running),
                 "rx_count": self.mcp.stats.rx_count,
                 "tx_count": self.mcp.stats.tx_count,
+                # v0.0.173: live count of TCP-push observers connected
+                # to the modem (openHop), pushed by the modem itself.
+                "observer_count": getattr(self.mcp.modem_client,
+                                          "observer_count", -1),
                 "feed": ({
                     "connected": bool(mf.connected),
                     "pushed": mf.stats.pushed,

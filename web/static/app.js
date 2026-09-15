@@ -693,23 +693,41 @@ async function refreshStatus() {
   const chip = $("chip-conn");
   if (mcp) {
     // Radio mode: the bot has NO companion link, so the old red
-    // "not connected" chip would lie forever. It now shows the MCP's
-    // live link toward openHop (the modem feed), per Brett's request.
+    // "not connected" chip would lie forever.
+    // v0.0.173: in modem mode the chip shows what cleanmodem reports
+    // - the live count of TCP push clients (openHop on hilltop) the
+    // modem is feeding. Green when openHop is really connected.
+    if (typeof mcp.observer_count === "number" && mcp.observer_count >= 0) {
+      if (mcp.observer_count > 0) {
+        chip.textContent = "TCP Push: live (" + mcp.observer_count + ")";
+        chip.className = "chip ok";
+        chip.title = "cleanmodem is feeding " + mcp.observer_count +
+          " TCP push client(s) (openHop).";
+      } else {
+        chip.textContent = "TCP Push: no clients";
+        chip.className = "chip bad";
+        chip.title = "cleanmodem reports no observer connected - " +
+          "is the openHop repeater running?";
+      }
+    }
     const f = mcp.feed;
-    if (!f) {
-      chip.textContent = "feed off";
-      chip.className = "chip muted-note";
-      chip.title = "modem_feed disabled - openHop sees nothing (bot only).";
-    } else if (f.connected) {
-      chip.textContent = "openHop link: live";
-      chip.className = "chip ok";
-      chip.title = "modem feed connected - every packet is pushed toward openHop.\n" +
-        "pushed: " + (f.pushed || 0) + "\ndropped (queue full): " + (f.dropped || 0) +
-        "\n(openHop's own receive state is not visible to the bot - check openHop's log)";
-    } else {
-      chip.textContent = "openHop link: down";
-      chip.className = "chip bad";
-      chip.title = "modem feed not connected - is meshtech-modem running?";
+    // SPI mode (no modem client): keep the classic modem-feed chip.
+    if (!(typeof mcp.observer_count === "number" && mcp.observer_count >= 0)) {
+      if (!f) {
+        chip.textContent = "feed off";
+        chip.className = "chip muted-note";
+        chip.title = "modem_feed disabled - openHop sees nothing (bot only).";
+      } else if (f.connected) {
+        chip.textContent = "Modem Feed Connected";
+        chip.className = "chip ok";
+        chip.title = "modem feed connected - every packet is pushed toward openHop.\n" +
+          "pushed: " + (f.pushed || 0) + "\ndropped (queue full): " + (f.dropped || 0) +
+          "\n(openHop's own receive state is not visible to the bot - check openHop's log)";
+      } else {
+        chip.textContent = "openHop link: down";
+        chip.className = "chip bad";
+        chip.title = "modem feed not connected - is meshtech-modem running?";
+      }
     }
   } else if (conn && conn.connected) {
     chip.textContent = "connected " + conn.host + ":" + conn.port;
