@@ -2089,6 +2089,17 @@ Module cards fixed up after first real use:
   view shown as a flat settings list; fixed two-column dashboard
   layout.
 
+## v0.0.177 - docs
+
+### Added
+- **DEV-NOTES: the one-size-modem dependency split is recorded as
+  DEFERRED.** Gating `gpiod`/`rpi-lgpio` behind an install extra stays
+  on the back burner until the project targets generic packaging - the
+  PiMesh path disables the rpi GPIO overlay at the OS level, so the
+  shim-coexistence hazard cannot occur on supported boards. The revisit
+  trigger, the exact move to make, and the standing `liblgpio-dev`
+  build note are all written down. Docs only.
+
 ## v0.0.176 - docs
 
 ### Added

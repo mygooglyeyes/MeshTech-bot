@@ -67,6 +67,8 @@ _SHORT_LEN = 7
 # completion section. Docs only.
 # 0.0.176: post-mortem doc - opcode-table root cause, the full
 # v0.0.154-0.0.173 fix chain, and the probe-driven debugging method.
+# 0.0.177: the one-size-modem dependency split (gpiod/rpi-lgpio extras)
+# recorded as DEFERRED in DEV-NOTES - revisit trigger documented.
 # 0.0.173: modem pushes OBSERVER_STATE (observer count, one byte) to
 # the controller on connect + observer join/leave - the dashboard's
 # TCP Push chip shows the truth (green when openHop is connected).
@@ -91,7 +93,7 @@ _SHORT_LEN = 7
 # TcxoCtrl is 0x97 not 0xD4 (no 32 MHz clock: every clocked command
 # EXEC_FAILed), TxParams 0x8E, BufBase 0x8F, sync word is a register
 # write to 0x0740 (no such command), CalibrateImage pairs (0xE1,0xE9).
-__version__ = "0.0.176"
+__version__ = "0.0.177"
 
 
 def _short(sha: str) -> str:

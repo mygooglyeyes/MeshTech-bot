@@ -175,6 +175,26 @@ the next:
   changes since the last published release (compare view) instead of
   only pointing at the release page.
 
+## Deferred: one-size-modem dependency split (decision 2026-09-14)
+
+- **The idea (rejected for now):** gate `gpiod` + `rpi-lgpio` behind an
+  install extra (`[modem]` / `requirements-modem.txt`) so SPI-mode bots,
+  dashboard-only installs, and the Docker image stop pulling radio-only
+  GPIO drivers. Prompted by the post-merge hygiene audit of the
+  cleanmodem work.
+- **Why deferred:** the PiMesh install path has users disable the rpi
+  GPIO overlay at the OS level on every board this project targets, so
+  the shim-coexistence hazard (rpi-lgpio impersonating RPi.GPIO) cannot
+  occur on supported hardware. We are not yet building for generic use.
+- **Revisit when:** the project targets "one size modem fits all"
+  packaging - multiple radio types, or images/installs for boxes that
+  never run cleanmodem. The move is: pull the two pins out of base
+  requirements into the extra, teach deploy.sh/manage.sh + INSTALL.md
+  the flag, keep the `liblgpio-dev` build note attached to `rpi-lgpio`.
+- **Stands regardless:** fresh boxes still need `liblgpio-dev` before
+  the lgpio wheel builds (documented in requirements.txt and the
+  switchover runbook gotchas).
+
 ## Convention
 
 - Every commit bumps the version and adds its own CHANGELOG line.
