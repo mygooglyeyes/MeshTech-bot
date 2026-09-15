@@ -11,6 +11,18 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.184** - Deploys now restart cleanmodem when its code changes:
+  the restart logic only ever touched the bot service, so modem-side
+  fixes sat inert until a manual restart (hilltop: 3.5 h of cleanmodem
+  uptime through four deploys). deploy.sh checksums the runtime
+  cleanmodem tree before/after extract and restarts the modem FIRST.
+  Probe verdict on the -105: RSSI lives at MISO offset 2 exactly where
+  the current driver slices (varies -95/-96/-97, matches last_rssi;
+  driver returned a live -96.0) - the read is CORRECT; the running
+  modem's constant 0xD2 is the chip STATUS byte (the v0.0.163 bug,
+  still deployed). Lesson: a second service built from this repo
+  needs its restart wired into the deploy path the day it's born.
+
 - **v0.0.183** - Frozen -105 noise: honesty pass (NO-VALUE sentinel
   instead of a fabricated -105.0; gap + warning at the bot), the
   self.noise never-assigned crash fixed (STATUS reads live now), and

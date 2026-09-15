@@ -116,7 +116,23 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   done < <(cd "$RUNTIME" && find . -maxdepth 1 -type f | sed 's|^\./||' \
              | grep -v -E '^(\.|config\.yaml|.*\.(log|db|db-wal|db-shm|pid)$)')
   rm -f "$STAGED_LIST"
+
+  # v0.0.184 (the frozen -105 lesson): a deploy that changes cleanmodem's
+  # code must restart cleanmodem too, not just the bot. The modem process
+  # is a SECOND service built from this same repo (systemd unit:
+  # cleanmodem.service) and nothing in the old restart logic ever touched
+  # it - modem-side fixes sat inert through many deploys (its uptime gave
+  # it away). Compare the runtime's cleanmodem tree checksum before vs.
+  # after the extract; any difference flags the restart below.
+  MODEM_CHANGED=0
+  MODEM_SUMS_PRE="$(mktemp)"; MODEM_SUMS_POST="$(mktemp)"
+  (cd "$RUNTIME" && find cleanmodem -type f -name '*.py' -print0 2>/dev/null \
+     | sort -z | xargs -0 -r md5sum) > "$MODEM_SUMS_PRE" || true
   tar xf "$APPLY_TARBALL" -C "$RUNTIME"
+  (cd "$RUNTIME" && find cleanmodem -type f -name '*.py' -print0 2>/dev/null \
+     | sort -z | xargs -0 -r md5sum) > "$MODEM_SUMS_POST" || true
+  cmp -s "$MODEM_SUMS_PRE" "$MODEM_SUMS_POST" || MODEM_CHANGED=1
+  rm -f "$MODEM_SUMS_PRE" "$MODEM_SUMS_POST"
   STAMP="$(tar xOf "$APPLY_TARBALL" ./.git-commit 2>/dev/null \
     || tar xOf "$APPLY_TARBALL" .git-commit 2>/dev/null \
     || true)"
@@ -180,11 +196,27 @@ if [[ -n "$APPLY_TARBALL" ]]; then
   fi
 
   if [[ "$DO_RESTART" -eq 1 ]]; then
+    # cleanmodem first (when its code changed): the modem must be listening
+    # before the bot lands on it - the bot's reconnect loop covers a slow
+    # modem anyway, but starting the bot onto a live modem avoids the wait.
+    if [[ "$MODEM_CHANGED" -eq 1 ]]; then
+      if systemctl list-unit-files cleanmodem.service --no-legend 2>/dev/null | grep -q .; then
+        log "cleanmodem code changed - restarting it first (the bot reconnects automatically)..."
+        systemctl restart cleanmodem.service \
+          || warn "cleanmodem restart FAILED - it keeps the OLD modem code: systemctl status cleanmodem"
+        sleep 2
+      else
+        warn "cleanmodem code changed but no cleanmodem.service is installed - restart it manually to load the new code"
+      fi
+    fi
     log "Restarting the service..."
     systemctl restart "$SERVICE.service" \
       || die "restart failed - check: systemctl status $SERVICE"
     log "Deploy complete: running $([[ -n "$STAMP" ]] && echo "$STAMP" || echo 'new code')."
   else
+    if [[ "$MODEM_CHANGED" -eq 1 ]]; then
+      warn "cleanmodem code changed but --no-restart also skips the cleanmodem restart"
+    fi
     log "Deploy complete (no restart requested)."
   fi
   exit 0

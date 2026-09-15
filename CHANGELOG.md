@@ -9,7 +9,33 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
-## 0.0.183 - 2026-09-14 (DEV)
+## 0.0.184 - 2026-09-15 (DEV)
+
+**Deploys now restart cleanmodem when its code changes** (the frozen
+-105 lesson, part 2), plus the probe verdict on the constant byte.
+
+- **The probe verdict:** hilltop's raw dump shows the RSSI byte exactly
+  where the CURRENT driver slices it (offset 2, varying 0xBE/0xC0/0xC2
+  = -95/-96/-97 dBm, matching last_rssi=-95) - `driver _hw_noise()`
+  returned a live **-96.0** against the same chip in RX. The running
+  modem's constant **0xD2 is the chip STATUS byte** (210 / -2 = exactly
+  -105.0): the ORIGINAL v0.0.163 one-byte-early misalignment, still
+  live in the deployed modem process. No driver change is needed -
+  **today's code is correct**; the box just has to run it.
+- **The gap that let a proven-fixed bug keep running:** deploy.sh's
+  restart step only ever restarted the BOT service. cleanmodem is a
+  second service built from this same repo, and nothing ever restarted
+  it - its fixes (v0.0.183's live status noise, the sentinel) sat
+  inert through many deploys (its 3.5 h uptime through four of them
+  gave it away).
+- **Fix:** deploy.sh now compares the runtime `cleanmodem/` tree
+  (md5 of every .py) before vs. after the tarball extract and, when
+  any byte changed, restarts `cleanmodem.service` FIRST - the bot then
+  lands on a live modem (its reconnect loop covers the gap either
+  way). Misses nothing: file added, removed, or edited all shift the
+  sums. Handles the no-unit case with a loud warning instead of a
+  silent skip, and warns under --no-restart too.
+
 
 **The frozen -105 noise line: honesty pass + the diagnostic fork.**
 The card came back (v0.0.182) but pinned at exactly -105.0.

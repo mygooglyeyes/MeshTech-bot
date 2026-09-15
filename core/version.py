@@ -142,7 +142,17 @@ _SHORT_LEN = 7
 # STATUS format; new scripts/probe_rssi_raw.py dumps raw GetRssiInst
 # vs GetPacketStatus MISO windows to settle constant-echo vs truly-
 # quiet-channel (stop cleanmodem first: two SPI masters must not fight).
-__version__ = "0.0.183"
+# 0.0.184: deploys now restart cleanmodem when its code changes - the
+# restart logic only ever touched the bot service, so modem-side fixes
+# sat inert on the box until a manual restart (hilltop ran 3.5 h of
+# deploys while cleanmodem stayed up). deploy.sh compares the runtime
+# cleanmodem tree before/after the extract and restarts the modem FIRST
+# when it changed (bot lands on a live modem). The probe verdict that
+# motivated it: the constant 0xD2 the running modem read as its noise
+# floor was the chip STATUS byte - the ORIGINAL v0.0.163 misalignment -
+# while the CURRENT driver's slice returns a live, varying -96.0
+# (proven by scripts/probe_rssi_raw.py against the same chip in RX).
+__version__ = "0.0.184"
 
 
 def _short(sha: str) -> str:
