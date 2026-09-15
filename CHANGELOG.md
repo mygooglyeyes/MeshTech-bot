@@ -2087,7 +2087,19 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.169 - clean-modem
+  layout.## v0.0.170 - clean-modem
+
+### Fixed
+- **Observer SET_CAD_PARAMS echoed.** The repeater's TCPLoRaRadio
+  restores its cached CAD settings right after SET_CONFIG during its
+  handshake; the role refusal logged "CAD configuration rejected by
+  modem: error 0x09" on the repeater (warning only - it does not
+  reconnect over this, but the handshake was dirty). Observers now
+  get the echo; live CAD params (the controller's pre-check tuning)
+  stay untouched. CAD itself remains controller-only - observers
+  cannot TX, and CAD only matters before a TX.
+
+## v0.0.169 - clean-modem
 
 ### Fixed
 - **Observer SET_CONFIG answered, never applied.** openhop_core's

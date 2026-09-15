@@ -293,6 +293,34 @@ def test_observer_set_config_gets_echo_never_applied():
     asyncio.run(_run())
 
 
+def test_observer_set_cad_params_echoed():
+    """v0.0.169: an observer's SET_CAD_PARAMS proposal is echoed.
+
+    The repeater's TCPLoRaRadio restores its cached CAD settings after
+    SET_CONFIG during the handshake; a rejection logged a warning on
+    the repeater side ('CAD configuration rejected'). The echo keeps
+    the handshake clean; live CAD params stay the controller's.
+    """
+    async def _run():
+        server, hal = make_server()
+        port = await start_server(server)
+        reader, writer, _ = await connect(port, TOKEN)      # observer
+        proposal = bytes([22, 10, 0x04])
+        writer.write(frames.build_frame(frames.CMD_SET_CAD_PARAMS, proposal))
+        await writer.drain()
+        cmd, payload, _ = await _read_frame(reader)
+        assert cmd == frames.CMD_CAD_PARAMS_RESP
+        assert payload == proposal
+        # The controller path is unchanged: echo for it too.
+        rc, wctrl, _ = await connect(port, CTRL)
+        wctrl.write(frames.build_frame(frames.CMD_SET_CAD_PARAMS, proposal))
+        await wctrl.drain()
+        cmd, payload, _ = await _read_frame(rc)
+        assert cmd == frames.CMD_CAD_PARAMS_RESP and payload == proposal
+        await server.stop()
+    asyncio.run(_run())
+
+
 def test_rx_fanout_to_all_clients():
     async def _run():
         server, hal = make_server()

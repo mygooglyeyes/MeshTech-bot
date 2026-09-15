@@ -385,10 +385,14 @@ class ModemServer:
             return True
 
         # TX and CAD need the controller role - enforced HERE, so a
-        # misconfigured observer can never touch the air. SET_CONFIG
-        # falls through: below, observers get their proposal answered
-        # with the live config (read-only).
-        if cmd not in OBSERVER_COMMANDS and cmd != frames.CMD_SET_CONFIG \
+        # misconfigured observer can never touch the air. SET_CONFIG and
+        # SET_CAD_PARAMS fall through: below, observers get their
+        # proposal answered with an echo (read-only) - openhop_core's
+        # TCPLoRaRadio handshakes with both and treats rejections as a
+        # dead link.
+        if cmd not in OBSERVER_COMMANDS \
+                and cmd not in (frames.CMD_SET_CONFIG,
+                                frames.CMD_SET_CAD_PARAMS) \
                 and ctx.role != ROLE_CONTROLLER:
             self.stats.auth_failures += 1
             log.warning("TX attempt by role=%s (%s) - refused",
@@ -439,6 +443,13 @@ class ModemServer:
             return True
 
         if cmd == frames.CMD_SET_CAD_PARAMS:
+            if ctx.role != ROLE_CONTROLLER:
+                # Observer proposal (repeater restores its cached CAD
+                # settings at connect): echo only - CAD runs before a
+                # TX and observers cannot TX, so the live CAD params
+                # (the controller's pre-check tuning) stay untouched.
+                log.info("observer CAD params proposal (echoed): %s",
+                         payload.hex())
             await self._send(writer, frames.CMD_CAD_PARAMS_RESP, payload)
             return True
 

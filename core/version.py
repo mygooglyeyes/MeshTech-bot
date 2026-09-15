@@ -59,6 +59,8 @@ _SHORT_LEN = 7
 # commands are rejected, so CAD never ran even with clean reads.
 # 0.0.165: response data starts at MISO byte 3 on hilltop (raw
 # capture aa aa 00 00 03 -> flags 00 03 = real RF at bytes 3-4).
+# 0.0.170: observer SET_CAD_PARAMS echoed too - the repeater driver
+# restores cached CAD settings after SET_CONFIG in its handshake.
 # 0.0.169: observer SET_CONFIG answered with the live config (echo),
 # never applied - openhop_core's TCPLoRaRadio handshake requires a
 # config echo or it reconnect-loops treating the link as dead.
@@ -70,7 +72,7 @@ _SHORT_LEN = 7
 # TcxoCtrl is 0x97 not 0xD4 (no 32 MHz clock: every clocked command
 # EXEC_FAILed), TxParams 0x8E, BufBase 0x8F, sync word is a register
 # write to 0x0740 (no such command), CalibrateImage pairs (0xE1,0xE9).
-__version__ = "0.0.169"
+__version__ = "0.0.170"
 
 
 def _short(sha: str) -> str:
