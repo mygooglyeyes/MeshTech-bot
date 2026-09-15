@@ -9,6 +9,32 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.186 - 2026-09-15 (DEV)
+
+**THE noise bug, actually found and fixed.** Brett's journal paste
+named it: `NOISE_REQ failed, answering NO-VALUE: 'float' object is not
+callable`, every 5 seconds.
+
+- **Root cause:** `RadioHal.__init__` assigned `self.noise = -105.0`,
+  shadowing the async `noise()` METHOD of the same class - so the
+  server's `self.hal.noise()` call raised TypeError and every read
+  died into the NO-VALUE sentinel. The card showed a dash / no history
+  instead of a number.
+- **The -105 saga, resolved:** the shadow existed since the first
+  cleanmodem commit, and the pre-v0.0.183 silent -105.0 exception
+  fallback made it display a plausible constant - the frozen -105
+  line was THIS shadow all along, not the status-byte misalignment
+  theory. Proof: Brett's status line showed `noise=-97.0` (that path
+  calls `_hw_noise()` directly) while NOISE_REQ failed - the chip read
+  is healthy; only the call route was broken.
+- **Fix:** the attribute is gone (a loud comment explains why it must
+  never return); the value travels only in `RadioStatus.noise_x10`.
+  FakeHal in the server tests renames its attribute the same way.
+- 3 new tests: the base class keeps a callable noise() method with no
+  shadow attribute; a NOISE_REQ round-trip answers a real value; a
+  raising noise() answers the sentinel (honest gap). Suite: 601 pass /
+  0 fail.
+
 ## 0.0.185 - 2026-09-15 (DEV)
 
 **The stale-anything audit** (generalizing the cleanmodem-restart

@@ -166,7 +166,19 @@ _SHORT_LEN = 7
 # 'never retrieved' warning can never be lost); cancellations and
 # shutdown-time deaths stay silent. The dormant modem-link task is now
 # on the list too.
-__version__ = "0.0.185"
+# 0.0.186: THE noise bug, actually found and fixed. RadioHal.__init__
+# assigned self.noise = -105.0 - shadowing the async noise() METHOD the
+# server calls for every NOISE_REQ. self.hal.noise() raised "'float'
+# object is not callable" and every read died into the NO-VALUE sentinel
+# (card dark / dash instead of a number). The shadow existed since the
+# first cleanmodem commit; the pre-v0.0.183 silent -105.0 fallback made
+# it display a plausible constant - so the frozen -105 line was THIS,
+# not the status-byte theory (Brett's probe: cleanmodem journal showed
+# the TypeError every 5 s, while STATUS noise=-97.0 - a path that calls
+# _hw_noise() directly - proved the chip read is healthy). Fix: the
+# attribute is gone; value travels only in RadioStatus.noise_x10. 3 new
+# tests pin the class shape + the sentinel/real-value round-trips.
+__version__ = "0.0.186"
 
 
 def _short(sha: str) -> str:

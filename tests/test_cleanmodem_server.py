@@ -29,7 +29,7 @@ class FakeHal(RadioHal):
         self.tx_log = []
         self.config_log = []
         self.cad_busy = False
-        self.noise = -105.0
+        self.noise_value = -105.0
 
     async def start(self, loop):
         self._loop = loop
@@ -46,7 +46,7 @@ class FakeHal(RadioHal):
         return self.cad_busy
 
     async def noise(self):
-        return self.noise
+        return self.noise_value
 
     async def status(self):
         from cleanmodem.hal import RadioStatus

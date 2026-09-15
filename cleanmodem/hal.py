@@ -169,7 +169,15 @@ class ThreadedHal(RadioHal):
         self.hw_reinits = 0
         self.last_rssi = -100
         self.last_snr = 0.0
-        self.noise = -105.0
+        # NOTE: deliberately NOT setting self.noise here - RadioHal.noise
+        # is the ASYNC METHOD the server calls for every NOISE_REQ, and an
+        # instance attribute of the same name shadows it: self.hal.noise()
+        # then raises 'float' object is not callable and every read dies
+        # into the NO-VALUE sentinel. That shadow sat here from the first
+        # cleanmodem commit; the pre-v0.0.183 silent -105.0 fallback made
+        # the dashboard show a plausible constant instead of an error -
+        # the REAL story of the frozen -105 line. The live value travels
+        # in RadioStatus.noise_x10 (see SX126xRadio._hw_status).
 
     # ── lifecycle ─────────────────────────────────────────────────────
     async def start(self, loop: asyncio.AbstractEventLoop) -> bool:

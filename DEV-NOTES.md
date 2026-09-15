@@ -11,6 +11,16 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.186** - THE noise bug: RadioHal.__init__ set self.noise =
+  -105.0, SHADOWING the async noise() method - every NOISE_REQ raised
+  "'float' object is not callable" and died into the sentinel. The
+  frozen -105 was this shadow all along (the old silent fallback made
+  it look like a quiet channel), not the status-byte theory - STATUS
+  noise=-97.0 proved the chip read healthy. Attribute removed; 3 tests
+  pin the class shape + sentinel/real round-trips. Lesson: an attribute
+  that shadows a method is a trap the runtime only reveals at the call
+  site - name them apart. Suite 601.
+
 - **v0.0.185** - The stale-anything audit: deploy path now covers both
   services (v0.0.184, incl. the web-update path that reuses deploy.sh);
   the three startup branches all wire their components (each pinned by
