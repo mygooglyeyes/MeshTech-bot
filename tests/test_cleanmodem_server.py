@@ -321,6 +321,32 @@ def test_observer_set_cad_params_echoed():
     asyncio.run(_run())
 
 
+def test_observer_not_idle_recycled():
+    """v0.0.171: an authenticated observer is exempt from the idle
+    read timeout.
+
+    openhop_core's TCPLoRaRadio sends nothing after its handshake, so
+    the idle recycler dropped a live repeater every ~60 s (hilltop
+    2026-09-14: connect/auth/config every minute). After the fix the
+    observer connection must survive well past the old 30 s timeout -
+    on a busy mesh its link is also renewed by RX fanout traffic.
+    """
+    async def _run():
+        server, hal = make_server()
+        port = await start_server(server)
+        reader, writer, _ = await connect(port, TOKEN)      # observer
+        # 40 s of silence: far past the old 30 s idle recycle.
+        await asyncio.sleep(40.0)
+        # The connection still works: a GET_CONFIG gets answered.
+        writer.write(frames.build_frame(frames.CMD_GET_CONFIG))
+        await writer.drain()
+        cmd, payload, _ = await _read_frame(reader)
+        assert cmd == frames.CMD_CONFIG_RESP
+        assert len(payload) == frames.RADIO_CONFIG_SIZE
+        await server.stop()
+    asyncio.run(_run())
+
+
 def test_rx_fanout_to_all_clients():
     async def _run():
         server, hal = make_server()

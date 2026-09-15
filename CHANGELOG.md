@@ -2087,7 +2087,20 @@ Module cards fixed up after first real use:
   service hardening.
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
-  layout.## v0.0.170 - clean-modem
+  layout.## v0.0.171 - clean-modem
+
+### Fixed
+- **Authenticated observers are exempt from the idle read timeout.**
+  openhop_core's TCPLoRaRadio sends nothing after its handshake, so
+  cleanmodem's slowloris guard (`timed out (idle)`) dropped a live
+  repeater every ~60 s - each drop a ~1 s visibility gap and a
+  connect/auth/config cycle in the logs. The observer read no longer
+  idles out; liveness for dead observers comes from TCP keepalive
+  (~60 s on a dead peer) plus the existing slow-client transport
+  guards, and MAX_CONNECTIONS still caps slots. Controllers keep
+  their 30 s idle bound, renewed by the v0.0.168 keepalive PING.
+
+## v0.0.170 - clean-modem
 
 ### Fixed
 - **Observer SET_CAD_PARAMS echoed.** The repeater's TCPLoRaRadio

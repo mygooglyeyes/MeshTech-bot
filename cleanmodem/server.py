@@ -47,6 +47,12 @@ AUTH_THROTTLE_S = 2.0
 WRITE_HIGH_WATER = 256 * 1024   # slow-client drop threshold (bytes)
 TX_QUEUE_DEPTH = 4              # concurrent TX requests per controller
 DEMO_SYNC_WORD = 0x12
+# Idle read timeout BETWEEN frames. Controllers renew it with their
+# 15 s keepalive PING. Observers are EXEMPT (openhop_core's
+# TCPLoRaRadio sends nothing after its handshake, so a live repeater
+# was idle-recycled every ~60 s - hilltop 2026-09-14); a dead observer
+# is still reaped by TCP keepalive (~60 s) + the transport checks.
+OBSERVER_IDLE_TIMEOUT_S = None  # None = no idle timeout (read blocks)
 
 ROLE_OBSERVER = "observer"
 ROLE_CONTROLLER = "controller"
@@ -265,10 +271,13 @@ class ModemServer:
                     if not await self._dispatch(ctx, writer, cmd, payload):
                         return
                 try:
-                    chunk = await asyncio.wait_for(
-                        reader.read(4096),
-                        AUTH_READ_TIMEOUT_S if not ctx.authenticated
-                        else READ_TIMEOUT_S)
+                    if ctx.authenticated and ctx.role == ROLE_OBSERVER:
+                        chunk = await reader.read(4096)   # no idle recycle
+                    else:
+                        chunk = await asyncio.wait_for(
+                            reader.read(4096),
+                            AUTH_READ_TIMEOUT_S if not ctx.authenticated
+                            else READ_TIMEOUT_S)
                 except asyncio.TimeoutError:
                     log.info("client %s timed out (%s)",
                              peer, "no auth" if not ctx.authenticated
