@@ -1,0 +1,34 @@
+# cleanmodem systemd unit (template - install-cleanmodem.sh fills in the
+# {PLACEHOLDERS}). Installed to /etc/systemd/system/cleanmodem.service.
+#
+# cleanmodem owns the SX1262 radio over SPI while the bot rides it as a
+# TCP controller client (radio_mode: modem), so this unit needs the same
+# device access the bot's unit has: PrivateDevices stays FALSE and the
+# account gets the gpio+spi groups.
+[Unit]
+Description=cleanmodem - standalone LoRa modem (owns the radio; bot connects as controller)
+Documentation=file://{INSTALL_DIR}/docs/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={USER}
+Group={GROUP}
+WorkingDirectory={WORK_DIR}
+ExecStart={PYTHON} -m cleanmodem --config {CONFIG}
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths={STATE_DIR}
+PrivateDevices=false
+SupplementaryGroups=gpio spi
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

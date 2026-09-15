@@ -9,3 +9,14 @@ aiohttp>=3.9.0
 uvloop>=0.19.0; sys_platform != "win32"
 # Radio driver (SPI, PiMesh-1W v2) - needed only when mcp: enabled.
 pymc_core[hardware]>=1.0.12; sys_platform != "win32"
+# cleanmodem GPIO backends (radio_mode: modem / the cleanmodem service).
+# gpiod v2 (v0.0.158): the driver's preferred backend. 2.x ships cp313
+# aarch64 wheels and links the system libgpiod; the old 1.x pip package
+# is ABI-broken on Debian 13 (v1 bindings over a v2 C library - the
+# 'iter() returned non-iterator' crash). Do NOT downgrade to 1.x.
+gpiod>=2.0,<3; sys_platform != "win32"
+# Shim fallback for gpio_backend=rpi. BUILD NOTE (hilltop 2026-09-14):
+# pip must compile the lgpio C extension - `sudo apt-get install
+# liblgpio-dev` first, or the build fails with "cannot find -llgpio".
+# Must NOT coexist with real RPi.GPIO in the same venv.
+rpi-lgpio>=0.6; sys_platform != "win32"

@@ -9,6 +9,277 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.166 - 2026-09-14 (clean-modem branch)
+
+**The root cause of the whole day, named by the chip itself.** A
+per-command trace (GetStatus CmdStatus bits) showed every clocked
+operation - Calibrate, SetRx, SetCad - returning EXEC_FAIL while
+register writes succeeded: the TCXO was never armed, so the chip sat
+in STANDBY_RC the entire time with no 32 MHz radio clock. Two fixes
+plus one correction:
+
+- `SetDIO3AsTcxoCtrl` takes FOUR bytes (voltage + 3-byte timeout); the
+  driver sent 3, the chip rejected it, the radio stage never ran. Deaf
+  RX, CAD timeouts, TX timeouts - all this one truncation.
+- The PiMesh-1W v2 preset now carries `en = 26`, the radio power-enable
+  pin from openHop's proven map for the E22-900M30S, driven HIGH before
+  the reset pulse (and LOW again on shutdown).
+- v0.0.165's read-window shift to byte 3 is reverted to the datasheet
+  layout ([garbage, status, data...]) - the probe that suggested it was
+  misdecoded (GetStatus repeats its status byte; the "extra header
+  byte" was an artifact of the chip never leaving standby).
+- The watchdog probe now does a real mode dance (STANDBY -> RX) instead
+  of a flags read, so "chip answers SPI but the radio never runs" can
+  never hide again.
+
+## 0.0.165 - 2026-09-14 (clean-modem branch)
+
+Pinned by raw-probe evidence from hilltop: command-response DATA
+starts at MISO byte 3, one later than the datasheet layout. The
+capture read GetIrqStatus as aa aa 00 00 03 - flags 00 03
+(PreambleDetected|SyncWordValid = the radio HEARS RF traffic) at
+bytes 3-4 with the chip's byte-hold; the datasheet layout would
+leave the 0x03 unexplained. GetStatus corroborates (22 = STANDBY_RC,
+2A = RX in the data window). The chip has been healthy and hearing
+the air all along; every read was framed one byte early. ReadBuffer
+(a buffer read, not a command read) keeps its own layout.
+
+## 0.0.164 - 2026-09-14 (clean-modem branch)
+
+Second half of the CAD fix: SetCadParams takes SEVEN parameter
+bytes (numSymbols, detPeak, detMin, exitMode, timeout[3]) - the
+driver sent four. Truncated commands are rejected by the chip, so
+SetCad ran with undefined parameters and CAD_DONE never came even
+after the v0.0.163 read alignment. Now sends the full 7-byte form
+(one-shot CAD, exit mode 0 = STANDBY, timeout field 0).
+
+## 0.0.163 - 2026-09-14 (clean-modem branch)
+
+THE root cause of the deaf modem, found by a raw-probe experiment
+on hilltop: SX126x read-command responses are [garbage, status,
+data...], and _read_cmd sliced [1:1+size] - the STATUS byte came
+back as data and the last data byte was dropped. GetIrqStatus thus
+returned [status, flags-high], never flags-low: RX_DONE, CAD_DONE
+and TX_DONE were invisible (rx=0 since day one, 'CAD timed out',
+'TX timeout', and the constant 0xAA00 garbage-flags signature =
+the status byte 0xAA). Fixed to [2:2+size]; the SPI fake now
+mirrors the real layout. Confirmed live: GetStatus read 0x2A (RX)
+/ 0x22 (STDBY) in the same position - the chip always answered,
+we read the wrong bytes.
+
+## 0.0.162 - 2026-09-14 (clean-modem branch)
+
+CAD actually ran: SetCAD is only valid from STANDBY on the SX126x;
+issued during continuous RX it is silently ignored, so every
+clear-channel probe timed out ('CAD timed out', then 'BUSY stuck')
+and the first modem-mode TX failed (hilltop 2026-09-14). _hw_cad
+now exits RX, runs the CAD, and always re-arms RX afterwards.
+
+## 0.0.161 - 2026-09-14 (clean-modem branch)
+
+Modem-mode TX worked again: the send() guard required self.radio,
+which stays None in modem mode by design, so every transmission in
+modem mode was dropped with 'Radio not up' (startup adverts never
+reached the air; hilltop 2026-09-14). The guard now accepts a live
+modem link as 'radio up'; pinned by test.
+
+## 0.0.160 - 2026-09-14 (clean-modem branch)
+
+Two cleanmodem-mode lifecycle bugs found live on hilltop after the
+gpiod v2 radio came up:
+1. A failed modem init left client.run() retrying forever. The 30 s
+   retry wrapper then created a second client; the two displaced each
+   other from the single controller slot every 2 s (the reconnect
+   storm). A failed init now stops and cancels its client first.
+2. In irq_poll mode the radio worker polled flags before the bring-up
+   work item ran, logging 'NoneType' object has no attribute 'read''
+   once per start. Polls are skipped until the hardware is up.
+
+## 0.0.159 - 2026-09-14 (clean-modem branch)
+
+gpiod 2.x enum location fix, caught by the clean-venv API probe on
+hilltop before any deploy: Direction/Edge/Value/Bias live in the
+gpiod.line submodule in 2.x, not top-level - the v0.0.158 backend
+would have AttributeError'd on every pin setup. Backend now uses
+gpiod.line.*; the fake-module test mirrors the real layout.
+
+## 0.0.158 - 2026-09-14 (clean-modem branch)
+
+cleanmodem gpiod backend rewritten for the v2 Python API
+(gpiod.Chip + request_lines + LineSettings, in-place
+reconfigure_lines for edge waits). Hilltop history that forced this:
+v0.0.156's backend mixed APIs; v0.0.157 fixed it to v1 and the box
+then failed loud with 'iter() returned non-iterator' - the 1.x pip
+bindings are ABI-broken on Debian 13 (v1 Python over a v2 C library).
+gpiod>=2.0 ships cp313 aarch64 wheels and links the system libgpiod,
+so gpio_backend=gpiod finally runs as a real candidate fix for the
+deaf-RX problem. requirements.txt now pins gpiod>=2.0,<3 (never 1.x).
+Tests pin the v2 call shape and the auto-fallback order.
+
+## 0.0.157 - 2026-09-14 (clean-modem branch)
+
+Bug fix (hilltop, found by the gpio_backend=gpiod attempt failing
+loud): _GpiodGpio constructed gpiod.Chip - the v2 API name - while
+every other call in the backend targeted the v1 API. With gpiod 1.5.4
+installed the constructor always raised AttributeError, so in auto
+mode the factory silently fell back to the RPi.GPIO shim and the gpiod
+backend had NEVER actually run. Fixed to gpiod.chip (v1, lowercase);
+two tests pin the v1 constructor and the auto-fallback order.
+
+## 0.0.156 - 2026-09-14 (clean-modem branch)
+
+gpio_backend config option (auto | gpiod | rpi; default auto): selects
+the GPIO backend explicitly instead of relying on a silent fallback.
+Context from the hilltop session: the rpi-lgpio shim left the radio
+deaf (BUSY/reset writes apparently not reaching the pins -> blind SPI
+-> the 0xAA00 garbage-flags signature in the new IRQ diagnostics, even
+after a full power cycle). Forcing the gpiod backend is the A/B test
+and, if it fixes RX, the documented permanent configuration. A forced
+backend now fails loud instead of falling back - the silent fallback
+is what hid the failure for hours.
+
+## 0.0.155 - 2026-09-14 (clean-modem branch)
+
+Diagnostics + workaround (hilltop switchover session): after the
+v0.0.154 flip the modem's receiver was DEAF - a real on-air DM never
+appeared in rx (0 packets across two clean restarts), while the
+hardware probe showed a plausible noise floor and no errors logged.
+Prime suspect: the IRQ edge event never fires under the rpi-lgpio
+shim, so received packets sit unread in the chip with no error.
+
+- `irq_poll` modem.conf flag (default false): the radio thread polls
+  the IRQ flag register every 50 ms instead of waiting on the DIO1
+  edge - costs a little RX latency, bypasses the GPIO event path.
+- RadioStatus gains irq_polls / irq_edges / last_irq_flags, and the
+  per-minute metrics line prints `irq: polls= edges= flags= poll_mode=`
+  so a deaf receiver is VISIBLE instead of silent.
+
+## 0.0.154 - 2026-09-14 (clean-modem branch)
+
+Bug fix (found live during the hilltop switchover, owned): the bot's
+config parser never read the modem-mode settings. `mcp.radio_mode`,
+`mcp.modem_host`, `mcp.modem_port` and `mcp.modem_token_file` were
+documented in config.example.yaml since v0.0.148 but the McpCfg builder
+dropped them all - the bot silently stayed in SPI mode no matter what
+config.yaml said (it crash-looped on "GPIO pin already in use" against
+the running cleanmodem). Now parsed and validated: radio_mode must be
+spi|modem; modem mode requires an explicit modem_token_file. Six new
+tests pin the wiring.
+
+Also from the same session: deploy/cleanmodem.conf.example is now in
+the `key=value` style the modem parser actually reads (the old colon-
+style example was silently skipped line-by-line - defaults applied,
+tokens never loaded; only a comment containing '=' surfaced it as a
+'bad key' crash). And requirements.txt pins rpi-lgpio (the GPIO
+backend the cleanmodem driver needs on Bookworm-era kernels) with its
+liblgpio-dev build note - tonight's dependency refresh had silently
+removed the unpinned library.
+
+## 0.0.151 - 2026-09-14 (clean-modem branch)
+
+Bug fix (found on hilltop, owned): the mcp block of config.example.yaml
+explained the new radio modes with comment lines shaped like settings
+(`#   radio_mode: "spi" = ...`). The deploy's config-sync treats any
+`# key: value` line in the example as a documented default and inserts
+it ACTIVE into the live config - so the first `manage.sh update
+clean-modem` wrote prose into the box's config.yaml (three times) and
+broke the YAML. The deploy's validation gate caught it and refused to
+restart - the bot stayed on the old build (the gate worked exactly as
+designed); the fix restores config.yaml.bak-sync. The example comment
+is now prose that can never parse as a key; proven with the sync
+script against a box-shaped config (inserts only modem_host +
+modem_port, once each) plus the project's sync tests.
+
+## 0.0.153 - 2026-09-14 (clean-modem branch)
+
+cleanmodem: lbt_max_attempts is now documented as RESERVED, not
+implemented (comment in ModemConfig and cleanmodem.conf.example).
+Rationale: the proven retry policy bounds patience by TIME
+(clear_channel_wait_seconds, 4.0 s) - the old stack's observed 15-16
+attempts were an outcome of that budget, not a configured count - so
+an attempt cap would be a second, conflicting control. The key is
+still accepted when parsing (bench modem.conf on hilltop carries it);
+changing it has no effect. Also adds a test pinning the LBT retry
+delays to a continuous 0.10-0.30 s spread, so a future rework cannot
+silently narrow the jitter back to fixed slots.
+
+## 0.0.152 - 2026-09-14 (clean-modem branch)
+
+cleanmodem: LBT clear-channel retries move from three fixed delays
+(0.12/0.24/0.36 s) back to a continuous random backoff (uniform
+0.10-0.30 s), matching the old stack's empirically robust pattern
+(102-295 ms observed on air). Rationale: every cleanmodem node drew
+from the same tiny delay set, so concurrent retries could align on
+the same slots; a continuous spread decorrelates them. Worst case is
+unchanged: wait up to clear_channel_wait_seconds (4.0 s), then
+transmit anyway with a collision warning. No config changes.
+
+## 0.0.150 - 2026-09-14 (clean-modem branch)
+
+Bench runbook for the clean-room modem: docs/BENCH-RUNBOOK-cleanmodem.md
+- staged hilltop steps to prove cleanmodem hears the real mesh at wire
+speed (RX parity + the IRQ->fan-out latency numbers) with the bot
+paused 15-30 minutes, then a full rollback to the live stack. TX
+through cleanmodem is deliberately NOT in this bench - it is verified
+at the switchover session, with its own runbook. Docs-only; no code
+changes.
+
+## 0.0.149 - 2026-09-14 (clean-modem branch)
+
+Clean-room modem: the radio moves into its own process (cleanmodem),
+written from the SX126x datasheet and this project's requirements
+checklist - no code from the reference modem stack. Two ways to run
+the bot's radio now:
+
+- `radio_mode: "spi"` (unchanged default): the bot owns the PiMesh-1W
+  directly, exactly as before.
+- `radio_mode: "modem"` (new): the cleanmodem process owns the radio
+  and the bot connects as its controller client (RX feed + exclusive
+  TX over TCP). Same packet pipeline either way.
+
+cleanmodem (new `cleanmodem/` package, run as `python -m cleanmodem`):
+
+- SX1262 driver on a dedicated radio thread (all SPI + GPIO off the
+  asyncio loop), DIO1 as a real edge event, radio watchdog re-init.
+- One authenticated TCP port, two roles: observer (RX mirror for the
+  visualization tool) and controller (the bot; exclusive TX). Raw
+  token handshake for the controller, framed AUTH for the observer;
+  constant-time compares, per-connection brute-force throttling.
+- Own wire protocol: SYNC/CMD/LEN/PAYLOAD/CRC16 frames, table-driven
+  CRC-16/CCITT-FALSE; RX_PACKET carries RSSI + SNR + signal-RSSI
+  metadata with every payload. Layouts verified against the wire the
+  existing clients already speak.
+- TX policy: serialized TX, CAD listen-before-talk with configurable
+  thresholds, politeness gap, TX loopback so the observer sees the
+  bot's own sends, TX_DONE carries airtime.
+- Fully configurable pin map (named presets + per-pin overrides),
+  fail-loud validation at startup; the working PiMesh-1W v2 map is the
+  default preset.
+- Ops: deploy/cleanmodem.conf.example, deploy/cleanmodem.service
+  (same radio-access flags as the proven bot unit), cleanmodem/README
+  + PROTOCOL docs.
+
+Bot side:
+
+- `mcp.radio_mode` / `modem_host` / `modem_port` / `modem_token_file`
+  config keys (documented in config.example.yaml; the token stays in a
+  mode-600 file, never the config).
+- cleanmodem.client: reconnect-with-backoff controller link, idle
+  probe so a dead link on a quiet mesh is noticed in minutes, TX
+  gate + stale-reply drain.
+- bot.py: modem feed is ignored in radio_mode "modem" (the modem
+  serves the observer directly) - the dual-RX-line topology is
+  preserved, one line per client role.
+
+Tests: frames, config/pins, driver register sequences (fake SPI),
+server behavior + security suite (parser fuzzing, auth matrix, DoS
+caps, log-injection), client pump. Local-only as always. Full suite
+542 pass with the usual branch-foreign exclusions (verified against a
+clean DEV worktree); bandit 0 med/high, pip-audit clean.
+
+Bench gate before box deployment: RX parity vs the current modem,
+IRQ->fan-out latency metrics, 24 h soak.
+
 ## 0.0.148 - 2026-09-14 (small-repairs branch)
 
 Comment cleanup (Brett's standing rule), caught during the merge
@@ -1817,3 +2088,160 @@ Module cards fixed up after first real use:
 - Docs: plain-language rewrite of README and install guide; config
   view shown as a flat settings list; fixed two-column dashboard
   layout.
+
+## v0.0.176 - docs
+
+### Added
+- **Post-mortem: `docs/POSTMORTEM-cleanmodem-switchover-2026-09-14.md`.**
+  The analysis companion to the (restored) runbook: the opcode-table
+  root cause (TCXO 0xD4 vs 0x97 - a standby chip answering register
+  writes while every clocked command EXEC_FAILed), the full v0.0.154-
+  0.0.173 fix chain grouped by layer, the probe-driven debugging method
+  that cracked it (layer ladder, raw SPI per-command trace, BUSY-timing
+  probe, the LoRaRF diff), the v0.0.165 read-window detour honored
+  honestly, why the bench missed it, and nine action items with status.
+  Docs only - no redeploy needed.
+
+## v0.0.175 - docs
+
+### Fixed
+- The v0.0.174 commit shipped a TRUNCATED runbook (104 lines - a
+  rewrite accident ate the hunt narrative). Restored in full: the
+  original 779 lines (progress log + steps, now marked DONE) plus
+  the completion section. No code changes - the bot needs no
+  redeploy for this one.
+
+## v0.0.174 - docs
+
+### Changed
+- **Switchover runbook now matches reality.** Steps 5-8 marked DONE;
+  a completion section records the final architecture (who owns the
+  radio and which role each consumer holds), the full bug chain
+  (GPIO deps through the v0.0.167 opcode-table root cause, the
+  echo handshake, keepalive, observer idle exemption, config push,
+  and the TCP Push chip), the PROVEN reboot sequence with its
+  one-line post-reboot verification, healthy-stack signatures
+  (what quiet should look like in the logs), and the gotchas
+  (config drift line, 401 on /api/status, `=`-style modem conf).
+
+## v0.0.173 - clean-modem
+
+### Added
+- **TCP Push chip tells the truth.** The modem now pushes a new
+  `OBSERVER_STATE` frame (0x72, one byte: the count of connected
+  observers) to the controller: once right after the controller's own
+  auth, and whenever an observer joins or leaves. The dashboard chip
+  in modem mode reads it:
+  - green `TCP Push: live (N)` - openHop is really connected
+  - red `TCP Push: no clients` - nobody is listening
+  The old "Feed Off" state only made sense for the legacy modem-feed
+  path; in modem mode the bot could not know whether openHop was
+  listening, because nothing ever told it. Now the modem does.
+- The push is controller-only - openhop_core's driver must never see
+  an unsolicited frame it did not request.
+
+## v0.0.172 - clean-modem
+
+### Changed
+- **config.yaml now controls the radio - config is pushed, not
+  hardcoded.** After the modem link comes up, the bot (as controller,
+  the only role the modem applies config for) sends one SET_CONFIG
+  with the config.yaml radio block: `mcp.frequency_hz`,
+  `mcp.tx_power_dbm`, `mcp.spreading_factor`, `mcp.bandwidth_khz`,
+  `mcp.coding_rate_index`. The modem applies it and echoes its live
+  config; the bot logs "Radio config applied via modem" or, on a
+  mismatch, "Modem kept its own config: asked X, modem runs Y".
+- The modem's own `tx_power_dbm` in /etc/cleanmodem/modem.conf is now
+  just a boot default that lasts until the bot connects.
+- Failure is non-fatal: no link, no echo - the modem keeps its boot
+  config and the next handshake echo shows any difference.
+
+### Tests
+- `test_client_configure_pushes_and_waits_for_echo`: SET_CONFIG
+  resolves on the modem's CONFIG_RESP, is not counted as a TX, and
+  fails soft (None) on a dead link.
+
+## v0.0.171 - clean-modem
+
+### Fixed
+- **Authenticated observers are exempt from the idle read timeout.**
+  openhop_core's TCPLoRaRadio sends nothing after its handshake, so
+  cleanmodem's slowloris guard (`timed out (idle)`) dropped a live
+  repeater every ~60 s - each drop a ~1 s visibility gap and a
+  connect/auth/config cycle in the logs. The observer read no longer
+  idles out; liveness for dead observers comes from TCP keepalive
+  (~60 s on a dead peer) plus the existing slow-client transport
+  guards, and MAX_CONNECTIONS still caps slots. Controllers keep
+  their 30 s idle bound, renewed by the v0.0.168 keepalive PING.
+
+## v0.0.170 - clean-modem
+
+### Fixed
+- **Observer SET_CAD_PARAMS echoed.** The repeater's TCPLoRaRadio
+  restores its cached CAD settings right after SET_CONFIG during its
+  handshake; the role refusal logged "CAD configuration rejected by
+  modem: error 0x09" on the repeater (warning only - it does not
+  reconnect over this, but the handshake was dirty). Observers now
+  get the echo; live CAD params (the controller's pre-check tuning)
+  stay untouched. CAD itself remains controller-only - observers
+  cannot TX, and CAD only matters before a TX.
+
+## v0.0.169 - clean-modem
+
+### Fixed
+- **Observer SET_CONFIG answered, never applied.** openhop_core's
+  TCPLoRaRadio (the repeater driver) sends SET_CONFIG during its
+  handshake and treats any rejection (error 0x09) as a dead link,
+  reconnect-looping every 10 s - so the repeater never held its
+  observer feed. cleanmodem now answers an observer's SET_CONFIG
+  proposal with a CONFIG_RESP echo of the LIVE radio config. Nothing
+  the observer sends is applied: chip parameters stay exclusively
+  under controller control (tested both ways - observer proposal
+  never reaches the radio, controller SET_CONFIG still does).
+- Mismatched proposals are visible in the log
+  ("observer config proposal: ... (kept ...)") instead of a silent
+  role refusal.
+
+## v0.0.168 - clean-modem
+
+### Fixed
+- **Controller keepalive.** The modem server recycles sessions that
+  stay quiet ~30 s, but a controller on a quiet mesh only speaks when
+  it TXs - so the link was dropped and re-authed every ~32 s
+  (`down - retry in 2s / up` flapping), and any TX landing inside the
+  2 s reconnect window failed. The client now PINGs every 15 s (the
+  protocol's CMD_PING; the server answers PONG and keeps the session).
+  The PONG also feeds the client's idle clock, keeping the 120 s
+  dead-link cap honest.
+
+### Tests
+- `test_client_keepalive_prevents_idle_recycle`: a fake modem that
+  recycles silent clients passes only when the client PINGs.
+
+## v0.0.167 - clean-modem
+
+### Fixed
+- **Opcode table was shifted by one - the real root cause.** Cross-check
+  against LoRaRF-Python (the proven driver vendored by openhop_core for
+  this exact E22 module) found four misnumbered commands:
+  - `SetDIO3AsTcxoCtrl` is **0x97**, not 0xD4 - our opcode did not
+    exist, so the chip answered EXEC_FAIL and the TCXO (32 MHz radio
+    clock) never armed. This is why every clocked command (Calibrate,
+    CalibImage, SetRx, SetCad, SetTx) failed while register writes kept
+    "succeeding".
+  - `SetTxParams` is **0x8E**, not 0x8D (nonexistent) - TX power was
+    never configured.
+  - `SetBufferBaseAddress` is **0x8F**, not 0x8E.
+  - There is **no SetSyncWord command**: the sync word lives in
+    register 0x0740 and is written via WriteRegister (0x0D). The old
+    "sync word" command was actually a stray buffer-pointer write.
+- `CalibrateImage` band pairs fixed per LoRaRF: 902-928 is
+  (0xE1, 0xE9) [was an invalid (0x7B, 0x81)], 863-870 is (0xD7, 0xDB).
+- TCXO settle timeout set to LoRaRF's proven 0x000560 (was 0).
+
+### Tests
+- New `tests/test_cleanmodem_lorarf_opcode_parity.py` pins the whole
+  corrected table to the LoRaRF values so this class of bug cannot
+  return.
+
+

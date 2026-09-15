@@ -32,7 +32,66 @@ _SHORT_LEN = 7
 # release candidate, and the dashboard chip + startup log make it obvious
 # which build a box is running).  The exact source of any running build is
 # still pinned by the commit stamp.
-__version__ = "0.0.148"
+# 0.0.149: DEV's small-repairs merge also took 0.0.148 (deployed on
+# the box) - next free number wins. 0.0.150: bench runbook (docs).
+# 0.0.151: example-config comment fix (the deploy's config-sync inserts
+# "# key: value" lines as ACTIVE settings - prose got into a live file).
+# 0.0.152: cleanmodem LBT retry jitter goes continuous (uniform 0.10-0.30 s,
+# the old stack's empirically robust pattern) instead of three fixed delays.
+# 0.0.153: cleanmodem lbt_max_attempts documented as reserved (never
+# implemented; retry loop is bounded by clear_channel_wait_seconds).
+# 0.0.158: cleanmodem gpiod backend rewritten for the v2 Python API
+# (gpiod.Chip + request_lines) - the v1 pip bindings are ABI-broken on
+# Debian 13; 2.x ships cp313 aarch64 wheels.
+# 0.0.159: gpiod 2.x enums live in the gpiod.line submodule, not
+# top-level (caught by the clean-venv API probe on hilltop).
+# 0.0.160: a failed modem init stops its client (two clients fighting
+# over the single controller slot); worker skips IRQ polls until
+# bring-up finishes.
+# 0.0.161: modem-mode TX no longer dropped - the TX guard required
+# self.radio, which is None by design in modem mode.
+# 0.0.162: CAD issued from continuous RX is ignored by the SX126x
+# (SetCAD is STANDBY-only) - the driver now dances RX->STDBY->CAD->RX.
+# 0.0.163: _read_cmd misaligned by one byte - the chip status byte
+# was read as data, so IRQ flags never included the low byte
+# (RX_DONE/CAD_DONE/TX_DONE invisible; rx=0 from day one).
+# 0.0.164: SetCadParams sent 4 of its 7 required bytes - truncated
+# commands are rejected, so CAD never ran even with clean reads.
+# 0.0.165: response data starts at MISO byte 3 on hilltop (raw
+# capture aa aa 00 00 03 -> flags 00 03 = real RF at bytes 3-4).
+# 0.0.174: switchover runbook updated to the operational truth -
+# steps marked DONE, completion section with the reboot-proven
+# architecture, all 12 fixes, healthy signatures, and gotchas.
+# 0.0.175: restore the runbook the 0.0.174 rewrite accidentally
+# truncated (104 lines) - full hunt narrative back, plus the
+# completion section. Docs only.
+# 0.0.176: post-mortem doc - opcode-table root cause, the full
+# v0.0.154-0.0.173 fix chain, and the probe-driven debugging method.
+# 0.0.173: modem pushes OBSERVER_STATE (observer count, one byte) to
+# the controller on connect + observer join/leave - the dashboard's
+# TCP Push chip shows the truth (green when openHop is connected).
+# 0.0.172: the bot pushes its config.yaml radio settings (SET_CONFIG,
+# controller-only) to the modem at startup - mcp.tx_power_dbm is the
+# single source of truth; the modem's modem.conf value is a boot
+# default. Modem logs the asked-vs-kept config on mismatch.
+# 0.0.171: authenticated observers exempt from the idle read timeout
+# - openhop_core's driver sends nothing after its handshake, so a
+# live repeater was idle-recycled every ~60 s. Dead observers are
+# still reaped by TCP keepalive + the slow-client transport guards.
+# 0.0.170: observer SET_CAD_PARAMS echoed too - the repeater driver
+# restores cached CAD settings after SET_CONFIG in its handshake.
+# 0.0.169: observer SET_CONFIG answered with the live config (echo),
+# never applied - openhop_core's TCPLoRaRadio handshake requires a
+# config echo or it reconnect-loops treating the link as dead.
+# 0.0.168: controller keepalive - the client PINGs every 15 s so the
+# server's ~30 s idle recycler stops dropping an idle controller
+# every ~32 s (TX landing in the 2 s reconnect gap failed).
+# 0.0.167: opcode table was shifted by one (cross-checked against the
+# LoRaRF driver openhop_core vendors for this exact E22 module) -
+# TcxoCtrl is 0x97 not 0xD4 (no 32 MHz clock: every clocked command
+# EXEC_FAILed), TxParams 0x8E, BufBase 0x8F, sync word is a register
+# write to 0x0740 (no such command), CalibrateImage pairs (0xE1,0xE9).
+__version__ = "0.0.176"
 
 
 def _short(sha: str) -> str:

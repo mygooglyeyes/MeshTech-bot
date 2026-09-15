@@ -1,0 +1,67 @@
+# cleanmodem - standalone LoRa modem process
+#
+# Install: sudo cp deploy/cleanmodem.conf.example /etc/cleanmodem/modem.conf
+# (or keep it beside the bot: config dir = the bot's config dir).
+# The modem passwords NEVER live in this file: token_file /
+# controller_file point at mode-600 files whose FIRST LINE is the
+# password (same pattern as the bot's dashboard password file).
+#
+# FORMAT: this file is `key=value` style (the parser splits on '=' and
+# ignores lines without one). Blank lines and '#' comments are fine.
+# v0.0.154: the earlier colon-style example was silently skipped line
+# by line - defaults applied, tokens never loaded. Now parse-tested.
+
+# --- Listen address ---------------------------------------------------
+# 127.0.0.1 = loopback only (default, safe). The observer token belongs
+# to the visualization tool's own box; if that tool runs on another
+# machine, bind_lan=true is required AND the token is the only thing
+# between the air and the LAN.
+host=127.0.0.1
+port=5055
+# bind_lan=false
+
+# --- Auth (REQUIRED - fail closed) ------------------------------------
+# Mode-600 files; first line = password. Missing file = that role has
+# no access (fail closed). Never commit these.
+# token_file=/etc/cleanmodem/observer.token
+# controller_file=/etc/cleanmodem/controller.token
+token_file=data/.cleanmodem_observer_token
+controller_file=data/.modem_token
+
+# --- Radio (defaults = the live mesh, verified on air) ----------------
+frequency_hz=910525000
+tx_power_dbm=20
+spreading_factor=7
+coding_rate=1
+bandwidth_khz=62.5
+sync_word=0x12
+preamble_length=32
+spi_speed_hz=2000000
+
+# --- Listen-before-talk (controller TX) -------------------------------
+lbt_enabled=true
+# lbt_max_attempts is reserved and currently unused - the retry loop is
+# bounded by clear_channel_wait_seconds, not by an attempt count.
+clear_channel_wait_seconds=4.0
+politeness_seconds=2.0
+cad_peak=22
+cad_min=10
+
+# --- GPIO backend (auto | gpiod | rpi) ---------------------------------
+# auto = try gpiod, fall back to RPi.GPIO-compatible. Pin one explicitly
+# to make the choice visible and fail loud (v0.0.156 lesson: a silent
+# backend fallback left hilltop's radio deaf).
+# gpiod = the v2 Python bindings (gpiod>=2.0): cp313 aarch64 wheels
+# exist and they match Debian 13's system libgpiod. The old 1.x pip
+# package is ABI-broken on Debian 13 (v1 bindings, v2 C library).
+# Hilltop currently runs: gpio_backend=gpiod
+gpio_backend=auto
+
+# --- Board profile -----------------------------------------------------
+# Known presets: pimesh-1w-v2 (the working map: CS=8/CE0, busy=5,
+# DIO1=6, reset=18, DIO2-as-RF-switch, DIO3 TCXO 1.8V),
+# pimesh-v2-draft (external LNA + RF-switch front end on MCU pins).
+pin_profile=pimesh-1w-v2
+# Per-pin overrides (explicit values beat the preset), e.g.:
+# pins.busy=6
+# pins.dio1=27
