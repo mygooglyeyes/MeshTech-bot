@@ -9,6 +9,36 @@ worth highlighting; ordinary commits just move the counter.
 
 Going forward: every commit that bumps the version adds its line here.
 
+## 0.0.179 - 2026-09-14 (DEV)
+
+**Config pipeline hardened** (Brett's rule: the example config AND the
+live config stay current with the build):
+
+- `config.example.yaml` now documents **modem mode ACTIVE**: the `mcp:`
+  block carries `radio_mode: "modem"`, the controller link, and the
+  `/etc/cleanmodem/controller.token` token layout hilltop proved - a
+  fresh box reads the current architecture, not the old companion
+  default. Adds the keys the loader always accepted but the example
+  never showed: `limits.dm_chunk_gap_seconds`,
+  `channels[].secret_hex`, `modem_feed.queue_size`.
+- `deploy/cleanmodem.conf.example` matches hilltop's real layout
+  (`/etc/cleanmodem/` tokens, `irq_poll=true`) with the relative path
+  variant documented as the alternative.
+- **The staleness bug itself is fixed:** the deploy's default-sync used
+  to treat a key present ANYWHERE (even commented out) as present, so a
+  config that once held a commented block never received the real
+  settings later (exactly how hilltop's `mcp:` block never arrived).
+  Now only ACTIVE lines count as present; a commented key is MISSING
+  and gets re-installed ACTIVE with the example's current default.
+  Secrets are still never auto-inserted, and existing settings are
+  still left byte-identical.
+- `manage.sh` **Clean config** (option 8) runs the default-sync right
+  after copying the example, so the fresh file is complete at the
+  current version before the editor touches it - every config-touching
+  menu option (1, 2, 8) now starts from the full current schema.
+- Tests pin the new rule against the SHIPPED example (drift fails the
+  gate). Suite 579.
+
 ## 0.0.178 - 2026-09-14 (DEV)
 
 feature/mesh-health (the Sept-8 branch, v0.0.084-.089) resurrected into

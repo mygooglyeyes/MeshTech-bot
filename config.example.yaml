@@ -8,10 +8,13 @@
 # ============================================================
 
 # --- Connection to your Repeater (companion mode) -------------
-# The bot talks to ONE radio source. Pick ONE of the two:
-#   a) companion mode (default): fill in this connection block.
-#   b) radio mode: delete/leave out this block and set mcp: enabled: true
-#      below - the bot then owns a local SPI radio and needs no companion.
+# The bot talks to ONE radio source. Pick ONE of the three:
+#   a) modem mode (the current architecture - ACTIVE in the mcp: block
+#      below): the cleanmodem process owns the radio; the bot is its
+#      controller. This connection: block is then unused documentation.
+#   b) companion mode: set mcp: enabled: false and fill in this block -
+#      the bot talks to a repeater instead of owning a radio.
+#   c) spi mode: mcp: radio_mode: "spi" - the bot owns a local SPI radio.
 connection:
   host: "192.168.1.50"      # <-- LAN IP of the machine running the repeater
   port: 5000                # <-- companion port on the repeater. Must match the
@@ -53,12 +56,13 @@ mesh:
   #   "trust" = always strip it (default - commands arrive as "Name: !help")
   #   "smart" = strip it only when the rest of the text wouldn't already match
   #   "off"   = never strip (for gateways that relay messages WITHOUT names)
-  channel_sender_name: "trust"  # Path hash size for the bot's OWN originated traffic (adverts,
+  channel_sender_name: "trust"
+  # Path hash size for the bot's OWN originated traffic (adverts,
   # flood-routed DMs) - counted in BYTES per hop: 1 = 1-byte (classic),
   # 2 = 2-byte (our mesh's current setting). Replies to a specific node
   # always echo back whatever hash size that node's advert taught the
-  # bot, per node. Caution: a value the repeaters do not use yet gets
-  # the bot's adverts unrelayed by older stations.
+  # bot, per node. Caution: choosing a value higher than the repeaters
+  # near you will make your packets unrelayable.
   path_hash_size: 2                        # bytes per hop: 1 | 2 | 3
 
 # --- Channels the bot listens on -------------------------------
@@ -68,6 +72,9 @@ mesh:
 channels:
   - name: "#bot"            # <-- main Q&A channel
     reply: true
+    # Private (encrypted) channel key, 32 hex chars - only needed for
+    # channels that use one:
+    # secret_hex: "00112233445566778899aabbccddeeff"
   - name: "#test"           # <-- second channel (set reply: false to log only)
     reply: false
 
@@ -187,6 +194,11 @@ limits:
   # (admins exempt; 0 = off). One persistent node cannot eat every reply
   # slot in a busy channel.
   per_sender_channel_seconds: 30
+  # Gap BETWEEN consecutive chunks of a multi-chunk reply - small gaps
+  # self-collide on air (a 0.2 s burst lost 5 of 6 chunks in real
+  # testing); 1.2 s spans several airtime cycles. Sleeps BETWEEN chunks
+  # only, never after the last one.
+  dm_chunk_gap_seconds: 1.2
   max_reply_length: 133      # MeshCore text limit per message
   max_chunks: 6              # max messages one reply may be split into
 
@@ -246,28 +258,31 @@ updates:
 logging:
   level: INFO                # DEBUG, INFO, WARNING, ERROR
   file: ""                   # e.g. "data/bot.log" - empty = console only
-  timezone: local            # local | utc | IANA name such as "Europe/London"
-
-# --- MCP radio (the bot's own SPI radio) ------------------------
-# When enabled, the bot OWNS the PiMesh-1W v2 radio on this machine's
-# SPI pins and no longer talks to a companion repeater (the connection:
-# block above is then ignored and may be deleted). Pin wiring is
-# built in for the PiMesh-1W v2 (hard-coded; do not edit here).
+  timezone: local            # local | utc | IANA name such as "Europe/London"# --- MCP radio (the bot's radio source) -----------------------------
+# The bot talks to ONE radio source. HOW is set by radio_mode:
+#   "modem" (the current architecture): the cleanmodem process owns the
+#     SX1262 and the bot connects as its CONTROLLER (RX feed +
+#     exclusive TX) at modem_host:modem_port. The connection: block
+#     above is then unused by the bot (kept as documentation).
+#   "spi": this process owns a local SPI radio directly (no modem).
+#   Companion mode: mcp.enabled: false + the connection: block filled
+#   in - the bot talks to a repeater and owns no radio at all.
 mcp:
-  enabled: false            # <-- true = the bot owns the radio
-  # HOW the bot reaches the air when mcp.enabled is true
-  #   "spi" = this process owns the radio directly (the default)
-  #   "modem" = the cleanmodem process owns the radio and the bot
-  #     connects as its controller client (RX feed + exclusive TX);
-  #     the modem runs LBT + the TX loopback. See the modem runbook
-  #     for the safe bench path before switching.
-  # modem_host: "127.0.0.1"      # controller link for radio_mode modem
-  # modem_port: 5055
-  # The controller password lives in its own mode-600 file (first line
-  # = password), NEVER here - the modem would refuse every TX without it.
-  # modem_token_file: "data/.modem_token"
+  enabled: true
+  radio_mode: "modem"       # modem | spi - see above
+  # Controller link for radio_mode "modem". The controller password
+  # NEVER lives here: modem_token_file points at a mode-600 file whose
+  # FIRST LINE is the password - the same file the modem's
+  # controller_file points at. Missing file = no TX (fail closed).
+  modem_host: "127.0.0.1"
+  modem_port: 5055
+  modem_token_file: "/etc/cleanmodem/controller.token"
+  # --- Radio values: THE AUTHORITY for the whole chain ---------
+  # The bot pushes this block to the modem via SET_CONFIG at link-up;
+  # the modem's own conf is only its boot default. Keep these matching
+  # what your mesh actually uses.
   frequency_hz: 910525000   # US 915MHz band center used by this network
-  tx_power_dbm: 20          # hard ceiling: 20 (set lower per your local rules)
+  tx_power_dbm: 18          # hilltop runs 18 (set per your local rules)
   spreading_factor: 7
   bandwidth_khz: 62.5
   coding_rate_index: 1      # 1 = 4/5
@@ -276,8 +291,7 @@ mcp:
   advert_interval_hours: 24 # 0 = only the two start-up adverts
   # Minimum gap between the bot's OWN radio packets (seconds). The radio
   # driver always listen-before-talks (CAD) before each packet; this gap
-  # stops the bot's own multi-chunk replies from going out back-to-back
-  # (they used to leave ~0.4 s apart). Default 2.0; 0 = off.
+  # stops the bot's own multi-chunk replies from going out back-to-back.
   inter_packet_politeness_seconds: 2.0
   # CAD (listen-before-talk) detection thresholds, 0-31 each - how
   # sensitive the radio's channel-activity check is. 15/7 is the RECEIVING
@@ -286,12 +300,12 @@ mcp:
   # pre-check (below) has its own pair.
   cad_peak: 15
   cad_min: 7
-  # Sensitivity of the bot's own clear-channel pre-check, 0-31 each
-  # (v0.0.123). Kept separate from the receiving pair above: 15/7 hears
-  # weak packets but read "busy" on almost every send during testing,
-  # which only added delay. The pre-check just needs to catch a station
-  # actively transmitting, so it uses Semtech's recommended SF7 pair,
-  # 22/10. 0/0 = ride along with the driver's thresholds.
+  # Sensitivity of the bot's own clear-channel pre-check, 0-31 each.
+  # Kept separate from the receiving pair above: 15/7 hears weak packets
+  # but read "busy" on almost every send during testing, which only added
+  # delay. The pre-check just needs to catch a station actively
+  # transmitting, so it uses Semtech's recommended SF7 pair, 22/10.
+  # 0/0 = ride along with the driver's thresholds.
   precheck_cad_peak: 22
   precheck_cad_min: 10
   # Before each transmission the bot runs its own channel-activity
@@ -301,13 +315,19 @@ mcp:
   # the phone resend. 0 = off (old behavior).
   clear_channel_wait_seconds: 4.0
 
-# --- Modem feed (radio packets -> meshtech-modem -> repeater) ----
+# --- Modem feed (radio packets -> repeater's log) ----------------
 # Pushes a copy of every packet the radio hears (and every packet the
-# bot sends) to meshtech-modem's feed port, so the repeater's packet log
-# stays complete. The token lives in its own protected file (first line
-# = password, chmod 600) - NEVER in this file.
+# bot sends) to a repeater feed port, so the repeater's packet log
+# stays complete. In the cleanmodem architecture the repeater is the
+# modem's OBSERVER - this block is for the OLDER companion-style feed
+# and stays off unless you run that path. The token lives in its own
+# protected file (first line = password, chmod 600) - NEVER in this
+# file.
 modem_feed:
   enabled: false
-  host: "127.0.0.1"         # same box as meshtech-modem
-  port: 5056                # the modem's FEED port (5055 is the repeater's)
+  host: "127.0.0.1"         # same box as the feed listener
+  port: 5056                # the feed port (5055 is the modem's controller port)
+  # Bounded queue of packets waiting for the feed listener (drops the
+  # oldest when full):
+  # queue_size: 200
   token_file: "data/.modem_feed_token"

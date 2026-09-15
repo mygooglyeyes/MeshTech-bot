@@ -97,7 +97,18 @@ _SHORT_LEN = 7
 # mesh health registry + card, DM help rework, packet export) - every
 # branch is now merged; dm_chunk_gap_seconds restored to the config
 # parser alongside reply_delay_seconds.
-__version__ = "0.0.178"
+# 0.0.179: config pipeline hardened (Brett's rule: example + live stay
+# current) - config.example.yaml now documents modem mode ACTIVE (mcp
+# block with radio_mode/controller link, matching hilltop's proven
+# layout), adds limits.dm_chunk_gap_seconds, channels[].secret_hex and
+# modem_feed.queue_size; cleanmodem.conf.example matches the real
+# /etc/cleanmodem token layout + irq_poll=true; the deploy sync now
+# treats a COMMENTED key as MISSING (old rule made example updates
+# invisible to boxes forever - the 2026-09-14 staleness bug) and
+# re-installs documented defaults ACTIVE (secrets still excluded);
+# manage.sh clean-config runs the sync after copying the example, so
+# every config-touching menu option starts from the complete schema.
+__version__ = "0.0.179"
 
 
 def _short(sha: str) -> str:

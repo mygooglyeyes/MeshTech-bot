@@ -23,10 +23,14 @@ port=5055
 # --- Auth (REQUIRED - fail closed) ------------------------------------
 # Mode-600 files; first line = password. Missing file = that role has
 # no access (fail closed). Never commit these.
-# token_file=/etc/cleanmodem/observer.token
-# controller_file=/etc/cleanmodem/controller.token
-token_file=data/.cleanmodem_observer_token
-controller_file=data/.modem_token
+# HILLTOP (the proven live layout): the tokens live in /etc/cleanmodem/
+# next to this conf - the bot's mcp.modem_token_file points at the SAME
+# controller.token file (that shared file IS the handshake secret).
+token_file=/etc/cleanmodem/observer.token
+controller_file=/etc/cleanmodem/controller.token
+# Simpler relative layout also works (files under the bot's data/ dir):
+# token_file=data/.cleanmodem_observer_token
+# controller_file=data/.modem_token
 
 # --- Radio (defaults = the live mesh, verified on air) ----------------
 frequency_hz=910525000
@@ -40,6 +44,9 @@ spi_speed_hz=2000000
 
 # --- Listen-before-talk (controller TX) -------------------------------
 lbt_enabled=true
+# irq_poll=true: hilltop's proven RX path (the v0.0.155 fallback that
+# got reception working there). Keep explicit - see gpio_backend below.
+irq_poll=true
 # lbt_max_attempts is reserved and currently unused - the retry loop is
 # bounded by clear_channel_wait_seconds, not by an attempt count.
 clear_channel_wait_seconds=4.0

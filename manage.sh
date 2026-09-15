@@ -367,6 +367,23 @@ do_clean_config() {
   cp "$example" "$INSTALL_ROOT/config.yaml"
   chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_ROOT/config.yaml" 2>/dev/null || true
   chmod 640 "$INSTALL_ROOT/config.yaml"
+  # v0.0.179: make the fresh file COMPLETE at the current version, not
+  # just a copy of the example: run the deploy's default-sync so every
+  # documented setting (active or documented-commented in the example)
+  # is present ACTIVE with its current default. Without this, a fresh
+  # config inherits the example's comment-state and later example
+  # changes can never reach the box (the 2026-09-14 staleness bug).
+  if [[ -f "$INSTALL_ROOT/scripts/sync_config_defaults.py" ]]; then
+    local syncpy=""
+    for c in "$INSTALL_ROOT/.venv/bin/python" python3 python; do
+      command -v "$c" &>/dev/null && syncpy="$c" && break
+    done
+    if [[ -n "$syncpy" ]]; then
+      "$syncpy" "$INSTALL_ROOT/scripts/sync_config_defaults.py" \
+        --example "$example" --live "$INSTALL_ROOT/config.yaml" \
+        || warn "default-sync had a problem (continuing; the editor still gates this)"
+    fi
+  fi
   log "Fresh config.yaml written from the latest example (all fields present)."
   echo
   echo "  The editor walks you through the essentials (repeater, channels +"

@@ -151,16 +151,25 @@ def parse_example(text: str) -> dict[str, list]:
 
 
 def live_key_names(live_text: str) -> set[str]:
-    """Every snake_case key present ANYWHERE in the live file (active or
-    commented) - a key present at any level is never auto-inserted."""
+    """Snake_case keys the live file carries as ACTIVE settings.
+
+    v0.0.179: only ACTIVE lines count as present. The old rule counted a
+    key appearing ANYWHERE (even commented out) as present, which made
+    example updates invisible to boxes forever: a config that once held
+    a commented-out block (e.g. the whole mcp: block shipped commented)
+    never received the real settings when the example later grew them.
+    Now a commented key is MISSING, so the deploy re-installs it active
+    with the example's current default - matching Brett's rule that the
+    live config always carries every documented setting explicitly.
+    Secret-ish keys are never inserted (filtered at parse time)."""
     keys: set[str] = set()
     for line in live_text.splitlines():
         stripped = line.strip()
-        for candidate in (stripped,
-                          stripped[1:].lstrip() if stripped.startswith("#") else ""):
-            m = KEY_LINE.match(candidate)
-            if m:
-                keys.add(m.group(2))
+        if not stripped or stripped.startswith("#"):
+            continue                       # commented-out keys are NOT present
+        m = KEY_LINE.match(stripped)
+        if m:
+            keys.add(m.group(2))
     return keys
 
 

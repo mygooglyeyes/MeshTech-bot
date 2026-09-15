@@ -11,6 +11,16 @@ Newest entries first within each branch.
 
 ## DEV (current)
 
+- **v0.0.179** - Config pipeline hardened (Brett: "whatever it takes so
+  the example config.yaml is current in the repo AND on the box, and
+  manage.sh config options always see the latest"). Example now ships
+  modem mode ACTIVE (mcp block = hilltop's proven layout) + the three
+  never-documented keys; modem conf example matches /etc/cleanmodem;
+  the sync rule flipped: commented key = MISSING (re-installed active)
+  - this was the root cause of hilltop's config staleness; clean
+  config runs the sync after copying. Tests pin the example itself.
+  Suite 579.
+
 - **v0.0.178** - Merge: feature/mesh-health (the Sept-8 branch,
   v0.0.084-.089) resurrected into DEV - mesh health registry + card,
   `!health`, per-keyword help + grouped DM help, packet export. Merge
